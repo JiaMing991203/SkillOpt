@@ -189,6 +189,65 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   manifest/freezes written before vLLM starts; a single EXIT handler that
   stops vLLM/GPU sampler and waits for `tee`. None change model behavior.
 
+## 2026-10-20 — run_tests (job 64330068)
+
+- Commit `a945bb2` (native sampler + LSO_VLLM_* infra). **105 passed**. The
+  manifest records `target.vllm_env = {VLLM_HOST_IP: 127.0.0.1,
+  VLLM_USE_FLASHINFER_SAMPLER: 0}`. The leak-guard final line now reaches
+  `job.log`, so the exit-flush fix works.
+
+## 2026-10-20 — smoke STAGE=vllm rerun (job 64330104) — FAILED at network check; sequence stopped
+
+- **Purpose:** rerun of 64329002 with the native sampler.
+- **Commit / snapshot:** `a945bb2` / `snapshots/a945bb2b6198`
+- **Resources requested / used:** spgpu, 1 A40, 8 cores, 64 GB, 1 h / queued
+  <1 min, ran **3 min 58 s**, MaxRSS 13.9 GB, 2 min 59 s CPU.
+- **Run dir:** `runs/20261020-010644_smoke_vllm_64330104` (fetched locally)
+- **Outcome:** **FAILED** (exit 1) by our fail-closed listener check.
+  `vLLM has a non-loopback TCP listener`. vLLM was then stopped by the EXIT handler.
+- **Verified: model loading and server initialization succeeded.**
+  - GPU: NVIDIA A40, driver **595.71.05**, 46,068 MiB.
+  - **Native sampler selected:** `FlashInfer top-p/top-k sampling disabled
+    via VLLM_USE_FLASHINFER_SAMPLER=0.` The 64329002 failure is resolved.
+  - Weights 13.9 s (7.99 GiB). torch.compile 46.4 s (recompiled, not cached).
+    Engine init (profiling, KV cache, warm-up) 145.8 s. CUDA graphs captured
+    in 6 s (0.55 GiB).
+  - KV cache 27.92 GiB = **859,911 tokens**, max concurrency 26× at 32k-token
+    requests.
+  - **Startup to ready: ~230 s.** `/v1/models` answered with the per-job key.
+  - Peak GPU memory **38.97 GiB of 46 GiB**, as expected with
+    `--gpu-memory-utilization 0.85` (vLLM pre-allocates).
+  - Benign warning: optional `deep_gemm` failed to import (no CUDA toolkit);
+    it is not needed on A40.
+- **Not reached:** inference (target preflight), `check_vllm_sampler` (the
+  log line above confirms the sampler anyway), any ALFWorld interaction. No
+  DeepSeek calls.
+- **Listener check result (`vllm_listeners.txt`):**
+  - HTTP API: `127.0.0.1:<port>` ✓ (vLLM API server process).
+  - Engine-core process: **7 listeners on the node's network IP** and **1 on
+    `0.0.0.0`** (the port that matches `distributed_init_method=tcp://127.0.0.1:36883`).
+  - **Interpretation** (consistent with vLLM's `parallel_state.py`, not proven
+    per socket): the 7 are Gloo listeners, from the CPU process groups vLLM
+    creates alongside NCCL. Gloo binds to the hostname's interface unless
+    `GLOO_SOCKET_IFNAME` is set, and `VLLM_HOST_IP` does not affect it. The
+    `0.0.0.0` socket is torch's c10d TCPStore (rendezvous) server, which
+    listens on all interfaces even when the init address is 127.0.0.1.
+  - These sockets are torch.distributed internals, not the model API. The
+    model API is loopback-only and requires the per-job key.
+- **Options (need review):**
+  1. Set `GLOO_SOCKET_IFNAME=lo` for the vLLM process (expected to move the 7
+     Gloo listeners to loopback; untested). Accept the single TCPStore socket
+     on `0.0.0.0` (port taken from the logged `distributed_init_method`) as a
+     documented exception, and keep failing on anything else.
+  2. Narrow the check to "the HTTP API must be loopback". Record all other
+     listeners as known torch internals. This is simplest but accepts 8
+     unauthenticated internal sockets reachable from the cluster network for
+     the job's lifetime (typical of PyTorch jobs; main risk is disruption,
+     not model access).
+  3. Investigate binding TCPStore to loopback as well (may not be configurable
+     by environment in torch 2.11).
+- **Not done, per instructions:** no retry; STAGE=rollout not submitted.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)
