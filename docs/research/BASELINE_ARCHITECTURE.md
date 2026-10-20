@@ -68,12 +68,16 @@ conventionally 140 and 134 games. So the paper's test set matches the repo
 (all of `valid_unseen`), and the paper's selection set appears to be all of
 `valid_seen`, while the repo ships an 18-game subset.
 
-**Unknown:** why the subset exists (cost reduction, an erratum in the paper,
-or a different release), and how the 18 were chosen. No upstream issue
-mentions it (searched 2026-10-19). `setup_env` writes
-`alfworld_data_census.json`, which settles three things: the actual
-`valid_seen` count, whether the cited `split_*.json` files exist, and where the
-18 sit in sorted `valid_seen`. Proposal: decide before full runs whether to
+**Verified (data census, setup_env job 64323909):** the downloaded
+`json_2.1.1` has train 3553, **valid_seen 140**, **valid_unseen 134** games.
+The paper's "140 selection" therefore equals all of `valid_seen`, and its
+"134 test" equals all of `valid_unseen` (the repo's test split). The
+`split_{train,val,test}.json` files the manifest cites do **not** exist in the
+`alfworld-download` output. The 18 val items sit at scattered positions in
+sorted `valid_seen` (0, 1, 10, 27, …, 122), not a prefix.
+
+**Unknown:** why the released selection split is an 18-game subset and how it
+was sampled. No upstream issue mentions it (searched 2026-10-19). Proposal: decide before full runs whether to
 (a) keep 18 (repo-faithful), (b) materialize a 140-game selection split from
 `valid_seen` (paper-faithful; about 8× the gate cost), or (c) ask upstream.
 

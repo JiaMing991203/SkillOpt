@@ -57,6 +57,55 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   incomplete envs are resumed, and unmarked envs are never modified. The
   partial env predates the marker and must be removed before rerunning.
 
+## 2026-10-20 — setup_env rerun (job 64323909)
+
+- **Purpose:** rerun of job 64323201 after the PATH fix.
+- **Commit / snapshot:** `ffb1d27` (fix `70de16f` + jobs.tsv) / `snapshots/ffb1d27f5c65`
+- **Pre-step (approved):** removed the partial controller env left by 64323201
+  (its conda history held only the create command; base packages only).
+- **Resources requested / used:** CPU, 4 cores, 16 GB, 2 h / **20 min 30 s**
+  elapsed, 10 min 47 s CPU, **MaxRSS 16.0 GiB (at the request limit; no OOM
+  kill)**. Peak step unknown; candidates are the vLLM/torch wheel install and
+  the HF download. Use 32 GB if setup is ever rerun from scratch.
+- **Run dir:** `runs/20261019-231519_setup_env_64323909` (fetched locally)
+- **Outcome:** **COMPLETED** (exit 0). Step times: controller env 3 m 12 s;
+  vLLM env 14 m 1 s; Qwen download 1 m 15 s; ALFWorld download 1 m 37 s.
+- **Verified:**
+  - Controller: `controller imports ok` (alfworld, textworld, gymnasium,
+    omegaconf, `skillopt.envs.alfworld.adapter`). Versions: alfworld 0.4.2,
+    textworld 1.7.0, fast_downward_textworld 20.6.4 (built from source),
+    gymnasium 1.4.0, numpy 2.4.6, omegaconf 2.4.0, json_repair 0.64.1,
+    **openai 3.35.1** (a newer major version than the 2.x in other envs; see tests).
+  - vLLM env: vllm 0.25.1, torch 2.11.0 (**CUDA 13.0 build**), transformers
+    5.20.2, flashinfer 0.6.13.
+  - Qwen3.5-4B at `851bf6e8…`: 2/2 safetensors shards present, 11 GB.
+  - ALFWorld: all 39 / 18 / 134 split gamefiles exist under `$ALFWORLD_DATA`.
+  - Data census: games per split train 3553, **valid_seen 140**, **valid_unseen
+    134**, valid_train 200. The `split_{train,val,test}.json` files cited by
+    the manifest are **not present**. The 18 val items are at positions
+    0, 1, 10, 27, 28, 30, 51, 52, 69, 71, 77, 92, 98, 100, 113, 114, 118, 122
+    of sorted `valid_seen`: a scattered subset, not a prefix.
+  - Both envs carry the created/complete markers; leak guard passed.
+- **Untested risk:** the CUDA 13.0 torch build needs a recent NVIDIA driver on
+  the A40 nodes. The other project's env uses the same build, which suggests
+  compatibility. `STAGE=vllm` will verify it.
+
+## 2026-10-20 — run_tests (job 64326614)
+
+- **Purpose:** focused CPU tests in the new controller env.
+- **Commit / snapshot:** `ffb1d27` / `snapshots/ffb1d27f5c65`
+- **Resources requested / used:** CPU, 2 cores, 8 GB, 30 min / 6 s elapsed, MaxRSS 106 MB.
+- **Run dir:** `runs/*_64326614` (fetched locally; `pytest.xml`)
+- **Outcome:** **COMPLETED**: **104 passed**, 0 failed, 0 errors, 0 skipped
+  (2.5 s). Per file: research_configs 4, research_summarize_run 5, gate 22,
+  gate_no_regression 19, alfworld_paths 4, openai_compatible_backend 4,
+  openai_compatible_config 17, qwen_backend 29. 8 warnings, all the expected
+  "thinking mode left to server" warning from tests of the unpinned mode.
+- **Interpretation:** the research configs change only wiring/scale; the
+  fallback classifier matches rollout.py's sentinels; the backend unit tests
+  pass under openai 3.35.1. Those tests mock the HTTP client, so a real
+  DeepSeek call through openai 3.x is still unverified (`check_compute`).
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

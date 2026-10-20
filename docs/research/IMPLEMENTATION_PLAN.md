@@ -12,8 +12,8 @@ representative traces have been inspected.
 | 1 | Cluster environment inspection (login node, read-only) | **Done** except compute-node API check | `BASELINE_SETUP.md` §2 |
 | 2 | Deployment workflow (deploy / submit / fetch, snapshots, manifests) | **Written; readiness check run; not yet deployed** | `research/`, `research/cluster/` |
 | 2a | Commit + push branch to research fork | Done (see EXPERIMENT_LOG) | — |
-| 2b | `deploy.sh` + `setup_env` job (new envs, model, ALFWorld data, data census) | Next; needs approval | — |
-| 2c | `run_tests` job | After 2b | — |
+| 2b | `deploy.sh` + `setup_env` job (new envs, model, ALFWorld data, data census) | **Done** | job 64323201 FAILED (PATH; fixed in `70de16f`); job 64323909 COMPLETED — see EXPERIMENT_LOG |
+| 2c | `run_tests` job | **Done** | job 64326614: 104 passed |
 | 2d | DeepSeek key on cluster + `check_compute` job | Needs user (key) + approval | — |
 | 3a | `STAGE=vllm` smoke (Qwen endpoint, loopback check) | After 2b | — |
 | 3b | `STAGE=rollout` smoke, 1 episode: validity + **throughput measurement** | After 2d, 3a | — |
