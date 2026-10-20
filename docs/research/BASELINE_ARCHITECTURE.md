@@ -118,6 +118,71 @@ The projection also computes an `is_action_valid` flag (missing `<think>`
 tags or CJK characters), but nothing records it or uses it for scoring.
 `summarize_run.py` recomputes it as `format_invalid`.
 
+### 2c. Agent reasoning: from Qwen's reply to the optimizer prompt
+
+Traced 2026-10-20 in source (commit `1a44050`), using the one real Qwen reply
+from smoke job 64331018.
+
+```mermaid
+flowchart LR
+    Q[Qwen reply text<br/>message.content] --> R[rollout.py step record]
+    R -->|model_response: full raw text| C[(conversation.json)]
+    R -->|reasoning: regex think..../think| C
+    R -->|action: regex action..../action| C
+    C --> F[reflect.fmt_trajectory]
+    F -->|"[step think] reasoning — only if non-empty"| P[analyst prompt to DeepSeek]
+    F -->|"[step action], [step obs]"| P
+    C -.->|model_response never read| X[not sent]
+```
+
+**Verified (code):**
+1. `qwen_backend` returns `message.content` only. We run vLLM without a
+   reasoning parser, so `content` holds the whole reply.
+2. `rollout.py:276-285` stores per step: `action` = first
+   `<action>…</action>`; `reasoning` = `<think>(.*?)</think>` (needs **both**
+   tags, else `None`); `model_response` = the **full raw reply** (or a fallback
+   sentinel); `env_feedback`; `reward`; `done`.
+3. Nothing in `skillopt/` outside the model layer reads `model_response`. The
+   optimizer sees trajectories only through `reflect.fmt_trajectory`
+   (`reflect.py:85-95`): per step `[step N think] <reasoning>` (**omitted when
+   reasoning is empty**), `[step N action]`, `[step N obs]`, under a header
+   with task, task type, failure reason and step count. `slow_update.py:152`
+   reads the same fields.
+4. The agent's next prompt carries only past observations and actions
+   (`env_manager.py:59` stores `text_obs` and `action`), never its earlier
+   reasoning.
+5. Qwen3.5's `chat_template.jinja` (line 150) ends the generation prompt with
+   an empty, already-closed block `<think>\n\n</think>\n\n` when
+   `enable_thinking=false`. The ALFWorld prompt then asks for
+   `<think>…</think>` followed by `<action>…</action>` in the reply.
+
+**Observed (one reply, job 64331018):** reasoning prose, then `</think>`,
+then `<action>go to countertop 1</action>`. There is no opening `<think>`.
+
+**Answers:**
+- *Why is `<think>` missing?* **Hypothesis:** the template's pre-filled
+  empty block puts the model "after" a thinking section. It writes its
+  reasoning as plain text and closes it with the `</think>` the user prompt
+  asked for, but does not re-open one. The pre-fill is verified; the
+  model-side explanation is not.
+- *Is the original reply preserved?* **Yes** (verified): `model_response`
+  keeps the full text in `conversation.json`.
+- *What reaches the optimizer?* Actions, observations, task header, and
+  reasoning **only when the regex matches** (verified).
+- *Real information loss?* **For the optimizer, yes** (verified mechanism):
+  for such steps no reasoning line is sent, so DeepSeek must infer intent from
+  actions alone. **On disk, no**: the raw text remains available for our own
+  analysis and future verification work.
+- *Parser bug or expected behavior?* An **interaction**: Qwen's documented
+  non-thinking template (empty pre-filled block) combined with a prompt that
+  requests `<think>` tags and a parser that needs both tags. The action parser
+  is unaffected. Whether the paper's Qwen runs had the same loss is **unknown**.
+- How often it happens over a whole episode is measured by `summarize_run.py`
+  (`think_close_only`, `reasoning_null`). The analyst's actual input is
+  rendered with SkillOpt's own formatter by `render_reflection_input.py`.
+
+Not changed for the baseline (per instructions): thinking mode, prompts, parser.
+
 **Proposal (not for the baseline):** for the failure-localization research,
 add opt-in instrumentation behind a config flag, off by default. It would
 store the raw response, the exception type and message, the retry count, the

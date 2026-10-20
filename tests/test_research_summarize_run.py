@@ -33,7 +33,7 @@ def test_summarize_rollout_counts(tmp_path):
         {"model_response": "<think>missing action tag</think><action>look</action>", "action": "look",
          "env_feedback": "You arrive."},
         {"model_response": "<think>t</think><action>go to desk 1</action>", "action": "go to desk 1",
-         "env_feedback": "Nothing happens."},
+         "reasoning": "t", "env_feedback": "Nothing happens."},
         {"model_response": "<action>look</action>", "action": "look", "env_feedback": "ok"},
     ]
     (tmp_path / "predictions" / "val:0000").mkdir(parents=True)
@@ -45,3 +45,13 @@ def test_summarize_rollout_counts(tmp_path):
     assert r["genuine_look"] == 1
     assert r["nothing_happens"] == 1
     assert r["format_invalid"] == 1
+    assert r["think_close_only"] == 0
+    assert r["reasoning_null"] == 1  # the "<action>look</action>" step has no reasoning
+
+
+def test_qwen_close_only_think_is_counted():
+    step = {"model_response": "plan the route\n\n</think>\n\n<action>go to desk 1</action>",
+            "action": "go to desk 1", "reasoning": None}
+    c = classify_step(step)
+    assert c["think_close_only"] and c["reasoning_null"] and c["format_invalid"]
+    assert c["fallback"] is None

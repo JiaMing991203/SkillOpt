@@ -94,6 +94,12 @@ scrape_vllm_metrics after
 
 "$CTL_ENV/bin/python" research/summarize_run.py "$OUT" --run-dir "$RUN_DIR" \
     --out "$RUN_DIR/run_summary.json" || log "warning: summarize_run failed"
+# What SkillOpt's reflection step would show the optimizer for this rollout
+# (upstream fmt_minibatch_trajectories; no API call).
+if [ "$STAGE" = "rollout" ] && [ -f "$OUT/results.jsonl" ]; then
+    "$CTL_ENV/bin/python" research/render_reflection_input.py "$OUT" \
+        --out "$RUN_DIR/reflection_input_preview.txt" || log "warning: render_reflection_input failed"
+fi
 assert_run_dir_clean
 log "stage $STAGE finished with status $status"
 exit "$status"

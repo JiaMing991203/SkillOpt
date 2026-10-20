@@ -20,38 +20,7 @@ start_job_log
 write_manifest stage=setup_env
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 
-# Envs created by this script carry a marker file; only such envs are ever
-# resumed after a failed install. An existing env without the marker (i.e.
-# not created by setup_env) is never modified.
-CREATED_MARK=.lso_created_by_setup_env
-DONE_MARK=.lso_setup_complete
-
-ensure_env() {
-    local prefix="$1" pyver="$2" label="$3"; shift 3
-    if [ -e "$prefix/$DONE_MARK" ]; then
-        log "$label env already complete; leaving it unchanged"
-        return
-    fi
-    if [ -e "$prefix" ] && [ ! -e "$prefix/$CREATED_MARK" ]; then
-        die "$label env exists but was not created by setup_env; refusing to modify it"
-    fi
-    if [ -e "$prefix" ]; then
-        log "resuming incomplete $label env from an earlier setup_env job ($(cat "$prefix/$CREATED_MARK"))"
-    else
-        log "creating $label env (python $pyver)"
-        conda create -y -p "$prefix" "python=$pyver" pip
-        echo "job=${SLURM_JOB_ID:-none} commit=$GIT_COMMIT" > "$prefix/$CREATED_MARK"
-    fi
-    # Some dependencies build from source and shell out to a bare `python`
-    # (fast-downward-textworld runs `python build.py` + cmake), so the env's
-    # bin must be first on PATH, as with `conda activate`. Job 64323201
-    # failed without this.
-    (
-        export PATH="$prefix/bin:$PATH"
-        python -m pip install --upgrade pip
-        python -m pip install "$@"
-    )
-}
+# ensure_env / CREATED_MARK / DONE_MARK live in lib.sh (shared with setup_vllm_env).
 
 # ── Controller env: SkillOpt + ALFWorld (TextWorld only, no THOR) ────────────
 # Dependencies only; SkillOpt itself runs from the snapshot via PYTHONPATH.

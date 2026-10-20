@@ -70,6 +70,10 @@ _lso_exit() {
     local rc=$?
     stop_vllm
     if [ -n "${LSO_GPU_MON_PID:-}" ]; then kill "$LSO_GPU_MON_PID" 2>/dev/null || true; fi
+    # Only the directory this job created with mktemp (lso_vllm.XXXXXXXX).
+    case "${LSO_VLLM_TMPDIR:-}" in
+        */lso_vllm.????????) rm -rf -- "$LSO_VLLM_TMPDIR" ;;
+    esac
     exec 1>&- 2>&-
     if [ -n "${LSO_TEE_PID:-}" ]; then wait "$LSO_TEE_PID" 2>/dev/null || true; fi
     exit "$rc"
@@ -133,8 +137,10 @@ manifest = {
         "vllm_env": {
             "VLLM_HOST_IP": "127.0.0.1",
             "GLOO_SOCKET_IFNAME": "lo",
+            "TMPDIR": "private 0700 per-job dir" if env.get("LSO_VLLM_TMPDIR") else None,
             "VLLM_USE_FLASHINFER_SAMPLER": env.get("LSO_VLLM_USE_FLASHINFER_SAMPLER"),
         },
+        "vllm_enable_prefix_caching": env.get("LSO_VLLM_ENABLE_PREFIX_CACHING"),
         "vllm_args": env.get("LSO_VLLM_ARGS"),
     },
     "optimizer": {
@@ -164,6 +170,39 @@ assert_run_dir_clean() {
     done
     [ "$bad" = 0 ] || die "secret/settings leak in run dir (see LEAK lines); do not share this run"
     log "run dir check: no settings files or key values in artifacts"
+}
+
+# Envs created by setup_env / setup_vllm_env carry a marker file; only such envs are ever
+# resumed after a failed install. An existing env without the marker (i.e.
+# not created by setup_env) is never modified.
+CREATED_MARK=.lso_created_by_setup_env
+DONE_MARK=.lso_setup_complete
+
+ensure_env() {
+    local prefix="$1" pyver="$2" label="$3"; shift 3
+    if [ -e "$prefix/$DONE_MARK" ]; then
+        log "$label env already complete; leaving it unchanged"
+        return
+    fi
+    if [ -e "$prefix" ] && [ ! -e "$prefix/$CREATED_MARK" ]; then
+        die "$label env exists but was not created by setup_env; refusing to modify it"
+    fi
+    if [ -e "$prefix" ]; then
+        log "resuming incomplete $label env from an earlier setup_env job ($(cat "$prefix/$CREATED_MARK"))"
+    else
+        log "creating $label env (python $pyver)"
+        conda create -y -p "$prefix" "python=$pyver" pip
+        echo "job=${SLURM_JOB_ID:-none} commit=$GIT_COMMIT" > "$prefix/$CREATED_MARK"
+    fi
+    # Some dependencies build from source and shell out to a bare `python`
+    # (fast-downward-textworld runs `python build.py` + cmake), so the env's
+    # bin must be first on PATH, as with `conda activate`. Job 64323201
+    # failed without this.
+    (
+        export PATH="$prefix/bin:$PATH"
+        python -m pip install --upgrade pip
+        python -m pip install "$@"
+    )
 }
 
 freeze_env() {
@@ -225,6 +264,28 @@ PY
     log "probe window closed"
 }
 
+# Records which torch.distributed rendezvous vLLM used (from vllm.log's
+# "distributed_init_method=..."): file (FileStore, no TCP listener) or tcp
+# (TCPStore server on all interfaces). For file, also records whether the
+# store lives inside the private 0700 temp dir. Informational; the listener
+# check is the security gate. Writes vllm_rendezvous.json.
+check_vllm_rendezvous() {
+    local init method in_private=false mode
+    init=$(grep -oE "distributed_init_method=[^ ]+" "$RUN_DIR/vllm.log" | head -1 | cut -d= -f2-)
+    case "$init" in
+        file://*) method=file ;;
+        tcp://*) method=tcp ;;
+        *) method=unknown ;;
+    esac
+    if [ "$method" = file ] && [ "${init#file://"$LSO_VLLM_TMPDIR"/}" != "$init" ]; then in_private=true; fi
+    mode=$(stat -c %a "$LSO_VLLM_TMPDIR" 2>/dev/null || echo "?")
+    LSO_RENDEZVOUS_METHOD=$method
+    export LSO_RENDEZVOUS_METHOD
+    printf '{"method": "%s", "store_in_private_tmpdir": %s, "private_tmpdir_mode": "%s"}\n' \
+        "$method" "$in_private" "$mode" > "$RUN_DIR/vllm_rendezvous.json"
+    log "rendezvous: method=$method store_in_private_tmpdir=$in_private tmpdir_mode=$mode"
+}
+
 # Confirms from vllm.log which top-k/top-p sampler vLLM selected, and fails the
 # job if it does not match LSO_VLLM_USE_FLASHINFER_SAMPLER. Writes vllm_sampler.txt.
 check_vllm_sampler() {
@@ -241,6 +302,26 @@ check_vllm_sampler() {
     if [ "$LSO_VLLM_USE_FLASHINFER_SAMPLER" = "0" ] && [ "$(cat "$RUN_DIR/vllm_sampler.txt")" != "native" ]; then
         die "expected the native sampler (LSO_VLLM_USE_FLASHINFER_SAMPLER=0); see vllm.log"
     fi
+}
+
+# Verifies engine settings that must match the pinned baseline, from vllm.log:
+#   - enable_prefix_caching matches LSO_VLLM_ENABLE_PREFIX_CACHING
+#   - no "Default vLLM sampling parameters have been overridden" warning
+#     (same text in 0.25.1 and 0.28.0; absent in the 0.25.1 runs), i.e. the
+#     request defaults are not changed by a model generation config
+# Records the attention backend line. Writes vllm_engine_config.json.
+check_vllm_engine_config() {
+    local pc override backend want
+    pc=$(grep -oE "enable_prefix_caching=(True|False)" "$RUN_DIR/vllm.log" | head -1 | cut -d= -f2)
+    override=false
+    grep -qF "Default vLLM sampling parameters have been overridden" "$RUN_DIR/vllm.log" && override=true
+    backend=$(grep -oE "Using [A-Z_]+ attention backend" "$RUN_DIR/vllm.log" | head -1 || true)
+    printf '{"enable_prefix_caching": "%s", "sampling_defaults_overridden": %s, "attention_backend": "%s"}\n' \
+        "${pc:-unknown}" "$override" "$backend" > "$RUN_DIR/vllm_engine_config.json"
+    log "engine: enable_prefix_caching=${pc:-unknown} sampling_defaults_overridden=$override ($backend)"
+    want=True; [ "$LSO_VLLM_ENABLE_PREFIX_CACHING" = "0" ] && want=False
+    [ "$pc" = "$want" ] || die "enable_prefix_caching=${pc:-unknown}, expected $want (LSO_VLLM_ENABLE_PREFIX_CACHING)"
+    [ "$override" = false ] || die "vLLM overrode default sampling parameters from a generation config (see vllm.log)"
 }
 
 # Starts a vLLM OpenAI-compatible server for this job only.
@@ -270,9 +351,16 @@ start_vllm() {
         --limit-mm-per-prompt '{"image":0,"video":0}'
         --seed 0
     )
-    export LSO_VLLM_ARGS="VLLM_HOST_IP=127.0.0.1 GLOO_SOCKET_IFNAME=lo VLLM_USE_FLASHINFER_SAMPLER=$LSO_VLLM_USE_FLASHINFER_SAMPLER vllm ${args[*]}"
+    if [ "$LSO_VLLM_ENABLE_PREFIX_CACHING" = "0" ]; then args+=(--no-enable-prefix-caching); fi
+    # Private temp dir for the vLLM process only: vLLM >= 0.28 puts its file://
+    # rendezvous store (PR #50999) and engine IPC sockets in tempfile.gettempdir(),
+    # and the node's /tmp is shared with other users' jobs.
+    LSO_VLLM_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/lso_vllm.XXXXXXXX")
+    chmod 700 "$LSO_VLLM_TMPDIR"
+    export LSO_VLLM_TMPDIR
+    export LSO_VLLM_ARGS="TMPDIR=<private 0700 dir> VLLM_HOST_IP=127.0.0.1 GLOO_SOCKET_IFNAME=lo VLLM_USE_FLASHINFER_SAMPLER=$LSO_VLLM_USE_FLASHINFER_SAMPLER vllm ${args[*]}"
     log "starting: $LSO_VLLM_ARGS"
-    VLLM_API_KEY="$VLLM_API_KEY" VLLM_HOST_IP=127.0.0.1 GLOO_SOCKET_IFNAME=lo HF_HUB_OFFLINE=1 \
+    TMPDIR="$LSO_VLLM_TMPDIR" VLLM_API_KEY="$VLLM_API_KEY" VLLM_HOST_IP=127.0.0.1 GLOO_SOCKET_IFNAME=lo HF_HUB_OFFLINE=1 \
         VLLM_USE_FLASHINFER_SAMPLER="$LSO_VLLM_USE_FLASHINFER_SAMPLER" \
         setsid "$LSO_VLLM_ENV/bin/vllm" "${args[@]}" > "$RUN_DIR/vllm.log" 2>&1 &
     LSO_VLLM_PID=$!
@@ -287,8 +375,10 @@ start_vllm() {
     done
     echo "$waited" > "$RUN_DIR/vllm_startup_seconds.txt"
     log "vLLM ready on 127.0.0.1:$LSO_VLLM_PORT after ~${waited}s"
+    check_vllm_rendezvous
     check_vllm_listeners
     check_vllm_sampler
+    check_vllm_engine_config
 
     # Point SkillOpt's qwen_chat target role at the job-local server.
     export TARGET_QWEN_CHAT_BASE_URL="http://127.0.0.1:$LSO_VLLM_PORT/v1"

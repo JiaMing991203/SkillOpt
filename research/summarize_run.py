@@ -22,6 +22,10 @@ Limitations (cannot be fixed without changing the rollout code):
 
 Other counts:
   nothing_happens    ALFWorld replied "Nothing happens." (action not valid)
+  think_close_only   response has </think> but no <think> (Qwen non-thinking
+                     template pre-fills an empty think block)
+  reasoning_null     the step's extracted `reasoning` is empty, so SkillOpt's
+                     reflection prompt carries no reasoning line for it
   format_invalid     response fails the vendored projection's validity rule
                      (no <think>...</think> or contains CJK characters); this
                      flag is computed by ALFWorld's env manager but not stored
@@ -66,6 +70,10 @@ def classify_step(step: dict) -> dict:
         "format_invalid": fallback is None and (
             "<think>" not in resp or "</think>" not in resp or bool(_CJK.search(resp))
         ),
+        # Qwen non-thinking pattern: reasoning closed by </think> but never opened.
+        "think_close_only": fallback is None and "</think>" in resp and "<think>" not in resp,
+        # rollout._extract_think found nothing, so the analyst sees no reasoning line.
+        "reasoning_null": fallback is None and not step.get("reasoning"),
     }
 
 
@@ -92,6 +100,8 @@ def summarize_rollout(rollout_dir: str) -> dict:
             "genuine_look": sum(c["genuine_look"] for c in cls),
             "nothing_happens": sum(c["nothing_happens"] for c in cls),
             "format_invalid": sum(c["format_invalid"] for c in cls),
+            "think_close_only": sum(c["think_close_only"] for c in cls),
+            "reasoning_null": sum(c["reasoning_null"] for c in cls),
         })
     n = len(episodes)
 
@@ -106,6 +116,8 @@ def summarize_rollout(rollout_dir: str) -> dict:
         "genuine_look": total("genuine_look"),
         "nothing_happens": total("nothing_happens"),
         "format_invalid": total("format_invalid"),
+        "think_close_only": total("think_close_only"),
+        "reasoning_null": total("reasoning_null"),
         "episodes": episodes,
     }
 
@@ -243,7 +255,8 @@ def main() -> int:
     for name, r in rollouts.items():
         print(f"{name}: episodes={r['n_episodes']} hard={r['hard_mean']} steps={r['total_steps']} "
               f"fallback={r['fallback_actions']} genuine_look={r['genuine_look']} "
-              f"nothing_happens={r['nothing_happens']} format_invalid={r['format_invalid']}")
+              f"nothing_happens={r['nothing_happens']} format_invalid={r['format_invalid']} "
+              f"think_close_only={r['think_close_only']} reasoning_null={r['reasoning_null']}")
     for g in gate:
         print("gate:", {k: g.get(k) for k in ("step", "action", "selection_hard", "current_score", "best_score")})
     for key in ("vllm_throughput", "vllm_http_statuses", "gpu_usage"):

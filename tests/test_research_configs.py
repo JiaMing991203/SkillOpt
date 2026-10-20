@@ -75,8 +75,9 @@ def test_vllm_serving_settings_are_pinned():
     env = _experiment_env()
     assert env["TARGET_MODEL_ID"] == "Qwen/Qwen3.5-4B"
     assert env["TARGET_MODEL_REVISION"] == "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
-    assert env["LSO_VLLM_VERSION"] == "0.25.1"
+    assert env["LSO_VLLM_VERSION"] == "0.28.0"  # file:// rendezvous (PR #50999)
     assert env["LSO_VLLM_USE_FLASHINFER_SAMPLER"] == "0"  # native sampler (job 64329002)
+    assert env["LSO_VLLM_ENABLE_PREFIX_CACHING"] == "0"  # parity with 0.25.1 (off for hybrid models)
     # Must agree with the YAML the trainer reads.
     cfg = _flat(BASELINE)
     assert env["TARGET_QWEN_CHAT_THINKING_MODE"] == cfg["target_qwen_chat_thinking_mode"]

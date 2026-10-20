@@ -103,6 +103,7 @@ experiment).
 | Job | Resources | Purpose |
 |---|---|---|
 | `setup_env` | CPU, 4 cores, 16 GB, ≤2 h | Create the two new envs (installs run with the env activated on `PATH`; `alfworld` builds `fast-downward-textworld` from source with system cmake/gcc; envs it creates get a marker and are resumed if incomplete; envs it did not create are never touched), download Qwen3.5-4B at the pinned revision, `alfworld-download`, import check, check all 191 split gamefiles exist, write `alfworld_data_census.json` (game counts per ALFWorld split, presence of the `split_*.json` files the manifest cites, positions of the 18 val items in `valid_seen`). |
+| `setup_vllm_env` | CPU, 4 cores, 32 GB, ≤2 h | Create **only** the vLLM env for `LSO_VLLM_VERSION` at `LSO_VLLM_ENV` (one env per version; others untouched), then verify the installed code: version pin, torch/CUDA build, `UniProcExecutor` uses `file://` rendezvous, Qwen3.5 registered, native-sampler switch present, and every `vllm serve` flag we pass (`vllm_env_check.json`, `vllm_serve_help.txt`). |
 | `run_tests` | CPU, 2 cores, 8 GB, ≤30 min | Research-config guards, fallback classifier, gate / ALFWorld path / backend tests. |
 | `check_compute` | CPU, 1 core, 4 GB, ≤15 min | Outbound HTTPS from a compute node; list DeepSeek models; if `OPTIMIZER_MODEL` is listed, two tiny calls **through SkillOpt's `openai_compatible` backend** (configured from the research YAML): plain text, and a JSON edit parsed by SkillOpt's `extract_json`. Records resolved model, `reasoning_content` presence, whether SkillOpt's returned text excludes reasoning, full usage, and estimated cost. |
 | `smoke STAGE=vllm` | 1 A40, 8 cores, 64 GB, ≤1 h | Start vLLM, verify loopback-only listeners, send one real ALFWorld prompt through SkillOpt's `qwen_chat` backend, require an `<action>` tag. |
@@ -144,7 +145,8 @@ and the node name. Treat run directories as private; review before sharing.
 |---|---|---|
 | OpenAI HTTP API | `--host 127.0.0.1 --port <random free port>` | vLLM CLI |
 | torch.distributed rendezvous address (single-GPU executor) | `tcp://<VLLM_HOST_IP>:<port>` (`uniproc_executor.py`); we set `VLLM_HOST_IP=127.0.0.1`, so **clients** connect over loopback | vLLM 0.25.1 source |
-| torch c10d **TCPStore server** (rendezvous store) | **all interfaces** (`0.0.0.0`, observed in job 64330104). Created by `torch.distributed.rendezvous._create_c10d_store` (`is_master=True` on rank 0). `TCPStoreOptions` (torch 2.11 header) has a `port` but **no bind address**; only `masterListenFd` (a pre-bound socket) restricts it, and the `tcp://` rendezvous path does not expose it | torch 2.11 source/header + job 64330104 |
+| **vLLM ≥ 0.28.0 rendezvous** | `file://<TMPDIR>/vllm_dist_<uuid>` → torch `FileStore`, **no TCP listener** (PR #50999; `UniProcExecutor._distributed_args`, unless ROCm AITER custom all-reduce). We give the vLLM process a private `mktemp -d` dir (mode 700) as `TMPDIR`, so the store file and engine IPC sockets are not in the node's shared `/tmp`; `check_vllm_rendezvous` records the method and location (`vllm_rendezvous.json`) | v0.28.0 source (tag and installed copy) |
+| torch c10d **TCPStore server** (vLLM 0.25.1 rendezvous store) | **all interfaces** (`0.0.0.0`, observed in job 64330104). Created by `torch.distributed.rendezvous._create_c10d_store` (`is_master=True` on rank 0). `TCPStoreOptions` (torch 2.11 header) has a `port` but **no bind address**; only `masterListenFd` (a pre-bound socket) restricts it, and the `tcp://` rendezvous path does not expose it | torch 2.11 source/header + job 64330104 |
 | Gloo CPU process groups (vLLM creates one per parallel dimension) | hostname's interface by default (7 node-IP listeners in 64330104); **`GLOO_SOCKET_IFNAME=lo`** binds them to loopback | torch docs; string present in `libtorch_cpu.so`; to verify in the next job |
 | API server ↔ engine core | local IPC (Unix socket) when single-node (`get_engine_client_zmq_addr(local_only=True)`) | same |
 
@@ -172,6 +174,49 @@ random API key (passed via env, not argv). **Unverified until `STAGE=vllm`
 runs:** that `ss` is available on compute nodes and shows the listeners, and
 that `setsid` keeps the server PID (it should, because batch shells have no job
 control).
+
+## 6b. vLLM 0.28.0 migration (2026-10-20)
+
+Why: 0.25.1's single-GPU rendezvous opens a torch TCPStore on all interfaces,
+and nothing we can configure restricts it (job 64331018). 0.28.0 replaces it
+with a `file://` FileStore (PR #50999).
+
+**Verified from source (GitHub tag v0.28.0, then the installed copy via
+`setup_vllm_env`):**
+- PR #50999's merge commit `11ba93f` is an ancestor of v0.28.0 and is not in
+  v0.25.1. `UniProcExecutor._distributed_args` uses `get_file_store_init_method()`
+  unless ROCm AITER custom all-reduce is enabled. Data-parallel and multi-node
+  paths still use TCP; we use neither.
+- `Qwen3_5ForConditionalGeneration` is registered. `VLLM_USE_FLASHINFER_SAMPLER`
+  and its "disabled" message are unchanged. All our CLI flags and env vars
+  still exist. `max_tokens` is deprecated but still honored when
+  `max_completion_tokens` is absent. `chat_template_kwargs` is unchanged.
+- Package pins: torch 2.13.0 (CUDA toolkit 13.0.3, the same CUDA version as
+  the torch 2.11 build that ran on this A40, driver 595.71.05),
+  transformers >= 5.5.3, flashinfer-python 0.6.16.post3. torchaudio 2.11.0
+  declares no torch pin, so there is no resolver conflict; it is unused for
+  text serving.
+
+**Changed for parity with 0.25.1:**
+- **Prefix caching pinned off** (`LSO_VLLM_ENABLE_PREFIX_CACHING=0` →
+  `--no-enable-prefix-caching`). 0.28.0 enables it by default for hybrid
+  models such as Qwen3.5 (PR #50991); 0.25.1 logged `enable_prefix_caching=False`.
+- `check_vllm_engine_config` fails the job unless the log shows
+  `enable_prefix_caching=False` and lacks the "Default vLLM sampling
+  parameters have been overridden" warning (same text in both versions;
+  absent in the 0.25.1 runs).
+
+**Unchanged per review (release notes + source diff, not runtime-tested):**
+sampler code and default sampling parameters; generation-config resolution;
+no reasoning parser auto-enabled (the full reply stays in `message.content`);
+chat-template logic (0.28.0 now loads it at the pinned `--revision`, same
+file); V1 model runner for Qwen3.5; A40 (sm_86) still in the CUDA 13
+architecture list.
+
+**Consequences for experiments:** kernel, torch and Triton updates mean
+outputs will not match 0.25.1 token for token. 0.28.0 is the serving
+condition for **all** arms from now on; runs from different vLLM versions
+are never mixed in a comparison. The 0.25.1 env is preserved, unused.
 
 ## 7. Compute budget for the training smoke
 

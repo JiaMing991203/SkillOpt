@@ -2,7 +2,7 @@
 # Submit a Slurm job from a deployed snapshot on the cluster.
 #
 #   research/submit.sh <job> [<commit-ish>] [-- extra sbatch args]
-#     <job>  setup_env | check_compute | run_tests | smoke
+#     <job>  setup_env | setup_vllm_env | check_compute | run_tests | smoke
 #   e.g.  STAGE=vllm research/submit.sh smoke
 #         STAGE=rollout ROLLOUT_EPISODES=1 research/submit.sh smoke
 #         STAGE=train research/submit.sh smoke HEAD -- --time=02:00:00
@@ -18,7 +18,7 @@ REPO_ROOT="$(dirname "$HERE")"
 # shellcheck disable=SC1091
 source "$HERE/cluster/site.env"
 
-JOB="${1:?usage: submit.sh <setup_env|check_compute|run_tests|smoke> [commit] [-- sbatch args]}"; shift
+JOB="${1:?usage: submit.sh <setup_env|setup_vllm_env|check_compute|run_tests|smoke> [commit] [-- sbatch args]}"; shift
 REV="HEAD"
 if [ $# -gt 0 ] && [ "$1" != "--" ]; then REV="$1"; shift; fi
 [ "${1:-}" = "--" ] && shift
