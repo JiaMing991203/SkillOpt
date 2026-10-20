@@ -138,6 +138,57 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
 - **Note:** `job.log` prints the compute node's hostname (curl check line).
   Run dirs are private artifacts.
 
+## 2026-10-20 — smoke STAGE=vllm (job 64329002) — FAILED; sequence stopped
+
+- **Purpose:** start vLLM with Qwen3.5-4B on one A40; verify CUDA, model
+  loading, loopback networking, and an ALFWorld-format `<action>` response.
+- **Commit / snapshot:** `d129260` / `snapshots/d129260cd916`
+- **Resources requested / used:** spgpu, 1 A40, 8 cores, 64 GB, 1 h / queued
+  18 min, ran **3 min 43 s**, MaxRSS 13.4 GB, 2 min 46 s CPU. Peak GPU memory
+  9.8 GiB of 46 GiB (45 samples).
+- **Run dir:** `runs/20261020-003503_smoke_vllm_64329002` (fetched locally:
+  `vllm.log`, `job.log`, `gpu_usage.csv`, Slurm `.out`, `sacct.txt`)
+- **Outcome:** **FAILED** (exit 1). `vLLM exited during startup`.
+- **Verified (from `vllm.log`):**
+  - vLLM 0.25.1 started the V1 engine. The CUDA 13.0 torch build runs on the
+    A40 node: weights loaded (2/2 shards, **7.99 GiB**, 14 s) and torch.compile
+    finished (45 s; cached under the project vLLM cache).
+  - Then, during memory profiling (`determine_available_memory` →
+    `_dummy_sampler_run`), vLLM's top-k/top-p sampler ("Using FlashInfer for
+    top-p & top-k sampling") called `flashinfer.sampling`. That
+    **JIT-compiles** its sampling module, which needs `nvcc`:
+    `RuntimeError: Could not find nvcc and default cuda_home='/usr/local/cuda'
+    doesn't exist`. The job loads no CUDA module. The `flashinfer-cubin`
+    package did not provide this kernel precompiled.
+  - Not reached: KV-cache allocation, CUDA-graph capture, first inference,
+    listener (loopback) check, `<action>` preflight.
+- **Also observed:**
+  - vLLM warned about six unknown `VLLM_*` variables: our own names, exported
+    via `set -a`. One, `VLLM_PORT`, is a **real** vLLM setting (base port
+    for internal communication). We set it to the HTTP port, and torch's
+    rendezvous then used port+1 (39824). Not the cause of this failure, but a
+    port-collision risk.
+  - c10d warning: IPv6 `localhost` socket not supported (errno 97). It fell
+    back without error; probably harmless.
+  - `manifest.json` / `gpus.txt` / pip freezes were not written, because they
+    ran after vLLM startup. The driver version is therefore unrecorded.
+- **Context (read-only):** the other project's vLLM 0.25.1 Slurm scripts run
+  `module load cuda/12.6.3` before starting vLLM, which provides `nvcc`.
+- **Not done, per failure policy:** no GPU retry; STAGE=rollout, the
+  concurrency rollout and the training smoke were **not submitted**. No
+  DeepSeek calls were made by this job.
+- **Fix options (need review; both affect how the target is served):**
+  1. `VLLM_USE_FLASHINFER_SAMPLER=0`: vLLM's PyTorch top-k/top-p sampler.
+     Same sampling semantics, different kernel/RNG path, no compiler needed.
+  2. `module load cuda/<ver>` in `smoke.sbatch` so FlashInfer can JIT-compile.
+     This keeps vLLM's default sampler. It needs a version choice (torch is
+     cu130; the cluster offers 12.6.3 / 12.8.x / 13.1.0 / 13.2.1), adds
+     first-start compile time, and needs FlashInfer's JIT cache moved off home.
+- **Local, undeployed infra fixes (commit after this entry; for review):**
+  our variables renamed to `LSO_VLLM_*` (removes the `VLLM_PORT` collision);
+  manifest/freezes written before vLLM starts; a single EXIT handler that
+  stops vLLM/GPU sampler and waits for `tee`. None change model behavior.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

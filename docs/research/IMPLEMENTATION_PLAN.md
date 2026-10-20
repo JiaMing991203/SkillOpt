@@ -14,8 +14,8 @@ representative traces have been inspected.
 | 2a | Commit + push branch to research fork | Done (see EXPERIMENT_LOG) | — |
 | 2b | `deploy.sh` + `setup_env` job (new envs, model, ALFWorld data, data census) | **Done** | job 64323201 FAILED (PATH; fixed in `70de16f`); job 64323909 COMPLETED — see EXPERIMENT_LOG |
 | 2c | `run_tests` job | **Done** | job 64326614: 104 passed |
-| 2d | DeepSeek key on cluster + `check_compute` job | Needs user (key) + approval | — |
-| 3a | `STAGE=vllm` smoke (Qwen endpoint, loopback check) | After 2b | — |
+| 2d | DeepSeek key on cluster + `check_compute` job | **Done** | job 64328962 PASS via SkillOpt backend |
+| 3a | `STAGE=vllm` smoke (Qwen endpoint, loopback check) | **Blocked** | job 64329002 FAILED: FlashInfer sampler needs `nvcc`; fix needs review |
 | 3b | `STAGE=rollout` smoke, 1 episode: validity + **throughput measurement** | After 2d, 3a | — |
 | 3c | Estimate time/compute for training smoke from 3b; approve walltime | After 3b | — |
 | 3d | `STAGE=train` smoke (one SkillOpt iteration + gate) | After 3c | — |
@@ -66,10 +66,10 @@ completion and application-level checks; at most one submission per step:
 | Step | Job | Gate to proceed |
 |---|---|---|
 | check_compute | 64328962 (done, PASS) | preflight PASS via SkillOpt backend |
-| STAGE=vllm | 64329002 | preflight target PASS (`<action>` returned), loopback-only listeners, model loaded |
-| STAGE=rollout, 1 episode | (pending) | episode ran 1+ steps; 0 call_error / empty fallbacks; HTTP 200s only |
-| STAGE=rollout, 8 episodes (concurrency) | (pending, optional) | same checks; throughput measured |
-| STAGE=train, smoke config | (pending, at most one) | estimate fits a 2 h allocation with margin; DeepSeek cost bounded |
+| STAGE=vllm | 64329002 — **FAILED** (FlashInfer sampler JIT needs `nvcc`; see EXPERIMENT_LOG) | preflight target PASS (`<action>` returned), loopback-only listeners, model loaded |
+| STAGE=rollout, 1 episode | not submitted (blocked) | episode ran 1+ steps; 0 call_error / empty fallbacks; HTTP 200s only |
+| STAGE=rollout, 8 episodes (concurrency) | not submitted (blocked) | same checks; throughput measured |
+| STAGE=train, smoke config | not submitted (blocked; one submission still unused) | estimate fits a 2 h allocation with margin; DeepSeek cost bounded |
 
 **Recovery if the session ends:** submitted job ids are in
 `docs/research/jobs.tsv`; check `ssh <host> 'sacct -j <id>'`, then
