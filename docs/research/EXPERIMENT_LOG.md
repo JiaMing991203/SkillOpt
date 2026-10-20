@@ -106,6 +106,38 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   pass under openai 3.35.1. Those tests mock the HTTP client, so a real
   DeepSeek call through openai 3.x is still unverified (`check_compute`).
 
+## 2026-10-20 — check_compute (job 64328962)
+
+- **Purpose:** DeepSeek from a CPU compute node, through SkillOpt's backend.
+- **Commit / snapshot:** `d129260` / `snapshots/d129260cd916`; `OPTIMIZER_MODEL=deepseek-flash` (passed at submit).
+- **Resources requested / used:** CPU, 1 core, 4 GB, 15 min / 10 s elapsed, MaxRSS 86 MB.
+- **Run dir:** `runs/20261020-001540_check_compute_64328962` (fetched locally)
+- **Outcome:** **COMPLETED, preflight PASS.**
+- **Verified, connectivity:** compute node reaches `api.deepseek.com` (401
+  unauthenticated, as expected) and `huggingface.co` (200). `GET /models` with
+  the key lists `deepseek-flash` and `deepseek-v4-pro`.
+- **Verified, SkillOpt integration** (2 paid calls, both via
+  `openai_compatible_backend.chat_optimizer` configured from the research YAML):
+  - Request fields sent by SkillOpt: `model`, `max_tokens` (16384), `messages`.
+    No temperature, `reasoning_effort` or `extra_body`.
+  - `resp.model` = `deepseek-flash` (the alias is echoed back; the underlying
+    version is **not** exposed in responses). `system_fingerprint`
+    `e72d3c7f663d3e1383b00b3884cb4501`.
+  - **Thinking active** in both calls (`reasoning_content` present; 9 and 35
+    reasoning tokens). Reasoning tokens are included in `completion_tokens`
+    (11 and 66), so they are billed as output.
+  - SkillOpt's returned text equals `message.content` exactly and contains no
+    reasoning text: reasoning is excluded from what the optimizer pipeline sees.
+  - JSON probe: SkillOpt's `extract_json` parsed `{"edits": [{"op": "append", ...}]}`.
+  - Usage: 125 prompt + 77 completion tokens in total; latency 0.9–1.0 s.
+    Estimated cost **$0.000065** (off-peak rates; 04:15 UTC is off-peak).
+- **Leak guard:** passed (exit 0). Its final log line is missing from
+  `job.log` and the Slurm `.out`. **Interpretation:** the background `tee`
+  is killed at job end before it flushes. An independent check found 0 files
+  with the key and 0 settings files. To fix later: wait for `tee` before exit.
+- **Note:** `job.log` prints the compute node's hostname (curl check line).
+  Run dirs are private artifacts.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

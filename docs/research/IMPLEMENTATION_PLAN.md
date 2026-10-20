@@ -58,6 +58,26 @@ representative traces have been inspected.
    instrumentation (raw response, exception, retries, executed action), off
    for baseline runs.
 
+## Overnight run 2026-10-20 (autonomous, user-authorized)
+
+Authorized sequence, each step gated on the previous one passing both Slurm
+completion and application-level checks; at most one submission per step:
+
+| Step | Job | Gate to proceed |
+|---|---|---|
+| check_compute | 64328962 (done, PASS) | preflight PASS via SkillOpt backend |
+| STAGE=vllm | 64329002 | preflight target PASS (`<action>` returned), loopback-only listeners, model loaded |
+| STAGE=rollout, 1 episode | (pending) | episode ran 1+ steps; 0 call_error / empty fallbacks; HTTP 200s only |
+| STAGE=rollout, 8 episodes (concurrency) | (pending, optional) | same checks; throughput measured |
+| STAGE=train, smoke config | (pending, at most one) | estimate fits a 2 h allocation with margin; DeepSeek cost bounded |
+
+**Recovery if the session ends:** submitted job ids are in
+`docs/research/jobs.tsv`; check `ssh <host> 'sacct -j <id>'`, then
+`research/fetch_run.sh <id>` and read `run_summary.json` / `preflight.json`.
+Do not resubmit a stage that already has a job id; continue only from the
+first stage without a COMPLETED + PASS result. All runs use snapshot
+`d129260` (no code changes deployed during the sequence).
+
 ## Next actions
 
 1. User: create `$SECRETS_FILE` on the cluster (`BASELINE_SETUP.md` §4).
