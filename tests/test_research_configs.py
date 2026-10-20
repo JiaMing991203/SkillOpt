@@ -10,6 +10,7 @@ from skillopt.config import flatten_config, load_config
 UPSTREAM = "configs/alfworld/default.yaml"
 BASELINE = "configs/research/alfworld_qwen35_deepseek.yaml"
 SMOKE = "configs/research/alfworld_smoke.yaml"
+SMOKE_COMPAT = "configs/research/alfworld_smoke_qwen_compat.yaml"
 
 # Keys allowed to differ from upstream, per config.
 WIRING_KEYS = {
@@ -88,3 +89,15 @@ def test_vllm_serving_settings_are_pinned():
     assert env["TARGET_QWEN_CHAT_THINKING_MODE"] == cfg["target_qwen_chat_thinking_mode"]
     assert float(env["TARGET_QWEN_CHAT_TEMPERATURE"]) == float(cfg["target_qwen_chat_temperature"])
     assert int(env["TARGET_QWEN_CHAT_MAX_TOKENS"]) == int(cfg["target_qwen_chat_max_tokens"])
+
+
+def test_qwen_compat_smoke_differs_only_in_parser_and_trace():
+    strict, compat = _flat(SMOKE), _flat(SMOKE_COMPAT)
+    assert _diff(strict, compat) == {"reasoning_parser", "trace_log"}
+    assert compat["reasoning_parser"] == "qwen_compat" and compat["trace_log"] is True
+    # everything that defines the run is unchanged
+    for key in ("target_model", "target_qwen_chat_max_tokens", "target_qwen_chat_thinking_mode",
+                "target_qwen_chat_temperature", "num_epochs", "batch_size", "train_size", "sel_env_num",
+                "use_gate", "edit_budget", "skill_update_mode", "split_dir", "max_steps", "workers",
+                "max_api_workers", "eval_test", "use_slow_update", "use_meta_skill"):
+        assert strict.get(key) == compat.get(key), key

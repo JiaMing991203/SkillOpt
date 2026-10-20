@@ -1,0 +1,14 @@
+# Condition B ("Qwen-compatible baseline"): identical to alfworld_smoke.yaml
+# (strict upstream parsing, condition A) except:
+#   reasoning_parser: qwen_compat  -> a step's `reasoning` also recovers Qwen's
+#       untagged explanation text before <action>; actions, rewards and the
+#       native score are unchanged (tests/test_alfworld_trace_log.py)
+#   trace_log: true                -> diagnostics only (trace.json); does not
+#       change actions or optimizer inputs (trainer never reads trace.json)
+# Never attribute gains of this condition to contract/Lean feedback (see
+# docs/research/BASELINE_ARCHITECTURE.md §2f).
+_base_: alfworld_smoke.yaml
+
+env:
+  reasoning_parser: qwen_compat
+  trace_log: true
