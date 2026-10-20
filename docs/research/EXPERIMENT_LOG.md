@@ -308,6 +308,109 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   probe shows the store is reachable from a login node, which all cluster
   users share.
 
+## 2026-10-20 — vLLM 0.28.0 compatibility review (no job)
+
+- **Verified (GitHub, tag source):** PR #50999 ("Use file:// rendezvous for
+  single-node executors") merged as `11ba93f`, which is an ancestor of
+  v0.28.0 (0 behind) and not in v0.25.1. At v0.28.0,
+  `UniProcExecutor._distributed_args` uses `get_file_store_init_method()`,
+  giving `file://{tempfile.gettempdir()}/vllm_dist_<uuid>`, unless ROCm AITER
+  custom all-reduce is on. `parallel_state` builds a `torch.distributed.FileStore`.
+- **Verified (PyPI):** vllm 0.28.0 pins torch==2.13.0 (cuda-toolkit 13.0.3),
+  torchvision 0.28.0, torchaudio 2.11.0 (declares no torch pin),
+  flashinfer-python 0.6.16.post3, transformers>=5.5.3; Python 3.10–3.14.
+- **Release-notes and source review** (subagent, code reading only): one
+  relevant engine default changed. Prefix caching is now on for hybrid models
+  such as Qwen3.5 (PR #50991), so it is pinned off for parity (0.25.1 logged
+  `enable_prefix_caching=False`). Unchanged: sampler and default sampling
+  parameters, generation-config logic, no auto reasoning parser, chat-template
+  logic, our CLI flags and env vars, sm_86 in the CUDA 13 arch list.
+- Decision: new env for 0.28.0, 0.25.1 env preserved; see BASELINE_SETUP §6b.
+
+## 2026-10-20 — setup_vllm_env 0.28.0 (job 64332646) and run_tests (job 64332647)
+
+- **Commit / snapshot:** `3dfaff9` / `snapshots/3dfaff9becb1`
+- **setup_vllm_env:** CPU, 4 cores, 32 GB, 2 h requested / **17 min 11 s**,
+  2 min 51 s CPU. COMPLETED. New env `skillopt-vllm-0.28.0` (marked created
+  and complete). `vllm_env_check.json` (installed files): vllm 0.28.0, torch
+  2.13.0 (CUDA 13.0), transformers 5.20.2, torchaudio 2.11.0, torchvision
+  0.28.0, flashinfer-python 0.6.16.post3. `uniproc_uses_file_store`,
+  `file_store_uses_tempdir`, `qwen3_5_registered`,
+  `native_sampler_message_present` are all **true**.
+- `vllm serve --help=all` exited 1 on the CPU node with "Failed to infer
+  device type". Building the help needs a GPU, so the job skipped the flag
+  check as designed. The flags were then verified in the installed source
+  (`engine/arg_utils.py` fields; `BooleanOptionalAction` provides
+  `--no-enable-prefix-caching`; `host`/`port` in `cli_args.py`).
+- **0.25.1 env untouched:** `vllm-0.25.1.dist-info` present; conda history
+  unchanged since 2026-10-19 23:19.
+- **run_tests:** **114 passed** (8 s).
+
+## 2026-10-20 — smoke STAGE=vllm on vLLM 0.28.0 (job 64332934) — PASS
+
+- **Commit / snapshot:** `3dfaff9` / `snapshots/3dfaff9becb1`; env `skillopt-vllm-0.28.0`
+- **Resources:** spgpu, 1 A40 (driver 595.71.05), 8 cores, 64 GB, 1 h /
+  **7 min 15 s** (includes the 180 s probe window), 3 min 1 s CPU. COMPLETED, exit 0.
+- **Run dir:** `runs/20261020-024456_smoke_vllm_64332934` (fetched locally)
+- **Verified, model loading:** weights 16.0 s (7.99 GiB); torch.compile 27.3 s;
+  engine init 132.3 s. **Ready after ~240 s.** KV cache 27.94 GiB = 860,904
+  tokens (0.25.1: 859,911). Peak GPU memory **37.8 GiB / 46 GiB**. 0 ERROR
+  lines. Warnings: the known optional `deep_gemm` import, and the
+  force-kill of EngineCore at our shutdown.
+- **Verified, serving settings:** `distributed_init_method=file://<private
+  tmpdir>/vllm_dist_<uuid>` (`vllm_rendezvous.json`: method file, store in the
+  private dir, mode 700). Native sampler. `enable_prefix_caching=False`. No
+  sampling-default override warning. FLASH_ATTN backend.
+- **Verified, network:** `vllm_listeners.json` status **pass**: 7 listeners,
+  all `127.0.0.1` (HTTP API + 6 Gloo), 0 rendezvous store, 0 unexpected.
+  External probe from a login node: all 21 connects (7 ports × 3 node
+  addresses) **refused**.
+- **Verified, inference:** preflight PASS. 973 prompt / 332 completion
+  tokens in **5.94 s** (~56 tokens/s single request). HTTP 200. Action
+  `go to countertop 1` is admissible. This reply had **no think tags at all**
+  (0 `<think>`, 0 `</think>`). The 0.25.1 reply to the same prompt had
+  `</think>` only. Sampling at temperature 0.7 varies per reply.
+
+## 2026-10-20 — smoke STAGE=rollout, 1 ALFWorld episode (job 64333791) — first complete trajectory
+
+- **Commit / snapshot:** `3dfaff9` / `snapshots/3dfaff9becb1`; vLLM 0.28.0,
+  native sampler, prefix caching off, file rendezvous, network pass (7
+  loopback listeners, 0 other). No DeepSeek calls.
+- **Config:** `configs/research/alfworld_qwen35_deepseek.yaml` (upstream
+  ALFWorld settings; max_steps 50) via upstream `scripts/eval_only.py
+  --split valid_seen --test_env_num 1`; initial skill
+  `skillopt/envs/alfworld/skills/initial.md`; Qwen thinking disabled,
+  temperature 0.7, max_tokens 8000.
+- **Resources:** spgpu, 1 A40, 8 cores, 64 GB, 1 h / queued 23 min, ran
+  **4 min 3 s** (vLLM ready after 210 s; episode + preflight ~25 s), 2 min 43 s
+  CPU. Peak GPU memory 37.8 GiB / 46 GiB (pre-allocation); mean utilization
+  9% over the job.
+- **Run dir:** `runs/20261020-031601_smoke_rollout_64333791` (fetched
+  locally, including `skillopt/results.jsonl`,
+  `skillopt/predictions/val:0000/conversation.json`, `run_summary.json`,
+  `reflection_input_preview.txt`).
+- **Episode (verified):** task **`val:0000`**, `look_at_obj_in_light`,
+  "look at alarmclock under the desklamp." **Success** (hard 1, reward 10 on
+  the last step) in **3 actions**: `go to desk 1` → `use desklamp 1` →
+  `take alarmclock 2 from desk 1`.
+- **Serving / parser (verified):** 0 fallback actions, 0 "Nothing happens."
+  (all actions valid), 0 genuine `look`. vLLM: 3 requests, all HTTP 200 (plus
+  1 preflight), 1,327 prompt / 231 completion tokens per request on average,
+  **mean latency 4.1 s per request** (1 in flight).
+- **Reasoning format (verified):** **all 3 replies contain no think tags at
+  all**: reasoning prose (482 / 362 / 1,777 chars), then `<action>…</action>`.
+  `reasoning` is `null` on every step (`reasoning_null` = 3,
+  `think_close_only` = 0). The full replies are preserved in
+  `model_response`. `reflection_input_preview.txt` (SkillOpt's own
+  `fmt_minibatch_trajectories`) shows the optimizer would receive the task
+  header, 3 actions and 3 observations, and **no reasoning lines**. Step 2's
+  lost reasoning explicitly cites the skill ("According to the 'Examine in
+  Light' task type…").
+- **Interpretation:** model serving and the action parser work; the task
+  succeeded. The reasoning channel to the optimizer is empty for this model
+  configuration, so SkillOpt's reflection would reason from actions and
+  observations only. One easy episode is not a success-rate estimate.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

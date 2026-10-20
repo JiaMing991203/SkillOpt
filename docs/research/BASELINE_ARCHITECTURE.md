@@ -181,6 +181,38 @@ then `<action>go to countertop 1</action>`. There is no opening `<think>`.
   (`think_close_only`, `reasoning_null`). The analyst's actual input is
   rendered with SkillOpt's own formatter by `render_reflection_input.py`.
 
+**Episode evidence (job 64333791, vLLM 0.28.0, task `val:0000`):** all
+3 replies had **no think tags at all**: plain reasoning (482–1,777 chars),
+then `<action>…</action>`. The second preflight reply (job 64332934) was the
+same; the 0.25.1 preflight reply had `</think>` only. So the dominant
+pattern in our sample (5 replies) is *no tags*, not *missing opening tag*.
+In every case `reasoning` is null, the actions parse, and the full text
+survives in `model_response`. The rendered reflection input
+(`reflection_input_preview.txt`) contains no reasoning lines.
+
+**Revised answer (interpretation):** in non-thinking mode the template
+closes the think block before the reply starts, and the model mostly
+reasons in plain text without the requested tags. That is consistent with
+Qwen's documented non-thinking behavior colliding with the ALFWorld prompt's
+formatting request. It is not a SkillOpt crash, but it is a real loss of the
+reasoning signal for the optimizer.
+
+### 2d. Is the saved trace sufficient?
+
+Verified against `rollout.py` and the saved `conversation.json`:
+
+| Use | Available in the saved trace | Missing |
+|---|---|---|
+| SkillOpt reflection (as designed) | task description/type, per-step action + next observation, success/failure, step count | agent reasoning (empty `reasoning`, see 2c) |
+| Our analysis / future verification | per step: raw reply (`model_response`), parsed action, next observation (`env_feedback`), reward, done; final `won`; gamefile path | **initial observation** (the room description before step 0); **full per-step prompt** (`obs["text"]`, including the **admissible-action list**); the **executed** (lowercased, projected) action; the env's `is_action_valid` flag; per-step latency/token usage; fallback cause details (2b) |
+
+Consequence: contracts such as "every action is in the admissible set" or
+"the agent saw object X before acting on it" cannot be checked from today's
+traces. Only the next observation is saved, and the admissible lists are
+not. A trace extractor for Lean/Python contracts would need opt-in,
+additive logging of these fields (behind a flag, default off, so baseline
+runs are unaffected).
+
 Not changed for the baseline (per instructions): thinking mode, prompts, parser.
 
 **Proposal (not for the baseline):** for the failure-localization research,

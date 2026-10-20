@@ -15,8 +15,8 @@ representative traces have been inspected.
 | 2b | `deploy.sh` + `setup_env` job (new envs, model, ALFWorld data, data census) | **Done** | job 64323201 FAILED (PATH; fixed in `70de16f`); job 64323909 COMPLETED — see EXPERIMENT_LOG |
 | 2c | `run_tests` job | **Done** | job 64326614: 104 passed |
 | 2d | DeepSeek key on cluster + `check_compute` job | **Done** | job 64328962 PASS via SkillOpt backend |
-| 3a | `STAGE=vllm` smoke (Qwen endpoint, loopback check) | **Blocked** | 64329002 FAILED (FlashInfer needs `nvcc`; fixed with native sampler). 64330104: server ready in 230 s with native sampler, then FAILED the fail-closed listener check (torch Gloo/TCPStore sockets on node IP / 0.0.0.0). 64331018: Gloo moved to loopback; only torch's rendezvous TCPStore (0.0.0.0) remains, reachable from a login node → status unresolved, rollout not run. Decision needed (see EXPERIMENT_LOG) |
-| 3b | `STAGE=rollout` smoke, 1 episode: validity + **throughput measurement** | After 2d, 3a | — |
+| 3a | `STAGE=vllm` smoke (Qwen endpoint, loopback check) | **Done (vLLM 0.28.0, job 64332934)**; history: | 64329002 FAILED (FlashInfer needs `nvcc`; fixed with native sampler). 64330104: server ready in 230 s with native sampler, then FAILED the fail-closed listener check (torch Gloo/TCPStore sockets on node IP / 0.0.0.0). 64331018: Gloo moved to loopback; only torch's rendezvous TCPStore (0.0.0.0) remains, reachable from a login node → status unresolved, rollout not run. Decision needed (see EXPERIMENT_LOG) |
+| 3b | `STAGE=rollout` smoke, 1 episode: validity + **throughput measurement** | **Done** | job 64333791: success in 3 actions, 4.1 s/request; see EXPERIMENT_LOG |
 | 3c | Estimate time/compute for training smoke from 3b; approve walltime | After 3b | — |
 | 3d | `STAGE=train` smoke (one SkillOpt iteration + gate) | After 3c | — |
 | 4 | Reproducibility review of a fetched run | After 3d | — |
@@ -84,6 +84,38 @@ completion and application-level checks; at most one submission per step:
 Do not resubmit a stage that already has a job id; continue only from the
 first stage without a COMPLETED + PASS result. All runs use snapshot
 `d129260` (no code changes deployed during the sequence).
+
+## Overnight run 2 — vLLM 0.28.0 (2026-10-20, autonomous, user-authorized)
+
+All jobs from snapshot `3dfaff9` unless noted. Each step requires Slurm
+COMPLETED **and** its application-level checks; at most one GPU job per step,
+no automatic retries.
+
+| Step | Job | Gate to proceed |
+|---|---|---|
+| setup_vllm_env (CPU) | 64332646 — **COMPLETED, checks true** | `vllm_env_check.json` required checks true; serve flags accepted |
+| run_tests (CPU) | 64332647 — **114 passed** | all pass |
+| STAGE=vllm (1 A40, ≤1 h) | 64332934 — **PASS** (file rendezvous; all listeners loopback; external probe all refused) | rendezvous `file`, network `pass`, native sampler, prefix caching off, no sampling override, preflight `<action>` PASS |
+| STAGE=rollout, 1 episode (1 A40, ≤1 h) | 64333791 — **COMPLETED**; `val:0000` solved in 3 actions; 0 fallbacks; reasoning null on all steps | serving/parser checks; task success is not required |
+
+**Recovery:** job ids are in `docs/research/jobs.tsv`. For each, run
+`ssh <host> 'sacct -j <id>'`, then `research/fetch_run.sh <id>` and read the
+run dir JSON files named above. Never resubmit a step that already has a job
+id. Continue only from the first step without COMPLETED + checks passed.
+
+## Open questions added 2026-10-20 (from the first episode)
+
+9. **Reasoning channel:** Qwen (non-thinking) writes reasoning without
+   `<think>` tags, so SkillOpt's reflection receives no agent reasoning.
+   Decide before training: keep as the upstream-faithful condition and
+   document it, or test a variant (prompt/parser/thinking mode) as a
+   separate, explicitly labeled condition applied to all arms.
+10. **Trace fields for verification:** add opt-in logging of the initial
+    observation, per-step prompt and admissible actions, executed action and
+    validity flag (default off).
+11. **Throughput for the training budget:** 1 episode gives 4.1 s/request at
+    concurrency 1 with ~9% mean GPU use. An 8-episode test (needs approval)
+    would measure concurrent throughput before planning training.
 
 ## Next actions
 
