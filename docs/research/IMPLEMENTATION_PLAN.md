@@ -20,10 +20,10 @@ and representative traces have been inspected with the user.
 | 5 | ALFWorld rollouts with valid actions, scores, preserved traces | Done | jobs 64333791 (1 episode), 64337548 (8 episodes) |
 | 6 | Opt-in reasoning parser + trace instrumentation | Done | `8f739f7`; job 64336627 |
 | 7 | One original SkillOpt optimization step incl. the gate | **Done** (operational; candidate rejected on a 12/18 tie) | job 64359024 (`12a153e`) |
-| 8 | **Reproducibility review of the fetched training run** | **Next** (with the user) | — |
-| 9 | Decide the paper-aligned full-baseline protocol (selection size, slow-update gating, reflection rounds, reasoning effort, seeds, budget) | Not started | needs 7–8 |
-| 10 | Python contract diagnostics (condition C, control) | Not started | needs 9 |
-| 11 | Lean contract diagnostics (condition C) | Not started | needs 10 |
+| 8 | Review of the training run: logger audit, `train:0004` credit study, randomness inspection | **Done (offline)** | `EXPERIMENT_LOG.md` (offline analyses of 64359024) |
+| 9 | Decide the full-baseline protocol: evaluation noise (E1), acceptance/assessment procedure (E2), selection size, slow-update gating, reflection rounds, reasoning effort, seeds, budget | **Next** (E1 proposed, not authorized) | needs 7–8 |
+| 10 | Python contract diagnostics (condition C) | Not started | needs 9 |
+| 11 | Lean contract diagnostics (condition D) | Not started | needs 10 |
 
 ## First training smoke (milestone 7) — done
 
@@ -84,6 +84,61 @@ Artifacts to inspect afterwards: `selection_eval_baseline/`,
 | Two vLLM replicas | free when a job already pays for 2 GPU units | needs a loopback proxy (an explicitly allowed listener) or a backend change; vLLM data parallelism still uses TCP rendezvous |
 | DeepSeek reasoning effort "medium" | paper setting; we run the provider default ("high") | needs a flagged backend option |
 
+## Proposed next experiments (not authorized; for discussion)
+
+### E1. Evaluation noise of the 18-task selection score (GPU, no API)
+
+- **Question:** how often does the single-run strict gate accept a skill
+  that is no better (here: identical)? For identical skills,
+  P(accept) = (1 − P(tie)) / 2. Illustration (assumed values, not data):
+  one task at p = 0.5 and 17 deterministic tasks already give 25%; five such
+  tasks give 38%.
+- **Design:** evaluate the unchanged initial skill on the same 18 selection
+  tasks **3 more times**, with the existing rollout stage (no code change):
+  `STAGE=rollout ROLLOUT_SPLIT=valid_seen ROLLOUT_EPISODES=18
+  ROLLOUT_CFG_OPTIONS="env.trace_log=true" research/submit.sh smoke HEAD -- --time=02:00:00`,
+  three separate jobs (each gets its own output directory, so the
+  `results.jsonl` reuse in `adapter.rollout` cannot short-circuit a repeat).
+  Together with the 64359024 baseline this gives 4 runs per task. Same model,
+  sampling, cap, workers, parser and tasks as the training smoke.
+- **Budget (estimate):** 3 × ~1.0–1.4 h on one A40 unit ≈ $0.33–0.46
+  (≤ $0.65 at the limits); no DeepSeek calls.
+- **Analysis (pre-specified):** per-task success counts out of 4; number of
+  unstable tasks (0 < k < 4); variance of the 18-task total; simulated
+  P(accept | identical skill) for the current gate and for alternatives (k
+  repeats, margin, larger split); variability of steps, fallbacks and capped
+  replies.
+- **Decision rule:** if ≥ 3 tasks are unstable or the estimated
+  P(accept | identical) ≥ 0.15, the one-run strict gate is not a usable
+  criterion for comparing conditions, and the C-vs-D study needs the robust
+  procedure below.
+- **Limits:** 4 runs per task estimate each success rate coarsely; this does
+  not measure optimizer (DeepSeek) variability.
+
+### E2. Robust acceptance / assessment procedure (design, after E1)
+
+Options, each a separately labeled protocol change applied to all arms:
+(a) larger selection split (all 140 `valid_seen`; ~8× cost per evaluation);
+(b) repeated paired evaluation of candidate and incumbent with a margin or
+paired test (also removes the winner's-curse bias of a single cached
+incumbent score); (c) common random numbers: an opt-in per-request vLLM
+`seed` derived from (task, step, repeat), which couples the two skills'
+sampling noise (exact reproducibility is still not guaranteed because the
+Qwen3.5 attention backend is not batch-invariant); (d) for comparing
+conditions, several independent optimization runs per condition and a
+repeated, paired final evaluation on held-out tasks. A reasonable split:
+keep the upstream gate inside optimization for fidelity, and use (d) for the
+final comparison. Decision after E1.
+
+### E3. Optimizer replay pilot (paid API, ≈ $0.05; offline inputs)
+
+Replay the recorded `train:0004` success-analyst prompt
+(`optimizer_calls.jsonl`) N = 5 times each: (i) unchanged, (ii) plus the
+PDDL goal text only (specification control), (iii) plus a contract report
+(see below). Measure how often the proposed edit omits holding the object or
+claims `examine` is sufficient. This estimates DeepSeek's own variability
+and gives a cheap first signal for C before any optimization run.
+
 ## Open methodology questions
 
 1. **Selection split:** keep 18 (repo), materialize all 140 `valid_seen`
@@ -91,14 +146,47 @@ Artifacts to inspect afterwards: `selection_eval_baseline/`,
 2. **Slow-update gating:** paper gated, code force-accepts.
 3. **Reflection rounds:** paper up to 3, code 1 (multi-round never wired in).
 4. **Batch size:** default 40 > 39 train tasks.
-5. **Seeds and repeats:** an 18-task gate is noisy.
+5. **Seeds and repeats:** an 18-task gate is noisy (E1, E2). The baseline
+   is evaluated once and acceptance is a strict `>` on single runs
+   (`BASELINE_ARCHITECTURE.md` §2g).
+7. **Success-minibatch size:** a success group of one trajectory still yields
+   up to L edits, although the analyst prompt asks for patterns common to
+   multiple trajectories (`train:0004` case, `EXPERIMENT_LOG.md`).
 6. **Reasoning channel:** whether condition B improves optimization at all
    (untested).
 
+## Research conditions (user decision 2026-10-20; B–D not yet validated)
+
+| | Condition | Optimizer input added | Compare against |
+|---|---|---|---|
+| A | strict-parser SkillOpt baseline | — | reproduced baseline |
+| B | Qwen-compatible parser | agent's recovered explanations | A (a format fix, never credited to verification) |
+| C | independently specified Python-contract feedback | contract reports | A/B under the same parser, and a specification-text-only control |
+| D | equivalent Lean-contract feedback | the same reports, checked in Lean | C, with identical contracts and report content |
+
+Contracts come from the benchmark's trusted task specification (the PDDL
+goal in each `game.tw-pddl`), not from the skill. Example (from the
+`train:0004` study; do not implement yet), `look_at_obj_in_light(T)`:
+
+- Obligations, all in one state: (G1) a DeskLamp is `isToggled`; (G2) the
+  agent is at the lamp's receptacle location; (G3) the agent holds an object
+  of type T. Not obligations: `examine`, order of toggle and pick-up.
+- Report for `train:0004` (what a checker could say): PASS; G2 from step 1,
+  G1 from step 2, G3 at step 4 (completing step); steps 0 and 3 changed no
+  obligation; after step 3: G1 ✓ G2 ✓ G3 ✗.
+- Report for failed `val:0001`: G1 never achieved; lamp never observed
+  (UNKNOWN for G2's location); G3 achieved and undone repeatedly.
+- Evidence source matters: state recovered from observation text is
+  heuristic (needs PASS/FAIL/UNKNOWN), and ALFWorld's text hides some state
+  (a second toggle still prints "You turn on"). Whether the environment can
+  export ground-truth PDDL facts per step is an open question. Lean checks
+  the logic, not the extraction.
+
 ## Future conditions (do not start yet)
 
-- **C-Python:** independent task contracts evaluated in Python on
+- **C (Python):** independent task contracts evaluated in Python on
   `trace.json` (initial observation, admissible actions, executed actions,
   feedback), reported to the optimizer.
-- **C-Lean:** the same contracts in Lean. Compare against C-Python and B;
-  richer reports alone do not show unique value from Lean.
+- **D (Lean):** the same contracts in Lean. Compare against C (and the
+  specification-only control); richer reports alone do not show unique
+  value from Lean.

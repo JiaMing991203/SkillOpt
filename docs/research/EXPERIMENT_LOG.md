@@ -668,6 +668,96 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   lit lamp (step 4), not when it examined the dresser; the edit never says
   the object must be held.
 
+## 2026-10-20 — offline analyses of job 64359024 (no job, no API calls)
+
+### (a) Audit of the optimizer call log and SDK debug log
+
+- **Default off (verified):** the log is written only when
+  `OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG` or `OPENAI_COMPATIBLE_CALL_LOG` is
+  set. The only place that sets it, and `OPENAI_LOG`, is the `train` stage of
+  `research/cluster/smoke.sbatch` (not preflight, not rollout).
+- **Behavior preserved (verified):** inside the retry loop the only changes
+  are a timestamp and two guarded `_log_call` calls that swallow every
+  exception. Tests (64358982) show identical `create()` arguments, return
+  values, token totals and attempt counts with the log on; in 64359024 the
+  call-log token totals equal the trainer's `token_summary` exactly.
+- **Contents (verified, 4 records):** request = model, max_tokens,
+  temperature, timeout, tools flag, messages; response = id, model,
+  system_fingerprint, finish_reason, content, reasoning_content, usage. No
+  API key, `Authorization`, header, URL, absolute path, host name, e-mail or
+  IP address occurs (pattern scan; the only "sk-" hits are words such as
+  "task-specific"). The job's leak check passed.
+- **SDK debug log (verified):** exactly 4 message templates appear, 4 times
+  each: "Building HTTP request: method=POST retries_taken=0", "Sending HTTP
+  Request: POST", "HTTP Response: POST 200", "request_id: None". No bodies,
+  headers or URLs; no other logger produced formatted lines.
+- **Residual risks (interpretation):** (1) on a failed attempt the log stores
+  the provider's error message (truncated to 4,000 chars); some providers
+  echo a masked key fragment in 401 messages (not verified for DeepSeek; no
+  error occurred). (2) The shared `OPENAI_COMPATIBLE_CALL_LOG` variable would
+  also log target calls if a target ever used this backend. (3) Prompts and
+  replies contain benchmark text and DeepSeek's full reasoning; run
+  directories stay out of git. Proposed hardening (not implemented): redact
+  the configured key and key-like tokens from error messages, and honor only
+  the role-specific variable.
+
+### (b) Success-credit case study: `train:0004`
+
+- **Task (verified):** "look at statue under the desklamp"
+  (`look_at_obj_in_light`, object Statue, toggle target DeskLamp; game
+  `json_2.1.1/train/look_at_obj_in_light-Statue-None-DeskLamp-319/...`).
+- **Trusted goal (verified, `game.tw-pddl` `:goal`):** in one state,
+  (G1) some DeskLamp is `isToggled`, (G2) the agent is at the location of the
+  receptacle containing that lamp, and (G3) the agent `holds` a Statue. No
+  order, no `examine`. Domain effects: `examineReceptacle` only sets
+  `checked`; `ToggleObject` sets `isToggled` permanently (and flips `isOn`);
+  the text feedback after any toggle reads "You turn on ..." (grammar).
+  TextWorld walkthrough: go to dresser 1 → use desklamp 1 → take statue 1.
+  ALFRED expert plan: pick up statue → go to lamp → toggle.
+- **Trajectory (verified from trace):** 0 go to bed 1; 1 go to dresser 1
+  (desklamp 1 and statue 1 observed on it); 2 use desklamp 1 ("You turn on");
+  3 examine dresser 1; 4 take statue 1 → reward 10, won. `won` was false
+  after steps 0-3.
+- **Which conditions the final action met (inference from observation text,
+  consistent with the won flag):** G2 first held at step 1, G1 at step 2, G3
+  only at step 4. Step 4 completed the conjunction; steps 1-2 were also
+  necessary; steps 0 and 3 changed no goal predicate.
+- **What DeepSeek saw (verified, `optimizer_calls.jsonl`):** the one success,
+  as actions and observations, under "Successful Trajectories", with "Steps:
+  5"; no per-step reward, no statement that episodes end on success, no goal
+  definition, no hidden reference (the adapter's reference channel exists but
+  `attach_reference_context` is never called).
+- **What DeepSeek concluded (verified, reply + reasoning):** listed as success
+  patterns that the lamp "must be lit when the examine action fires" and that
+  examining the receptacle "is sufficient to satisfy" the task; called taking
+  the object "optional"; claimed the original skill row ("Find X -> take X ->
+  find desklamp -> use desklamp") "omits the lamp-on requirement" (it does
+  not: `use` is the toggle) and has the wrong order (the goal has no order).
+  The kept edit ("Light before examine ... do everything in place") states G1,
+  adds an unrequired step and ordering, and omits G3. The explicit
+  "optionally take object" edit was dropped by ranking for unrelated reasons.
+- **Evidence available to DeepSeek (interpretation):** the trajectory itself
+  shows that lamp-on + examine was not enough (the episode continued after
+  step 3) and that the episode ended right after taking, but only if one
+  knows episodes stop on success, which the prompt does not say. One
+  trajectory cannot show that `examine` or the order is unnecessary; our own
+  run 64333791 solved the same task type (`val:0000`) without `examine`.
+- **Effect on the candidate (observation, not causal):** lamp-task outcomes
+  were unchanged (`val:0000-0002`); in failed `val:0001` (lamp not on the
+  desk, never found by either skill) the candidate tried the inadmissible
+  `use desklamp` three times.
+
+### (c) Evaluation randomness (code inspection; details `BASELINE_ARCHITECTURE.md` §2g)
+
+- Same 18 tasks, order, env seeds and deterministic games for baseline and
+  candidate; the only stochastic element is target sampling (temperature
+  0.7, global vLLM generator, no per-request seed), plus batch-composition
+  effects. The baseline is evaluated once; acceptance is a strict `>` on one
+  run each.
+- Same skill, same game, different runs → different action sequences
+  (`val:0000`: 3 vs 6 actions; `train:0013`: diverges at step 2). Per-task
+  flip rates are unmeasured.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

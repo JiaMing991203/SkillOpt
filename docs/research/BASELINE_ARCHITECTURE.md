@@ -86,6 +86,14 @@ was sampled. No upstream issue mentions it (searched 2026-10-19). Proposal: deci
 
 ### 2b. Silent fallbacks and how far they can be detected
 
+Note (verified 2026-10-20): `info["is_action_valid"]` (trace field
+`env_is_action_valid`) is a **format** flag from the vendored projection: it
+is 0 unless the reply has both `<think>` tags and no CJK characters
+(`vendor/alfworld_projection.py:48-58`). Qwen's replies rarely have tags, so it
+is 0 on nearly every step, including executed admissible actions. It is not
+used for scoring. Checkers must use `executed_action_admissible` instead.
+
+
 **Verified:** if the target call raises, returns empty text, or omits the
 `<action>` tag, `rollout.py` replaces the response with one of three fixed
 strings and plays `look` (rollout.py:238-245, 261-263). The strings are:
@@ -261,7 +269,26 @@ executed actions and `compute_score` identical; `qwen_compat` changes only
 |---|---|---|
 | **A. Strict upstream SkillOpt** | nothing (`reasoning_parser: strict`) | the reproduced baseline |
 | **B. SkillOpt + Qwen response-format compatibility** | `reasoning_parser: qwen_compat`: the optimizer also sees the agent's untagged explanations | the effect of restoring the reasoning channel. This is a **format fix, not verification**, and its gains must never be credited to Python/Lean contracts |
-| **C. Future contract-diagnostic feedback** (Python, then Lean) | adds contract-violation reports to the optimizer input | must be compared against **B** (and A) under the same parser, with Python diagnostics as the control for Lean |
+| **C. Independently specified Python-contract feedback** | adds reports from Python checks of task contracts (derived from the benchmark's own task specification, not from the skill) to the optimizer input | must be compared against A/B under the same parser; also needs a "specification text only" control (see below) |
+| **D. Equivalent Lean-contract feedback** | the same contracts, checked in Lean | must be compared against **C** with the same contracts and the same report content; richer reports alone do not show value from Lean |
+
+B, C and D are **not yet validated optimization conditions** (user decision,
+2026-10-20). Gains from a parser fix or richer explanation text (B) are never
+attributed to verification (C/D).
+
+**Confound to control (interpretation, 2026-10-20):** a contract report gives
+the optimizer *task-specification information* (e.g. "the goal requires
+holding the object") as well as *verification results*. A control in which
+the optimizer receives the specification text alone, without any checker,
+separates the two. SkillOpt has a dormant channel for this (verified):
+`fmt_minibatch_trajectories` prints an item's `reference_text` as "Hidden
+Reference" (`skillopt/gradient/reflect.py:160-165`), and the ALFWorld adapter
+can build one from `traj_data.json` (task type, human task descriptions,
+human high-level steps, PDDL params, expert high-level plan;
+`envs/alfworld/adapter.py:212-`). But `EnvAdapter.attach_reference_context`
+(`envs/base.py:76`) is never called in `skillopt/` or `scripts/`, so no hidden
+reference reached the optimizer in our run. It also contains the expert plan,
+not the PDDL goal formula.
 
 **Condition B side effect (measured, job 64351263):** compat restores
 reasoning *in full*, because upstream never truncates trajectory text. Analyst
@@ -279,6 +306,41 @@ store the raw response, the exception type and message, the retry count, the
 executed action, and the validity flag per step, without changing what the
 agent does.
 
+### 2g. Sources of evaluation randomness (Verified in code, 2026-10-20)
+
+- **Tasks:** every selection evaluation (baseline, each candidate, slow gate,
+  final) uses `_build_eval_env(split="valid_seen", env_num=sel_env_num,
+  seed=cfg seed)` (`trainer.py:1133-1137, 1569-1573`): the same 18 tasks, in
+  file order (`datasets/base.py:503-505`), same seed.
+- **Environment:** chunks of `env.workers` (8/8/2) with fixed task-to-slot
+  mapping (`adapter.py:410-428`). With one game file per worker, TextWorld's
+  `seed()` only shuffles a one-element list (`textworld_batch.py:94-100`);
+  domain randomization is off. The game is deterministic given the game file.
+  No `random`/`numpy`/`torch` seeding exists in `skillopt/` or `scripts/`.
+- **Target sampling:** `qwen_backend.py:305-317` sends `model`, `messages`,
+  `max_tokens`, `enable_thinking: false`, `temperature` only: no `top_p`,
+  `top_k` or per-request `seed`. vLLM 0.28.0's native sampler draws
+  exponential noise from **one global CUDA generator** for unseeded requests
+  (`vllm/v1/sample/ops/topk_topp_sampler.py:450-472`); `--seed 0` only fixes
+  where that stream starts. A per-request `seed` would give a private
+  generator per request (`gpu_model_runner.py:1328-1331`).
+- **Ordering:** lockstep stepping; each step submits one request per active
+  episode from a thread pool (`rollout.py:330-357`), so arrival order and
+  batch composition vary between runs. `VLLM_BATCH_INVARIANT` exists but the
+  Qwen3.5 gated-delta-net attention backend does not support it (inference
+  from `gdn_attn.py`, `attention/backend.py:290-291`), so logits may also
+  vary with batch composition.
+- **Gate:** the baseline is evaluated once and cached; a candidate is
+  evaluated once; acceptance is `cand_score > current_score`
+  (`gate.py:200`); ties reject; no margin or repeats. Identical skills reuse
+  a cached score (`trainer.py:1562-1567`), and `adapter.rollout` returns an
+  existing `results.jsonl` instead of re-running (`adapter.py:346-356`), so
+  repeated evaluations need separate output directories.
+- **Observed (verified):** the same skill on the same game gives different
+  action sequences across runs (`val:0000`: 3 actions in 64333791, 6 in the
+  64359024 baseline; `train:0013` diverges at step 2). Outcomes matched in
+  both cases; per-task flip rates are unmeasured.
+
 ## 3. How the target and optimizer models are configured (Verified)
 
 Backends are chosen **per role**, so mixing a hosted optimizer with a local
@@ -294,7 +356,7 @@ target needs no code change.
 | Role | Backend | Module | Key settings and defaults |
 |---|---|---|---|
 | Target: Qwen3.5-4B | `qwen_chat` | `skillopt/model/qwen_backend.py` | Raw HTTP POST to `{base_url}/chat/completions`. Env `TARGET_QWEN_CHAT_{BASE_URL,API_KEY,MODEL,TEMPERATURE,MAX_TOKENS,THINKING_MODE}`. Temperature defaults to **0.7** (`_resolve_temperature`, 136-149); `max_tokens` = min(caller 16384, 8000). Thinking mode: `server_default` omits `chat_template_kwargs` and warns; `disabled` sends `enable_thinking: false` (289-293). `reasoning_effort` ignored. |
-| Optimizer: DeepSeek | `openai_compatible` | `skillopt/model/openai_compatible_backend.py` | OpenAI SDK, `base_url` + `api_key`; env `OPTIMIZER_OPENAI_COMPATIBLE_{BASE_URL,API_KEY,MODEL,MAX_TOKENS,TEMPERATURE}`. Sends `model`, `messages`, `max_tokens` = min(caller, 8000 default), temperature only if set. **`reasoning_effort` is dropped** (`set_reasoning_effort` is a no-op), no `extra_body`. Returns `message.content` only; `resp.model` is **not logged**. If `optimizer_model` is empty the default is `gpt-4o-mini` (`model/common.py:33`). |
+| Optimizer: DeepSeek | `openai_compatible` | `skillopt/model/openai_compatible_backend.py` | OpenAI SDK, `base_url` + `api_key`; env `OPTIMIZER_OPENAI_COMPATIBLE_{BASE_URL,API_KEY,MODEL,MAX_TOKENS,TEMPERATURE}`. Sends `model`, `messages`, `max_tokens` = min(caller, 8000 default), temperature only if set. **`reasoning_effort` is dropped** (`set_reasoning_effort` is a no-op), no `extra_body`. Returns `message.content` only; `resp.model` is not logged upstream (our opt-in call log, `12a153e`, records it). If `optimizer_model` is empty the default is `gpt-4o-mini` (`model/common.py:33`). |
 
 ## 4. How DeepSeek connects using the existing backend
 

@@ -420,3 +420,61 @@ the optimizer's edits. None of these were run.
 ### Next actions
 Review with the user (milestone 8). No further jobs are authorized.
 
+---
+
+## 2026-10-20 — Review of the first optimization step (offline)
+
+### Objective
+Close out job 64359024, audit the new logging, and study two issues relevant
+to the research question: the `train:0004` success-credit error and
+evaluation noise. No jobs, no API calls.
+
+### Work completed
+- **User decision:** the training smoke counts as a successful engineering
+  milestone; the rejected candidate is expected gate behavior. Pushed the
+  two docs commits after a scope and secrets scan.
+- **Logger audit (findings):** call log off unless the variable is set (only
+  the train stage sets it); behavior unchanged (tests + exact token match);
+  no key, header, URL, path or host in the 4 records; the SDK debug log has
+  4 content-free message types. Residual risk: provider error messages are
+  stored on failure (could echo a masked key fragment); redaction proposed.
+- **`train:0004` (findings):** the PDDL goal requires, in one state, a
+  toggled desklamp, the agent at its receptacle, and holding a statue; no
+  `examine`, no order. Step 4 (take) completed the conjunction after the lamp
+  (step 2) and location (step 1). DeepSeek's reply and reasoning claim
+  examining was sufficient and taking optional; the kept edit omits holding.
+  DeepSeek got only actions and observations: no goal, no success step, no
+  statement that episodes end on success.
+- **Randomness (findings):** tasks, order, env seeds and games are identical
+  between baseline and candidate; target sampling is the only stochastic part
+  (global vLLM generator, no per-request seed; the hybrid Qwen3.5 attention
+  backend is not batch-invariant). The baseline is evaluated once; acceptance
+  is a strict `>` between single runs. The same skill already produced
+  different trajectories on the same game.
+- **Other findings:** the trace's `env_is_action_valid` is a `<think>`-tag
+  format flag, not validity. SkillOpt's ALFWorld "hidden reference" channel
+  exists but is never wired in (`attach_reference_context` has no caller). A
+  second lamp toggle still prints "You turn on", and the PDDL goal checks
+  `isToggled`, not `isOn`.
+
+### Decisions and reasons
+- **User decision:** keep four conditions distinct: A strict, B Qwen-compatible
+  parser, C Python contracts, D Lean contracts; B–D are not validated, and
+  parser/explanation gains are never credited to verification.
+- **Interpretation:** DeepSeek's error was a real misstatement of the success
+  conditions, not merely an incomplete strategy: it asserted a non-goal
+  action as sufficient and a required action as optional. The trajectory held
+  partial evidence against this (lamp-on + examine did not end the episode),
+  but the prompt did not explain termination, and one trajectory cannot show
+  that `examine` or the order is unnecessary.
+- **Interpretation:** contract reports would add task-specification
+  information *and* checking. A specification-text-only control is needed to
+  tell these apart; for a goal this simple, a Python checker gives the same
+  information as Lean.
+- **Proposal:** E1 (repeat the initial skill's 18-task evaluation 3 times),
+  E2 (robust acceptance/assessment, after E1), E3 (cheap optimizer replay
+  pilot). See `IMPLEMENTATION_PLAN.md`.
+
+### Next actions
+Await the user's decision on E1–E3 and on pushing the docs commit.
+

@@ -1,12 +1,14 @@
 # Research Development State
 
-**Last verified:** 2026-10-20 16:10 EDT (git, `squeue`, `sacct`, fetched run)
-**Current milestone:** review of the first original SkillOpt optimization
-step (CLAUDE.md §9 items 6–7; `IMPLEMENTATION_PLAN.md` milestone 8).
+**Last verified:** 2026-10-20 16:46 EDT (git, `squeue`, fetched run, offline analyses)
+**Current milestone:** decide the full-baseline protocol, starting with
+evaluation noise (`IMPLEMENTATION_PLAN.md` milestone 9). Milestone 8 (review of
+the training smoke) is done offline.
 **Status (verified):** the first training smoke (condition A, strict parser +
 traces, job 64359024) **completed**: every loop stage ran; the candidate tied
-the baseline at 12/18 and the gate **rejected** it. The one authorized
-submission is used up. Nothing is running.
+the baseline at 12/18 and the gate **rejected** it. The user accepted it as a
+successful engineering milestone (2026-10-20). Nothing is running and **no GPU
+job or paid API call is authorized**.
 
 > Read this file first after a new session or any compaction, then verify it
 > against git and Slurm (section B and section F) before acting. History lives
@@ -14,8 +16,9 @@ submission is used up. Nothing is running.
 
 ## A. Current objective
 
-Review the completed training smoke with the user, then decide the
-paper-aligned baseline protocol (milestone 9). No experiment is authorized.
+Decide how to measure and handle evaluation noise before any further
+optimization run (proposal E1 in `IMPLEMENTATION_PLAN.md`), then the rest of
+the baseline protocol. No experiment is authorized.
 
 Result of job 64359024 (verified; details in `EXPERIMENT_LOG.md`):
 
@@ -31,14 +34,14 @@ Result of job 64359024 (verified; details in `EXPERIMENT_LOG.md`):
 
 ## B. Repository and environment
 
-| Item | Value (verified 2026-10-20 13:11) |
+| Item | Value (verified 2026-10-20 16:46) |
 |---|---|
 | Local checkout | `~/dev/lean_skillopt/SkillOpt`, branch `research/alfworld-baseline` |
 | Upstream base | `microsoft/SkillOpt` @ `1a44050` |
 | Remote | `origin` = public research fork; `origin/research/alfworld-baseline` = local HEAD |
 | Latest code commit | `12a153e` (strict+trace config, opt-in optimizer call log, config resolver); pushed |
 | Latest deployed snapshot | `12a153e` (`$SNAPSHOT_ROOT/12a153e5ffa3`), used by tests 64358982 and training job 64359024 |
-| Local docs | results recorded in local commits after `12a153e` (docs only; not pushed, push needs approval) |
+| Docs commits | `79d7a59`, `8db42fa` pushed (2026-10-20, approved); offline-review docs commit is local only (push needs approval) |
 | Cluster envs | controller `skillopt`; vLLM `skillopt-vllm-0.28.0` (in use); `skillopt-vllm` (0.25.1, preserved, unused) |
 | Data / model | ALFWorld `json_2.1.1` in `$ALFWORLD_DATA`; Qwen weights in `$HF_HOME` (2/2 shards verified) |
 | Private settings | `research/cluster/site.env` (git-ignored; template `site.env.example`); DeepSeek key only in `$SECRETS_FILE` on the cluster |
@@ -71,12 +74,25 @@ GPU-equivalent h (≈ $0.44); DeepSeek: 8 paid calls (≈ $0.008).
 - **Long generations:** 7/277 replies hit the 8000-token cap (5 became
   `look` fallbacks). Together with lockstep stepping they dominate runtime.
   Changing the cap or `env.workers` would be a new, separately labeled condition.
-- **Gate noise (interpretation):** one 18-task evaluation at temperature 0.7;
-  a 1-task swap is 5.6 points. Run-to-run noise is unmeasured, so the tie
-  (and the lower fallback/cap counts) say little about skill quality.
-- **Credit assignment (interpretation):** the success analyst misattributed
-  `train:0004`'s success (it ended on *taking* the statue under the lit lamp);
-  the kept "Light before examine" edit omits holding the object.
+- **Gate noise:** verified that baseline and candidate share tasks, order,
+  env seeds and deterministic games; only target sampling varies (global vLLM
+  generator, no per-request seed), and the gate compares single runs with a
+  strict `>` (`BASELINE_ARCHITECTURE.md` §2g). Same skill + same game already
+  produced different trajectories. Flip rates are **unmeasured** (E1).
+  For identical skills P(accept) = (1 − P(tie))/2, so even one coin-flip task
+  makes false accepts common (interpretation).
+- **Credit assignment (verified from the PDDL goal and DeepSeek's reply):**
+  `train:0004` required lamp toggled + agent at the lamp's receptacle +
+  holding a statue, in one state; no `examine`, no order. DeepSeek claimed
+  examining was sufficient and taking optional; the kept edit omits holding.
+  The prompt gave no goal definition and no success step
+  (`EXPERIMENT_LOG.md`, offline analyses).
+- **Trace field caveat (verified):** `env_is_action_valid` is a `<think>`-tag
+  format flag (0 on nearly all steps), not action validity; checkers must use
+  `executed_action_admissible`.
+- **Call-log residual risk (interpretation):** provider error messages are
+  stored on failed attempts and might echo a masked key fragment; proposed
+  redaction not implemented.
 - **SkillOpt saves no optimizer prompts or raw replies** and drops unparsable
   replies silently (verified in code). The opt-in call log in `12a153e` closes
   this for our runs; upstream behavior is unchanged when it is off.
@@ -93,31 +109,34 @@ GPU-equivalent h (≈ $0.44); DeepSeek: 8 paid calls (≈ $0.008).
 | Network guard: HTTP API and all vLLM listeners must be loopback; a wildcard or node-IP listener stops agent stages; no whitelisting of unknown listeners | approved (user) |
 | GPU requests: **1 A40 = 4 CPUs = 48 GB** (spgpu bills the max of weighted resources) | approved (user) |
 | Keep Qwen checkpoint, generation settings, 8000-token cap, `env.workers` 8, evaluator, skill-update rules, selection split unchanged for the smoke | approved (user) |
-| Conditions kept separate: **A** strict upstream, **B** + `qwen_compat`, **C** future Python/Lean contract feedback. B's gains are never credited to C | approved (user) |
+| Conditions kept separate: **A** strict-parser baseline, **B** Qwen-compatible parser, **C** independently specified Python-contract feedback, **D** equivalent Lean-contract feedback. B–D are not validated conditions; parser or explanation-text gains are never credited to verification | user decision 2026-10-20 |
+| Contracts are derived from the benchmark's trusted specification (PDDL goal), not from the skill | user direction 2026-10-20 |
 | Run condition A (strict) + `trace_log` as the first training smoke | user-approved 2026-10-20; **done** (64359024) |
 | `trace_log` and the optimizer call log may be on in any condition (diagnostic only) | verified in code and tests (64358982); per-run choice |
 
 ## F. Active operations and approvals
 
-- **Active Slurm jobs:** none (`squeue` empty, 16:10). Last jobs: 64358982
-  (tests, 195 passed), 64359024 (training smoke, COMPLETED 0:0, 2:34:00).
-- **Authorized but not executed:** none. The one training submission
-  approved on 2026-10-20 was used by 64359024.
-- **Pending user decisions:** (1) push the local results/docs commits;
-  (2) next experiment, if any (e.g. repeat runs to measure gate noise,
-  condition B, the paper-aligned protocol questions in `IMPLEMENTATION_PLAN.md`).
-- **Not authorized:** any new GPU job or paid API call, condition B
-  training, additional iterations, held-out test evaluation, token-cap or
-  workers experiments, two-replica serving, Lean/contract work.
+- **Active Slurm jobs:** none (`squeue` empty, 16:46). Last jobs: 64358982
+  (tests), 64359024 (training smoke, COMPLETED).
+- **Authorized but not executed:** none.
+- **Done with approval (2026-10-20):** pushed docs commits `79d7a59`,
+  `8db42fa` after a scope and secrets review.
+- **Pending user decisions:** (1) push the local docs commit(s) from the
+  offline review; (2) E1 evaluation-noise jobs (3 × 18-episode rollouts of the
+  initial skill, ≈ $0.33–0.46, no API); (3) E3 optimizer replay pilot (paid,
+  ≈ $0.05); (4) call-log redaction hardening (code change, needs CPU tests).
+- **Not authorized:** any GPU job or paid API call, new optimization runs,
+  changes to experimental semantics, condition B/C/D runs, Lean work.
 
 ## G. Next actions
 
-1. Review job 64359024 with the user (milestone 8): edits, gate, traces,
-   optimizer call log (`$LOCAL_RUNS/20261020-133347_smoke_train_64359024`).
-2. Decide milestone 9 questions (selection size, slow-update gating,
-   reflection rounds, reasoning effort, seeds/repeats, budget).
-3. Later (non-blocking, user request): record pre-implementation research
-   decisions, incl. the rationale for independently specified task contracts (Option B).
+1. Discuss the offline findings and proposals E1–E3 with the user.
+2. If E1 is approved: submit the three rollout jobs exactly as written in
+   `IMPLEMENTATION_PLAN.md`, then analyze per-task flip rates.
+3. Use E1 to decide the acceptance/assessment procedure (E2) for the
+   C-versus-D comparison.
+4. Later (non-blocking): record pre-implementation research decisions,
+   incl. the rationale for independent task contracts (Option B).
 
 ## H. Evidence and references
 
