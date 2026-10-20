@@ -136,6 +136,24 @@ id. Continue only from the first step without COMPLETED + checks passed.
 - Resources: 1 A40, 8 CPUs, 64 GB, 1 h limit; expected 10–15 min.
 - Cost: ≤ ~0.25 A40-hours; no DeepSeek calls.
 
+## Training-smoke budget (planning estimate from job 64337548; needs a decision)
+
+With upstream `env.workers: 8`, an 8-episode chunk took ~31 min, driven by
+runaway 8000-token generations under the lockstep rollout. The smoke step
+runs 18 selection (3 chunks) + 4 train (1 chunk) + up to 18 selection
+episodes for the candidate (3 chunks, skipped on a cache hit). That is
+roughly **2.5–3.5 h**, plus ~4 min vLLM startup, ~90 s env build per chunk
+and the optimizer calls. **A 2 h allocation is likely insufficient.**
+Options:
+1. Longer walltime (e.g. 5 h at 1 billing unit ≈ $0.54 worst case). No
+   semantic change.
+2. Raise `env.workers` so all 18 selection episodes share one chunk. This
+   changes upstream parallelism and per-chunk env seeds; the effect on
+   outcomes is unverified.
+3. Lower the target `max_tokens` (now 8000 from the qwen_chat backend cap).
+   This is a generation-setting change and would be a new condition.
+4. Two vLLM replicas (below).
+
 ## Possible optimization (not implemented): two vLLM replicas
 
 When a job already pays for two GPU billing units (for example because it

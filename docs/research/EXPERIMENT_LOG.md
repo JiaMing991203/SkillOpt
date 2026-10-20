@@ -433,6 +433,86 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   identical by construction. The difference is the action tag and
   whitespace.
 
+## 2026-10-20 — billing check (no job), run_tests (64337521), measure_envs (64337522)
+
+- **Billing (verified):** spgpu `TRESBillingWeights=cpu=4519.68,
+  mem=376.64G, GRES/gpu=18078.70`; billing = max of weighted TRES (earlier
+  8 CPU / 64 GB / 1 A40 jobs billed 36157 = 8 × 4519.68). `my_job_estimate`
+  per hour: 8 CPU / 64 GB / 1 A40 **$0.217** (2.0 GPU-eq); 4 CPU / 48 GB /
+  1 A40 **$0.108** (1.0 GPU-eq); 4 CPU / 32 GB same as 48 GB.
+- **Earlier GPU jobs (sacct):** batch MaxRSS 14.0–14.1 GiB; TotalCPU 2.7–3.0
+  min over 4–7.5 min (0.4–0.75 cores on average).
+- **run_tests (64337521, commit `73890c3`):** **184 passed**.
+- **measure_envs (64337522, commit `73890c3`; CPU, 4 cores, 16 GB):** 8
+  ALFWorld simulators for the fixed train subset (`train:0000, 0005, 0006,
+  0012, 0013, 0021, 0027, 0034`), no model. Env build **89.8 s**, reset
+  4.5 s, lockstep `step` of all 8: mean **0.20 s** (max 0.30 s) over 30 random
+  admissible steps. Job cgroup: peak process memory **0.70 GiB**, page cache
+  1.51 GiB, total 2.27 GiB; mean **0.8 cores** (20% of 4). The cluster uses
+  cgroup v2 (`slurmstepd.scope/job_<id>/step_batch/...`). Billed 10018
+  units (CPU partition), est. $0.02.
+- **Decision:** the 8-episode rollout uses **1 A40, 4 CPUs, 48 GB** (one
+  billing unit). Expected peak is ~15–16 GiB process memory plus reclaimable
+  cache, and ~1–2 cores during generation. Env build is single-threaded or
+  I/O-bound, so more CPUs would not help it.
+
+## 2026-10-20 — 8-episode traced rollout on fixed train tasks (job 64337548)
+
+- **Commit / snapshot:** `73890c3` / `snapshots/73890c3ab901`; vLLM 0.28.0
+  (file rendezvous, network pass, native sampler, prefix caching off);
+  `reasoning_parser: strict`, `trace_log: true`; initial skill; tasks
+  `research/task_subsets/throughput_train8.txt` (train split only; val/test
+  empty in the split_dir). No DeepSeek calls.
+- **Resources:** spgpu **1 A40, 4 CPUs, 48 GB**; billed **18078 units = 1.0
+  GPU-equivalent** (`billing.json`). Ran **35 min 8 s** (vLLM ready after 230 s,
+  episodes 31 min). Physical GPU time 0.585 GPU-h; billable 0.585
+  GPU-equivalent-h; about $0.063 at $0.108/h. At the previous 8 CPU / 64 GB
+  request it would have billed 2.0 GPU-eq (~$0.13).
+- **CPU / RAM (job cgroup, `resource_usage.csv`):** mean **0.32 cores (8% of
+  4)**; peak process memory 4.07 GiB, page cache 11.83 GiB (model weights),
+  cgroup total 16.07 GiB (sacct MaxRSS 16.1 GiB, which counts mapped model
+  pages). **4 CPUs / 48 GB are sufficient.** Peak GPU memory 37.8 / 46 GiB,
+  mean GPU utilization 84%.
+- **Outcomes (native score, `eval_summary.json` hard = 0.5):**
+
+  | Task | Type | Result | Steps | Fallbacks | "Nothing happens." |
+  |---|---|---|---|---|---|
+  | train:0000 | look_at_obj_in_light | fail (50-step timeout) | 50 | 3 missing tag | 0 |
+  | train:0005 | pick_and_place | success | 16 | 0 | 0 |
+  | train:0006 | pick_and_place | success | 9 | 0 | 0 |
+  | train:0012 | clean | success | 13 | 0 | 0 |
+  | train:0013 | clean | fail (timeout) | 50 | 0 | 1 |
+  | train:0021 | cool | fail (timeout) | 50 | 1 missing tag | 1 |
+  | train:0027 | heat | success | 39 | 0 | 0 |
+  | train:0034 | pick_two | fail (timeout) | 50 | 1 missing tag | 2 |
+
+  277 actions; 5 fallback `look` (all `missing_action_tag`), 6 genuine `look`,
+  4 non-admissible executed actions. Reasoning: `reasoning_null` on 272/272
+  non-fallback steps; 28 replies had `</think>` only, the rest no tags.
+- **Throughput (vLLM /metrics + traces):** 277 requests, all HTTP 200;
+  1,263 prompt / 543 completion tokens per request on average. Latency:
+  median **3.9 s**, p90 17.5 s, max 142 s. Aggregate generation 81 tokens/s.
+  **7 requests hit `max_tokens` = 8000** (~141 s each); 5 of them contained no
+  `<action>` and became the 5 fallbacks (raw text preserved in
+  `trace.json → call.unparsed_response`, 24–28k chars). Sample: an
+  indecision loop over which action to take ("Let's try `examine alarmclock
+  2`." ×9), not token repetition.
+- **Bottleneck (interpretation):** the rollout is lockstep. Each step waits
+  for the slowest of the active envs, and the sum of per-step maximum
+  latency is 1,744 s of the 1,857 s. Runaway 8000-token generations dominate.
+  CPU, RAM and simulators are not the limit (env step 0.2 s; env build ~90 s
+  per chunk).
+- **Traces (`trace_check.json`): all_ok for 8/8 episodes.** Raw responses,
+  actions, feedback, rewards, termination and final `hard` match
+  `conversation.json` / `results.jsonl`. Executed action = lowercased parsed
+  action. Admissible lists of 14–48 actions on every step; initial
+  observations present. The env's `is_action_valid` is a *format* flag
+  (needs `<think>` tags) and is 0 almost everywhere; admissibility is in
+  `executed_action_admissible`.
+- **Scores/actions unchanged:** checked here for internal consistency. The
+  causal invariance (trace on vs off) is established by the deterministic
+  fake-env tests, since a real on/off pair is not comparable under sampling.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)
