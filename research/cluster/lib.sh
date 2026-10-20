@@ -70,6 +70,7 @@ _lso_exit() {
     local rc=$?
     stop_vllm
     if [ -n "${LSO_GPU_MON_PID:-}" ]; then kill "$LSO_GPU_MON_PID" 2>/dev/null || true; fi
+    if [ -n "${LSO_RES_MON_PID:-}" ]; then kill "$LSO_RES_MON_PID" 2>/dev/null || true; fi
     # Only the directory this job created with mktemp (lso_vllm.XXXXXXXX).
     case "${LSO_VLLM_TMPDIR:-}" in
         */lso_vllm.????????) rm -rf -- "$LSO_VLLM_TMPDIR" ;;
@@ -77,6 +78,51 @@ _lso_exit() {
     exec 1>&- 2>&-
     if [ -n "${LSO_TEE_PID:-}" ]; then wait "$LSO_TEE_PID" 2>/dev/null || true; fi
     exit "$rc"
+}
+
+# Samples the job cgroup's memory (total / process / page cache) and CPU time
+# every 5 s into resource_usage.csv; stopped by the EXIT handler.
+start_resource_sampler() {
+    "$CTL_ENV/bin/python" "$SNAPSHOT_DIR/research/resource_sampler.py" \
+        --out "$RUN_DIR/resource_usage.csv" --interval 5 &
+    LSO_RES_MON_PID=$!
+    export LSO_RES_MON_PID
+}
+
+# Allocated resources and Great Lakes billing for this job, from Slurm itself:
+# billing units (TRES "billing"), the partition's TRESBillingWeights, the
+# GPU-equivalents billed (billing / GPU weight; one A40 unit = 4 CPUs = 48 GB
+# on spgpu) and ARC's my_job_estimate for the requested walltime.
+write_billing() {
+    local part="${SLURM_JOB_PARTITION:-}" jobline weights est cpus memmb gpus tl
+    jobline=$(scontrol show job -o "${SLURM_JOB_ID:-0}" 2>/dev/null || true)
+    weights=$(scontrol show partition "$part" 2>/dev/null | grep -oE "TRESBillingWeights=[^ ]+" | cut -d= -f2- || true)
+    cpus="${SLURM_CPUS_PER_TASK:-${SLURM_CPUS_ON_NODE:-1}}"
+    memmb="${SLURM_MEM_PER_NODE:-0}"
+    gpus=$(printf '%s' "$jobline" | grep -oE "gres/gpu=[0-9]+" | head -1 | cut -d= -f2 || true)
+    tl=$(printf '%s' "$jobline" | grep -oE "TimeLimit=[^ ]+" | cut -d= -f2 || true)
+    est=$(my_job_estimate -p "$part" -n 1 -c "$cpus" -g "${gpus:-0}" -m "${memmb}m" -t "${tl:-01:00:00}" 2>/dev/null || true)
+    JOBLINE="$jobline" WEIGHTS="$weights" EST="$est" TL="$tl" python3 - "$RUN_DIR/billing.json" <<'PY'
+import json, os, re, sys
+line, weights = os.environ.get("JOBLINE", ""), os.environ.get("WEIGHTS", "")
+alloc = re.search(r"AllocTRES=(\S+)", line) or re.search(r"\bTRES=(\S+)", line)
+tres = dict(kv.split("=", 1) for kv in alloc.group(1).split(",")) if alloc else {}
+w = dict(kv.split("=", 1) for kv in weights.split(",")) if weights else {}
+gpu_w = float(w.get("GRES/gpu", "0") or 0)
+billing = float(tres.get("billing", "0") or 0)
+out = {
+    "allocated": {k: tres[k] for k in ("cpu", "mem", "gres/gpu", "node") if k in tres},
+    "billing_units": billing or None,
+    "partition_billing_weights": w or None,
+    "billable_gpu_equivalents": round(billing / gpu_w, 3) if billing and gpu_w else None,
+    "physical_gpus": int(tres.get("gres/gpu", "0") or 0),
+    "time_limit": os.environ.get("TL") or None,
+    "my_job_estimate_usd_for_time_limit": (lambda m: float(m.group(1)) if m else None)(
+        re.search(r"\(\$([0-9.]+)\)", os.environ.get("EST", ""))),
+}
+json.dump(out, open(sys.argv[1], "w"), indent=2)
+print("billing:", json.dumps(out))
+PY
 }
 
 init_run() {

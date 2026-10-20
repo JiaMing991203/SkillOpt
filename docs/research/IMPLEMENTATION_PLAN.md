@@ -136,6 +136,22 @@ id. Continue only from the first step without COMPLETED + checks passed.
 - Resources: 1 A40, 8 CPUs, 64 GB, 1 h limit; expected 10–15 min.
 - Cost: ≤ ~0.25 A40-hours; no DeepSeek calls.
 
+## Possible optimization (not implemented): two vLLM replicas
+
+When a job already pays for two GPU billing units (for example because it
+needs more than 4 CPUs or 48 GB), a second A40 costs nothing extra per hour.
+Two independent single-GPU vLLM servers, each with its own private temp dir,
+loopback port and key, could roughly double rollout throughput. Open points:
+- Distributing requests: SkillOpt's `qwen_chat` backend takes one base URL.
+  It would need a local round-robin proxy (an extra loopback listener that the
+  network guard must allow explicitly) or a backend change (not
+  upstream-faithful).
+- vLLM's built-in data parallelism is not an alternative here: its
+  data-parallel path still uses TCP rendezvous, which brings back the
+  listener problem.
+- Benefit depends on GPU saturation. The first episode used ~9% mean GPU
+  utilization at concurrency 1, so first measure 8-way concurrency on one GPU.
+
 ## Next actions
 
 1. User: create `$SECRETS_FILE` on the cluster (`BASELINE_SETUP.md` §4).

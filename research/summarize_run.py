@@ -214,6 +214,53 @@ def vllm_http_statuses(run_dir: str) -> dict | None:
     return counts
 
 
+def resource_usage(run_dir: str) -> dict | None:
+    """Peaks and CPU utilization from resource_sampler.py's cgroup samples."""
+    rows = []
+    try:
+        with open(os.path.join(run_dir, "resource_usage.csv"), encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("#") or line.startswith("unix_time"):
+                    continue
+                parts = line.strip().split(",")
+                if len(parts) < 6:
+                    continue
+                rows.append([float(x) if x else None for x in parts])
+    except OSError:
+        return None
+    if len(rows) < 2:
+        return None
+    gib = 1024 ** 3
+
+    def peak(col):
+        vals = [r[col] for r in rows if r[col] is not None]
+        return round(max(vals) / gib, 2) if vals else None
+
+    cpu = [(r[0], r[5]) for r in rows if r[5] is not None]
+    cores = None
+    if len(cpu) >= 2 and cpu[-1][0] > cpu[0][0]:
+        cores = (cpu[-1][1] - cpu[0][1]) / (cpu[-1][0] - cpu[0][0])
+    out = {
+        "samples": len(rows),
+        "window_s": round(rows[-1][0] - rows[0][0], 1),
+        "peak_cgroup_mem_gib": peak(1),
+        "cgroup_recorded_peak_gib": peak(2),
+        "peak_process_mem_gib": peak(3),
+        "peak_page_cache_gib": peak(4),
+        "mean_cpu_cores_used": round(cores, 2) if cores is not None else None,
+    }
+    try:
+        with open(os.path.join(run_dir, "billing.json"), encoding="utf-8") as f:
+            billing = json.load(f)
+        alloc_cpus = float(billing.get("allocated", {}).get("cpu", 0) or 0)
+        if cores is not None and alloc_cpus:
+            out["cpu_utilization_of_allocation"] = round(cores / alloc_cpus, 3)
+        out["billing"] = billing
+    except (OSError, ValueError):
+        pass
+    return out
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("out_root")
@@ -249,6 +296,7 @@ def main() -> int:
         "vllm_throughput": vllm_throughput(a.run_dir) if a.run_dir else None,
         "vllm_http_statuses": vllm_http_statuses(a.run_dir) if a.run_dir else None,
         "gpu_usage": gpu_usage(a.run_dir) if a.run_dir else None,
+        "resource_usage": resource_usage(a.run_dir) if a.run_dir else None,
     }
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
@@ -259,7 +307,7 @@ def main() -> int:
               f"think_close_only={r['think_close_only']} reasoning_null={r['reasoning_null']}")
     for g in gate:
         print("gate:", {k: g.get(k) for k in ("step", "action", "selection_hard", "current_score", "best_score")})
-    for key in ("vllm_throughput", "vllm_http_statuses", "gpu_usage"):
+    for key in ("vllm_throughput", "vllm_http_statuses", "gpu_usage", "resource_usage"):
         if report[key]:
             print(f"{key}:", report[key])
     return 0

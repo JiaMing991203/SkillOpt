@@ -16,8 +16,10 @@
 # (the partition comes from GPU_PARTITION in the private site.env).
 #SBATCH --job-name=lso-smoke
 #SBATCH --gpus-per-node=a40:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+# One spgpu billing unit: 1 A40 = 4 CPUs = 48 GB (billing = max of weighted
+# TRES). 8 CPUs or 64 GB would bill as 2 GPUs.
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=48G
 #SBATCH --time=01:00:00
 #SBATCH --output=%x-%j.out
 
@@ -25,6 +27,10 @@ STAGE="${STAGE:?set STAGE=vllm|rollout|train}"
 ROLLOUT_EPISODES="${ROLLOUT_EPISODES:-1}"
 ROLLOUT_SPLIT="${ROLLOUT_SPLIT:-valid_seen}"          # train | valid_seen (never valid_unseen here)
 ROLLOUT_CFG_OPTIONS="${ROLLOUT_CFG_OPTIONS:-}"        # e.g. "env.trace_log=true"
+ROLLOUT_TASKS_FILE="${ROLLOUT_TASKS_FILE:-}"          # fixed TRAIN task ids (research/task_subsets/*.txt)
+if [ -n "$ROLLOUT_TASKS_FILE" ] && [ "$ROLLOUT_SPLIT" != "train" ]; then
+    echo "ROLLOUT_TASKS_FILE selects train-split tasks; set ROLLOUT_SPLIT=train" >&2; exit 2
+fi
 case "$ROLLOUT_SPLIT" in train|valid_seen) ;; *) echo "ROLLOUT_SPLIT must be train or valid_seen" >&2; exit 2 ;; esac
 
 source research/cluster/lib.sh
@@ -32,6 +38,7 @@ load_site
 init_run "smoke_${STAGE}"
 require_clean_snapshot
 start_job_log
+start_resource_sampler
 
 # experiment.env sets TARGET_QWEN_CHAT_{THINKING_MODE,TEMPERATURE,MAX_TOKENS};
 # the qwen_chat backend reads them at import time (and they match the YAML).
@@ -50,11 +57,12 @@ nvidia-smi --query-gpu=timestamp,memory.used,memory.total,utilization.gpu \
 LSO_GPU_MON_PID=$!
 # Manifest and env freezes first, so a failed vLLM start still leaves them
 # (job 64329002 lost both); rewritten after start to add the vLLM command.
-write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES" "rollout_split=$ROLLOUT_SPLIT" "rollout_cfg_options=$ROLLOUT_CFG_OPTIONS"
+write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES" "rollout_split=$ROLLOUT_SPLIT" "rollout_cfg_options=$ROLLOUT_CFG_OPTIONS" "rollout_tasks_file=$ROLLOUT_TASKS_FILE"
+write_billing
 freeze_env "$CTL_ENV" ctl
 freeze_env "$LSO_VLLM_ENV" vllm
 start_vllm 900
-write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES" "rollout_split=$ROLLOUT_SPLIT" "rollout_cfg_options=$ROLLOUT_CFG_OPTIONS"
+write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES" "rollout_split=$ROLLOUT_SPLIT" "rollout_cfg_options=$ROLLOUT_CFG_OPTIONS" "rollout_tasks_file=$ROLLOUT_TASKS_FILE"
 
 PREFLIGHT=(--target)
 [ "$STAGE" = "train" ] && PREFLIGHT+=(--optimizer)
@@ -79,9 +87,16 @@ case "$STAGE" in
     vllm)
         ;;
     rollout)
+        SPLIT_ARGS=()
+        if [ -n "$ROLLOUT_TASKS_FILE" ]; then
+            # Fixed train tasks: split_dir whose val/test lists are empty.
+            "$CTL_ENV/bin/python" research/make_task_subset.py --ids-file "$ROLLOUT_TASKS_FILE" \
+                --out "$RUN_DIR/task_split"
+            SPLIT_ARGS=(--split_dir "$RUN_DIR/task_split")
+        fi
         "$CTL_ENV/bin/python" scripts/eval_only.py \
             --config configs/research/alfworld_qwen35_deepseek.yaml \
-            --skill skillopt/envs/alfworld/skills/initial.md \
+            --skill skillopt/envs/alfworld/skills/initial.md "${SPLIT_ARGS[@]}" \
             --split "$ROLLOUT_SPLIT" --test_env_num "$ROLLOUT_EPISODES" \
             --out_root "$OUT" ${ROLLOUT_CFG_OPTIONS:+--cfg-options $ROLLOUT_CFG_OPTIONS} || status=$?
         ;;
@@ -102,6 +117,10 @@ scrape_vllm_metrics after
 if [ "$STAGE" = "rollout" ] && [ -f "$OUT/results.jsonl" ]; then
     "$CTL_ENV/bin/python" research/render_reflection_input.py "$OUT" \
         --out "$RUN_DIR/reflection_input_preview.txt" || log "warning: render_reflection_input failed"
+    if compgen -G "$OUT/predictions/*/trace.json" > /dev/null; then
+        "$CTL_ENV/bin/python" research/check_traces.py "$OUT" --out "$RUN_DIR/trace_check.json" \
+            || log "WARNING: trace consistency check failed (see trace_check.json)"
+    fi
 fi
 assert_run_dir_clean
 log "stage $STAGE finished with status $status"

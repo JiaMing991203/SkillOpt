@@ -218,6 +218,26 @@ outputs will not match 0.25.1 token for token. 0.28.0 is the serving
 condition for **all** arms from now on; runs from different vLLM versions
 are never mixed in a comparison. The 0.25.1 env is preserved, unused.
 
+## 6c. Billing on spgpu (verified 2026-10-20)
+
+`scontrol show partition spgpu`: `TRESBillingWeights=cpu=4519.68,
+mem=376.64G, GRES/gpu=18078.70`. A job's billing is the **maximum** of its
+weighted resources, not the sum. Earlier GPU jobs (8 CPUs, 64 GB, 1 A40) were
+billed 36157 = 8 × 4519.68. So **one A40 unit = 4 CPUs = 48 GB = 18078.7**.
+
+| Request (1 h) | Billing | GPU-equivalents | `my_job_estimate` |
+|---|---|---|---|
+| 1 A40, 8 CPUs, 64 GB | 36157 | 2.0 | $0.217 |
+| 1 A40, 4 CPUs, 48 GB | 18079 | 1.0 | $0.108 |
+| 1 A40, 4 CPUs, 32 GB | 18079 | 1.0 | $0.108 |
+
+Policy: GPU jobs request **4 CPUs and 48 GB per A40** unless a measurement
+shows a bottleneck. Every run records `billing.json` (allocated TRES, billing
+units, weights, billable GPU-equivalents, physical GPUs, my_job_estimate for
+the time limit) and `resource_usage.csv` (job-cgroup memory: total / process
+/ page cache, and CPU time). Physical GPU-hours and billable GPU-equivalent
+hours are reported separately.
+
 ## 7. Compute budget for the training smoke
 
 DeepSeek cost: the ~$0.50 worst case (about 12 calls) is a **planning estimate, not a

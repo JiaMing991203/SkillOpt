@@ -1,0 +1,12 @@
+# Fixed 8-task subset of the official TRAIN split for throughput/trace tests.
+# Rule (deterministic): first task of each of the 6 ALFWorld task types, plus
+# the second task of the two most frequent types (clean: 9, pick_and_place: 7).
+# Selection (val) and held-out (test) splits are never used by this subset.
+train:0000
+train:0005
+train:0006
+train:0012
+train:0013
+train:0021
+train:0027
+train:0034
