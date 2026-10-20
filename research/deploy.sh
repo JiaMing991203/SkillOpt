@@ -71,7 +71,7 @@ fi
 [ -d "$(dirname "$PROJECT_ROOT")" ] && [ -w "$(dirname "$PROJECT_ROOT")" ] && ok "project parent writable: $(dirname "$PROJECT_ROOT")" || bad "cannot write $(dirname "$PROJECT_ROOT")"
 [ -x "$CONDA_BASE/bin/conda" ] && ok "conda found: $CONDA_BASE" || bad "conda not found at $CONDA_BASE"
 [ -e "$CTL_ENV" ] && info "controller env exists (setup_env will not modify it): $CTL_ENV" || info "controller env not created yet: $CTL_ENV"
-[ -e "$VLLM_ENV" ] && info "vLLM env exists (setup_env will not modify it): $VLLM_ENV" || info "vLLM env not created yet: $VLLM_ENV"
+[ -e "$LSO_VLLM_ENV" ] && info "vLLM env exists (setup_env will not modify it): $LSO_VLLM_ENV" || info "vLLM env not created yet: $LSO_VLLM_ENV"
 sinfo -h -p "$GPU_PARTITION" -o %P >/dev/null 2>&1 && ok "GPU partition $GPU_PARTITION visible" || bad "GPU partition $GPU_PARTITION not found"
 sinfo -h -p "$CPU_PARTITION" -o %P >/dev/null 2>&1 && ok "CPU partition $CPU_PARTITION visible" || bad "CPU partition $CPU_PARTITION not found"
 sacctmgr -nP show assoc user=\$USER format=account | grep -qx "$SLURM_ACCOUNT" && ok "account $SLURM_ACCOUNT associated" || bad "account $SLURM_ACCOUNT not associated"

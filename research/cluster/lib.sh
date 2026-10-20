@@ -7,6 +7,7 @@
 #   require_clean_snapshot    # records commit; aborts on a dirty tree
 #   write_manifest            # sanitized $RUN_DIR/manifest.json (+ tracked experiment.env)
 #   assert_run_dir_clean      # fail if settings files or key values reached the run dir
+#   start_job_log             # tee stdout/stderr to $RUN_DIR/job.log; EXIT trap cleans up
 #   start_vllm / stop_vllm    # job-scoped server, loopback only, random key
 #   scrape_vllm_metrics <tag> # Prometheus counters for throughput accounting
 
@@ -53,6 +54,25 @@ load_secrets() {
     set +a
     [ -n "${DEEPSEEK_API_KEY:-}" ] || die "DEEPSEEK_API_KEY not set in $SECRETS_FILE"
     export OPTIMIZER_OPENAI_COMPATIBLE_API_KEY="$DEEPSEEK_API_KEY"
+}
+
+# Mirror all output into $RUN_DIR/job.log and install the single EXIT handler:
+# stop vLLM and the GPU sampler (if started), then close our end of the pipe
+# and wait for tee, so the last log lines are not lost when Slurm reaps the
+# job (seen in job 64328962, where the final line went missing).
+start_job_log() {
+    exec > >(tee -a "$RUN_DIR/job.log") 2>&1
+    LSO_TEE_PID=$!
+    trap _lso_exit EXIT
+}
+
+_lso_exit() {
+    local rc=$?
+    stop_vllm
+    if [ -n "${LSO_GPU_MON_PID:-}" ]; then kill "$LSO_GPU_MON_PID" 2>/dev/null || true; fi
+    exec 1>&- 2>&-
+    if [ -n "${LSO_TEE_PID:-}" ]; then wait "$LSO_TEE_PID" 2>/dev/null || true; fi
+    exit "$rc"
 }
 
 init_run() {
@@ -109,8 +129,8 @@ manifest = {
         "thinking_mode": env.get("TARGET_QWEN_CHAT_THINKING_MODE"),
         "temperature": env.get("TARGET_QWEN_CHAT_TEMPERATURE"),
         "max_tokens": env.get("TARGET_QWEN_CHAT_MAX_TOKENS"),
-        "vllm_version_pinned": env.get("VLLM_VERSION"),
-        "vllm_args": env.get("VLLM_ARGS_RECORD"),
+        "vllm_version_pinned": env.get("LSO_VLLM_VERSION"),
+        "vllm_args": env.get("LSO_VLLM_ARGS"),
     },
     "optimizer": {
         "base_url": env.get("DEEPSEEK_BASE_URL"),
@@ -154,7 +174,7 @@ _free_port() {
 # anything other than loopback. Records all of them in vllm_listeners.txt.
 check_vllm_listeners() {
     local pids
-    pids=$(pgrep -s "$VLLM_PID" | tr '\n' ' ')   # setsid: session id == VLLM_PID
+    pids=$(pgrep -s "$LSO_VLLM_PID" | tr '\n' ' ')   # setsid: session id == LSO_VLLM_PID
     : > "$RUN_DIR/vllm_listeners.txt"
     for pid in $pids; do
         ss -ltnpH 2>/dev/null | grep "pid=$pid," >> "$RUN_DIR/vllm_listeners.txt" || true
@@ -177,55 +197,54 @@ check_vllm_listeners() {
 #  - own process group (setsid) so cleanup reaches the engine subprocess
 start_vllm() {
     local timeout_s="${1:-900}"
-    VLLM_PORT=$(_free_port)
+    LSO_VLLM_PORT=$(_free_port)
     VLLM_API_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
-    export VLLM_PORT VLLM_API_KEY
+    export LSO_VLLM_PORT VLLM_API_KEY
     local args=(
         serve "$TARGET_MODEL_ID"
         --revision "$TARGET_MODEL_REVISION"
         --served-model-name "$TARGET_MODEL_ID"
-        --host 127.0.0.1 --port "$VLLM_PORT"
+        --host 127.0.0.1 --port "$LSO_VLLM_PORT"
         --dtype bfloat16
-        --max-model-len "$VLLM_MAX_MODEL_LEN"
-        --gpu-memory-utilization "$VLLM_GPU_MEM_UTIL"
+        --max-model-len "$LSO_VLLM_MAX_MODEL_LEN"
+        --gpu-memory-utilization "$LSO_VLLM_GPU_MEM_UTIL"
         --limit-mm-per-prompt '{"image":0,"video":0}'
         --seed 0
     )
-    export VLLM_ARGS_RECORD="VLLM_HOST_IP=127.0.0.1 vllm ${args[*]}"
-    log "starting: $VLLM_ARGS_RECORD"
+    export LSO_VLLM_ARGS="VLLM_HOST_IP=127.0.0.1 vllm ${args[*]}"
+    log "starting: $LSO_VLLM_ARGS"
     VLLM_API_KEY="$VLLM_API_KEY" VLLM_HOST_IP=127.0.0.1 HF_HUB_OFFLINE=1 \
-        setsid "$VLLM_ENV/bin/vllm" "${args[@]}" > "$RUN_DIR/vllm.log" 2>&1 &
-    VLLM_PID=$!
-    export VLLM_PID
-    trap stop_vllm EXIT
+        setsid "$LSO_VLLM_ENV/bin/vllm" "${args[@]}" > "$RUN_DIR/vllm.log" 2>&1 &
+    LSO_VLLM_PID=$!
+    export LSO_VLLM_PID
 
     local waited=0
     until curl -sf -H "Authorization: Bearer $VLLM_API_KEY" \
-            "http://127.0.0.1:$VLLM_PORT/v1/models" > "$RUN_DIR/vllm_models.json"; do
-        kill -0 "$VLLM_PID" 2>/dev/null || { tail -50 "$RUN_DIR/vllm.log"; die "vLLM exited during startup"; }
+            "http://127.0.0.1:$LSO_VLLM_PORT/v1/models" > "$RUN_DIR/vllm_models.json"; do
+        kill -0 "$LSO_VLLM_PID" 2>/dev/null || { tail -50 "$RUN_DIR/vllm.log"; die "vLLM exited during startup"; }
         [ "$waited" -ge "$timeout_s" ] && { tail -50 "$RUN_DIR/vllm.log"; die "vLLM not ready after ${timeout_s}s"; }
         sleep 10; waited=$((waited + 10))
     done
     echo "$waited" > "$RUN_DIR/vllm_startup_seconds.txt"
-    log "vLLM ready on 127.0.0.1:$VLLM_PORT after ~${waited}s"
+    log "vLLM ready on 127.0.0.1:$LSO_VLLM_PORT after ~${waited}s"
     check_vllm_listeners
 
     # Point SkillOpt's qwen_chat target role at the job-local server.
-    export TARGET_QWEN_CHAT_BASE_URL="http://127.0.0.1:$VLLM_PORT/v1"
+    export TARGET_QWEN_CHAT_BASE_URL="http://127.0.0.1:$LSO_VLLM_PORT/v1"
     export TARGET_QWEN_CHAT_API_KEY="$VLLM_API_KEY"
 }
 
 scrape_vllm_metrics() {
-    curl -sf -H "Authorization: Bearer $VLLM_API_KEY" "http://127.0.0.1:$VLLM_PORT/metrics" \
+    curl -sf -H "Authorization: Bearer $VLLM_API_KEY" "http://127.0.0.1:$LSO_VLLM_PORT/metrics" \
         > "$RUN_DIR/vllm_metrics_$1.prom" || log "warning: could not scrape vLLM /metrics ($1)"
     date +%s.%N > "$RUN_DIR/vllm_metrics_$1.time"
 }
 
 stop_vllm() {
-    if [ -n "${VLLM_PID:-}" ] && kill -0 "$VLLM_PID" 2>/dev/null; then
-        log "stopping vLLM (process group $VLLM_PID)"
-        kill -- "-$VLLM_PID" 2>/dev/null || kill "$VLLM_PID" 2>/dev/null || true
-        for _ in $(seq 1 30); do kill -0 "$VLLM_PID" 2>/dev/null || break; sleep 1; done
-        kill -9 -- "-$VLLM_PID" 2>/dev/null || true
+    if [ -n "${LSO_VLLM_PID:-}" ] && kill -0 "$LSO_VLLM_PID" 2>/dev/null; then
+        log "stopping vLLM (process group $LSO_VLLM_PID)"
+        kill -- "-$LSO_VLLM_PID" 2>/dev/null || kill "$LSO_VLLM_PID" 2>/dev/null || true
+        for _ in $(seq 1 30); do kill -0 "$LSO_VLLM_PID" 2>/dev/null || break; sleep 1; done
+        kill -9 -- "-$LSO_VLLM_PID" 2>/dev/null || true
     fi
 }

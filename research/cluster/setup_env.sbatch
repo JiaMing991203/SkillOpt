@@ -16,7 +16,7 @@ source research/cluster/lib.sh
 load_site
 init_run setup_env
 require_clean_snapshot
-exec > >(tee -a "$RUN_DIR/job.log") 2>&1
+start_job_log
 write_manifest stage=setup_env
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 
@@ -71,9 +71,9 @@ fi
 touch "$CTL_ENV/$DONE_MARK"
 
 # ── vLLM env ─────────────────────────────────────────────────────────────────
-ensure_env "$VLLM_ENV" "$VLLM_PYTHON_VERSION" vLLM "vllm==$VLLM_VERSION"
-"$VLLM_ENV/bin/python" -c "import vllm, torch, transformers; print('vllm', vllm.__version__, 'torch', torch.__version__, 'cuda', torch.version.cuda, 'transformers', transformers.__version__)"
-touch "$VLLM_ENV/$DONE_MARK"
+ensure_env "$LSO_VLLM_ENV" "$LSO_VLLM_PYTHON_VERSION" vLLM "vllm==$LSO_VLLM_VERSION"
+"$LSO_VLLM_ENV/bin/python" -c "import vllm, torch, transformers; print('vllm', vllm.__version__, 'torch', torch.__version__, 'cuda', torch.version.cuda, 'transformers', transformers.__version__)"
+touch "$LSO_VLLM_ENV/$DONE_MARK"
 
 # ── Target model weights (pinned revision) ───────────────────────────────────
 log "downloading $TARGET_MODEL_ID@$TARGET_MODEL_REVISION into \$HF_HOME"
@@ -125,6 +125,6 @@ print(json.dumps(census, indent=2))
 PY
 
 freeze_env "$CTL_ENV" ctl
-freeze_env "$VLLM_ENV" vllm
+freeze_env "$LSO_VLLM_ENV" vllm
 assert_run_dir_clean
 log "setup complete"

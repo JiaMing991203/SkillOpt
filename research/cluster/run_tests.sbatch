@@ -12,7 +12,7 @@ source research/cluster/lib.sh
 load_site
 init_run run_tests
 require_clean_snapshot
-exec > >(tee -a "$RUN_DIR/job.log") 2>&1
+start_job_log
 write_manifest stage=run_tests
 
 TESTS="${TESTS:-tests/test_research_configs.py tests/test_research_summarize_run.py tests/test_gate.py tests/test_gate_no_regression.py tests/test_alfworld_paths.py tests/test_openai_compatible_backend.py tests/test_openai_compatible_config.py tests/test_qwen_backend.py}"

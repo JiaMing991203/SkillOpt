@@ -28,7 +28,7 @@ source research/cluster/lib.sh
 load_site
 init_run "smoke_${STAGE}"
 require_clean_snapshot
-exec > >(tee -a "$RUN_DIR/job.log") 2>&1
+start_job_log
 
 # experiment.env sets TARGET_QWEN_CHAT_{THINKING_MODE,TEMPERATURE,MAX_TOKENS};
 # the qwen_chat backend reads them at import time (and they match the YAML).
@@ -44,12 +44,14 @@ fi
 
 nvidia-smi --query-gpu=timestamp,memory.used,memory.total,utilization.gpu \
     --format=csv,noheader,nounits -l 5 > "$RUN_DIR/gpu_usage.csv" 2>/dev/null &
-GPU_MON_PID=$!
-start_vllm 900
-trap 'stop_vllm; kill "$GPU_MON_PID" 2>/dev/null || true' EXIT
+LSO_GPU_MON_PID=$!
+# Manifest and env freezes first, so a failed vLLM start still leaves them
+# (job 64329002 lost both); rewritten after start to add the vLLM command.
 write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES"
 freeze_env "$CTL_ENV" ctl
-freeze_env "$VLLM_ENV" vllm
+freeze_env "$LSO_VLLM_ENV" vllm
+start_vllm 900
+write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES"
 
 PREFLIGHT=(--target)
 [ "$STAGE" = "train" ] && PREFLIGHT+=(--optimizer)

@@ -19,7 +19,7 @@ names from those files.
 | Slurm stdout | — | `$PROJECT_ROOT/slurm_logs/%x-%j.out` |
 | Model weights | — | `$HF_HOME` (persistent project storage, not home) |
 | ALFWorld data | — | `$ALFWORLD_DATA` |
-| Conda envs (new) | — | `$CTL_ENV` (controller), `$VLLM_ENV` (server) |
+| Conda envs (new) | — | `$CTL_ENV` (controller), `$LSO_VLLM_ENV` (server) |
 | Private site settings | `research/cluster/site.env` | `$CLUSTER_SITE_ENV` (uploaded by `deploy.sh`) |
 | Secrets | none | `$SECRETS_FILE` (chmod 600) |
 

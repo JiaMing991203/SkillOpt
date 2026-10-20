@@ -13,7 +13,7 @@ source research/cluster/lib.sh
 load_site
 init_run check_compute
 require_clean_snapshot
-exec > >(tee -a "$RUN_DIR/job.log") 2>&1
+start_job_log
 load_secrets
 write_manifest stage=check_compute
 
