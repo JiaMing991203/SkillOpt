@@ -11,6 +11,7 @@ UPSTREAM = "configs/alfworld/default.yaml"
 BASELINE = "configs/research/alfworld_qwen35_deepseek.yaml"
 SMOKE = "configs/research/alfworld_smoke.yaml"
 SMOKE_COMPAT = "configs/research/alfworld_smoke_qwen_compat.yaml"
+SMOKE_TRACED = "configs/research/alfworld_smoke_strict_traced.yaml"
 
 # Keys allowed to differ from upstream, per config.
 WIRING_KEYS = {
@@ -101,3 +102,26 @@ def test_qwen_compat_smoke_differs_only_in_parser_and_trace():
                 "use_gate", "edit_budget", "skill_update_mode", "split_dir", "max_steps", "workers",
                 "max_api_workers", "eval_test", "use_slow_update", "use_meta_skill"):
         assert strict.get(key) == compat.get(key), key
+
+
+def test_strict_traced_smoke_differs_only_in_trace_log():
+    # Condition A with diagnostics: strict parsing, trace.json on, nothing else.
+    strict, traced = _flat(SMOKE), _flat(SMOKE_TRACED)
+    assert _diff(strict, traced) == {"trace_log"}
+    assert traced["reasoning_parser"] == "strict" and traced["trace_log"] is True
+    assert strict["reasoning_parser"] == "strict" and strict["trace_log"] is False  # original unchanged
+
+
+def test_strict_traced_smoke_reaches_the_adapter_as_strict_plus_trace():
+    # The path scripts/train.py uses: flattened config -> adapter kwargs.
+    import scripts.train as train_script
+
+    adapter = train_script.get_adapter(_flat(SMOKE_TRACED))
+    assert type(adapter).__name__ == "ALFWorldAdapter"
+    assert adapter.reasoning_parser == "strict"
+    assert adapter.trace_log is True
+    base = train_script.get_adapter(_flat(SMOKE))
+    assert base.reasoning_parser == "strict" and base.trace_log is False
+    for attr in ("max_steps", "workers", "max_api_workers", "analyst_workers", "minibatch_size",
+                 "edit_budget", "max_completion_tokens", "failure_only"):
+        assert getattr(adapter, attr) == getattr(base, attr), attr

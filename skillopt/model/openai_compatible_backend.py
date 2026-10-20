@@ -24,6 +24,8 @@ it can be selected as the optimizer and/or target backend and routed through
 """
 from __future__ import annotations
 
+import datetime
+import json
 import os
 import threading
 import time
@@ -140,6 +142,86 @@ def _reset_clients() -> None:
         _target_client = None
 
 
+# ── Optional call log (research diagnostics) ─────────────────────────────────
+#
+# When ``<ROLE>_OPENAI_COMPATIBLE_CALL_LOG`` (or ``OPENAI_COMPATIBLE_CALL_LOG``)
+# names a file, every attempt in ``_chat_messages_impl`` appends one JSON line:
+# the request (model, max_tokens, temperature, messages), the outcome, latency,
+# and either the response (content, provider reasoning text, finish reason,
+# full usage) or the error. The API key and headers are never written. Unset
+# (the default) writes nothing. The log never alters a request, a return value
+# or the retry loop: writing errors are swallowed.
+
+_call_log_lock = threading.Lock()
+
+
+def _plain(obj: Any) -> Any:
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return obj
+    return dict(vars(obj)) if hasattr(obj, "__dict__") else str(obj)
+
+
+def _log_call(
+    path: str,
+    *,
+    role: str,
+    stage: str,
+    attempt: int,
+    retries: int,
+    kwargs: dict[str, Any],
+    started: float,
+    resp: Any = None,
+    error: Exception | None = None,
+) -> None:
+    try:
+        record: dict[str, Any] = {
+            "schema": "lso.openai_compatible_call.v1",
+            "started_utc": datetime.datetime.fromtimestamp(started, datetime.timezone.utc).isoformat(),
+            "latency_s": round(time.time() - started, 3),
+            "role": role,
+            "stage": stage,
+            "attempt": attempt + 1,
+            "max_attempts": retries,
+            "request": {
+                "model": kwargs.get("model"),
+                "max_tokens": kwargs.get("max_tokens"),
+                "temperature": kwargs.get("temperature"),
+                "timeout": kwargs.get("timeout"),
+                "tools": bool(kwargs.get("tools")),
+                "messages": kwargs.get("messages"),
+            },
+            "outcome": "error" if error is not None else "ok",
+        }
+        if resp is not None:
+            choice = (getattr(resp, "choices", None) or [None])[0]
+            message = getattr(choice, "message", None)
+            record["response"] = {
+                "id": getattr(resp, "id", None),
+                "model": getattr(resp, "model", None),
+                "system_fingerprint": getattr(resp, "system_fingerprint", None),
+                "finish_reason": getattr(choice, "finish_reason", None),
+                "content": getattr(message, "content", None),
+                "reasoning_content": getattr(message, "reasoning_content", None),
+                "usage": _plain(getattr(resp, "usage", None)),
+            }
+        if error is not None:
+            record["error"] = {
+                "type": type(error).__name__,
+                "status_code": getattr(error, "status_code", None),
+                "message": str(error)[:4000],
+            }
+        line = json.dumps(record, ensure_ascii=False, default=str)
+        with _call_log_lock:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+    except Exception:  # noqa: BLE001 - diagnostics must never affect the call
+        pass
+
+
 def count_tokens(text: str, model: str | None = None) -> int:
     """Best-effort token count for a string.
 
@@ -194,8 +276,10 @@ def _chat_messages_impl(
     if timeout is not None:
         kwargs["timeout"] = timeout
 
+    call_log = _role_env(role, "CALL_LOG", "")
     last_err: Exception | None = None
     for attempt in range(retries):
+        started = time.time()
         try:
             resp = client.chat.completions.create(**kwargs)
             choices = getattr(resp, "choices", None) or []
@@ -211,11 +295,17 @@ def _chat_messages_impl(
                 usage_info["prompt_tokens"],
                 usage_info["completion_tokens"],
             )
+            if call_log:
+                _log_call(call_log, role=role, stage=stage, attempt=attempt, retries=retries,
+                          kwargs=kwargs, started=started, resp=resp)
             if return_message:
                 return compat_message_from_chat_message(message), usage_info
             return text, usage_info
         except Exception as e:  # noqa: BLE001
             last_err = e
+            if call_log:
+                _log_call(call_log, role=role, stage=stage, attempt=attempt, retries=retries,
+                          kwargs=kwargs, started=started, error=e)
             time.sleep(min(2 ** attempt, 30))
     raise RuntimeError(
         f"OpenAI-compatible chat call failed after {retries} retries: {last_err}"

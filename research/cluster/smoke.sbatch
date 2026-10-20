@@ -8,7 +8,9 @@
 #                  scripts/eval_only.py on the selection split; no optimizer,
 #                  no DeepSeek calls; measures target throughput
 #   STAGE=train    + DeepSeek preflight, then one small original SkillOpt
-#                  iteration using configs/research/alfworld_smoke.yaml
+#                  iteration using TRAIN_CONFIG (default
+#                  configs/research/alfworld_smoke.yaml); optimizer attempts
+#                  are logged to optimizer_calls.jsonl
 #
 # Every stage samples GPU memory/utilization every 5 s into gpu_usage.csv.
 #
@@ -103,6 +105,11 @@ case "$STAGE" in
             --out_root "$OUT" ${ROLLOUT_CFG_OPTIONS:+--cfg-options $ROLLOUT_CFG_OPTIONS} || status=$?
         ;;
     train)
+        # Diagnostics only (no effect on requests or results): every optimizer
+        # attempt -> optimizer_calls.jsonl (prompt, reply, provider reasoning,
+        # usage, errors; never the key), and the OpenAI SDK's content-free
+        # per-HTTP-request debug lines (incl. its internal retries) -> job.log.
+        OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$RUN_DIR/optimizer_calls.jsonl" OPENAI_LOG=debug \
         "$CTL_ENV/bin/python" scripts/train.py \
             --config "$TRAIN_CONFIG" \
             --optimizer_model "$OPTIMIZER_MODEL" \
@@ -123,6 +130,24 @@ if [ "$STAGE" = "rollout" ] && [ -f "$OUT/results.jsonl" ]; then
         "$CTL_ENV/bin/python" research/check_traces.py "$OUT" --out "$RUN_DIR/trace_check.json" \
             || log "WARNING: trace consistency check failed (see trace_check.json)"
     fi
+fi
+if [ "$STAGE" = "train" ]; then
+    if [ -f "$RUN_DIR/optimizer_calls.jsonl" ]; then
+        "$CTL_ENV/bin/python" research/summarize_optimizer_calls.py "$RUN_DIR/optimizer_calls.jsonl" \
+            --job-log "$RUN_DIR/job.log" --skillopt-out "$OUT" \
+            --out "$RUN_DIR/optimizer_calls_summary.json" || log "warning: summarize_optimizer_calls failed"
+    else
+        log "no optimizer_calls.jsonl (no optimizer call was attempted)"
+    fi
+    # Trace consistency for every rollout the trainer wrote (baseline
+    # selection, train minibatch, candidate selection).
+    for res in $(find "$OUT" -name results.jsonl 2>/dev/null | sort); do
+        d=$(dirname "$res")
+        compgen -G "$d/predictions/*/trace.json" > /dev/null || continue
+        tag=$(realpath --relative-to="$OUT" "$d" | tr '/' '_')
+        "$CTL_ENV/bin/python" research/check_traces.py "$d" --out "$RUN_DIR/trace_check_${tag}.json" \
+            || log "WARNING: trace consistency check failed for $tag"
+    done
 fi
 assert_run_dir_clean
 log "stage $STAGE finished with status $status"

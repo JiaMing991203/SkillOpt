@@ -145,3 +145,47 @@ def test_compat_parser_changes_only_reasoning_fields(tmp_path):
 def test_unknown_parser_fails_fast(tmp_path):
     with pytest.raises(ValueError):
         run(tmp_path, "bad", reasoning_parser="lenient")
+
+
+def _analyst_prompts(out, results, monkeypatch):
+    """Capture the exact failure/success analyst prompts reflection would send."""
+    from skillopt.gradient import reflect
+
+    captured = []
+
+    def recorder(system, user, **kwargs):
+        captured.append((system, user))
+        return '{"patch": {"reasoning": "offline", "edits": []}}', {}
+
+    monkeypatch.setattr(reflect, "chat_optimizer", recorder)
+    pred = os.path.join(out, "predictions")
+    fails = [r for r in results if r["hard"] == 0]
+    wins = [r for r in results if r["hard"] == 1]
+    assert fails and wins
+    reflect.run_error_analyst_minibatch(skill_content="SKILL TEXT", items=fails, prediction_dir=pred)
+    reflect.run_success_analyst_minibatch(skill_content="SKILL TEXT", items=wins, prediction_dir=pred)
+    return captured
+
+
+def test_trace_log_does_not_reach_the_optimizer_prompts(tmp_path, monkeypatch):
+    out_a, _, res_a, _ = run(tmp_path, "plain")
+    out_b, _, res_b, _ = run(tmp_path, "traced", trace_log=True)
+    prompts_a = _analyst_prompts(out_a, res_a, monkeypatch)
+    prompts_b = _analyst_prompts(out_b, res_b, monkeypatch)
+    assert len(prompts_a) == 2
+    # only the per-run directory name may differ; it does not appear in prompts
+    assert prompts_a == prompts_b
+    # trace-only evidence (backend error text, raw unparsed reply) is absent
+    joined = "\n".join(s + u for s, u in prompts_b)
+    assert "backend down" not in joined
+    assert "I am thinking but forgot the tag" not in joined
+
+
+def test_only_the_alfworld_rollout_touches_trace_json():
+    # Static guard: no trainer / reflection / optimizer code reads trace.json.
+    import pathlib
+
+    root = pathlib.Path(rollout.__file__).resolve().parents[2]  # skillopt/
+    hits = sorted(str(p.relative_to(root)) for p in root.rglob("*.py")
+                  if "trace.json" in p.read_text(encoding="utf-8", errors="ignore"))
+    assert hits == ["envs/alfworld/adapter.py", "envs/alfworld/rollout.py"]

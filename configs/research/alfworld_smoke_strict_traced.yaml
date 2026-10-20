@@ -1,0 +1,13 @@
+# Condition A (strict upstream parsing) with diagnostic traces. Identical to
+# alfworld_smoke.yaml except:
+#   trace_log: true  -> writes predictions/<id>/trace.json next to the
+#       unchanged conversation.json; actions, rewards, the native score and
+#       the optimizer's inputs are unchanged (the trainer and reflection code
+#       never read trace.json; tests/test_alfworld_trace_log.py)
+# reasoning_parser stays strict (stated explicitly so this file cannot drift
+# if a base config changes). alfworld_smoke.yaml itself is unchanged.
+_base_: alfworld_smoke.yaml
+
+env:
+  reasoning_parser: strict
+  trace_log: true
