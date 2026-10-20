@@ -1,6 +1,6 @@
 # Research Development State
 
-**Last verified:** 2026-10-20 13:00 EDT (git, cluster snapshots, `squeue`, `sacct`)
+**Last verified:** 2026-10-20 13:11 EDT (git, cluster snapshots, `squeue`, `sacct`), before a manual `/compact`
 **Current milestone:** first end-to-end original SkillOpt optimization step on
 ALFWorld (CLAUDE.md §9, item 6).
 **Status:** inference and benchmark-rollout infrastructure verified on the
@@ -34,13 +34,13 @@ The run plan, budgets and retry/cost bounds are in `IMPLEMENTATION_PLAN.md`
 
 ## B. Repository and environment
 
-| Item | Value (verified 2026-10-20 13:00) |
+| Item | Value (verified 2026-10-20 13:11) |
 |---|---|
 | Local checkout | `~/dev/lean_skillopt/SkillOpt`, branch `research/alfworld-baseline` |
 | Upstream base | `microsoft/SkillOpt` @ `1a44050` |
 | Remote | `origin` = public research fork; `origin/research/alfworld-baseline` = local HEAD |
 | Latest code commit | `7e78fb3` (analysis tooling, Qwen-compat smoke config) |
-| Latest commit | `e998b9f` (docs; pins `OPTIMIZER_MODEL=deepseek-flash` in `experiment.env`), plus this documentation commit |
+| Latest commits | `e998b9f` (pins `OPTIMIZER_MODEL=deepseek-flash` in `experiment.env`); `d319636` (STATE/DAILY_LOG docs system); this pre-compact refresh. Working tree clean; HEAD pushed |
 | Latest deployed snapshot | `7e78fb3` (`$SNAPSHOT_ROOT/7e78fb3321b7`). **The next GPU job must deploy the current HEAD first** (`research/deploy.sh`), because `experiment.env` changed after `7e78fb3` |
 | Cluster envs | controller `skillopt`; vLLM `skillopt-vllm-0.28.0` (in use); `skillopt-vllm` (0.25.1, preserved, unused) |
 | Data / model | ALFWorld `json_2.1.1` in `$ALFWORLD_DATA`; Qwen weights in `$HF_HOME` (2/2 shards verified) |
@@ -105,6 +105,17 @@ GPU-equivalent h (≈ $0.16); DeepSeek: 2 paid calls (≈ $0.00007).
 - **Authorized but not executed:** none.
 - **Not authorized:** condition B training run, 8000-token-cap or workers
   experiments, two-replica serving, Lean/contract work.
+
+## Session handoff (pre-compact, 2026-10-20 13:11)
+
+- No operation is in progress; nothing is running on the cluster; nothing
+  is authorized but unexecuted.
+- The user said they will send a new prompt about the **training smoke**
+  after this compaction. Treat that prompt as the source of authorization
+  and scope. Nothing in this file authorizes a submission.
+- Open questions to settle from that prompt: submit or not, the walltime
+  (proposed 5 h), and strict + `trace_log` (needs a small new config) versus
+  strict without traces.
 
 ## G. Next actions
 
