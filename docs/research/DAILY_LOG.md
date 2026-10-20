@@ -374,3 +374,49 @@ after verifying the configuration and the evidence capture.
 Monitor 64359024; fetch and analyze; update logs; report. Later: write up the
 pre-implementation research decisions (incl. Option B contracts).
 
+---
+
+## 2026-10-20 — First SkillOpt optimization step completed (job 64359024)
+
+### Objective
+Verify the complete original SkillOpt loop on ALFWorld (condition A, strict
+parser, traces on).
+
+### Work completed
+- Job 64359024 completed in 2 h 34 min on one A40 billing unit (≈ $0.28);
+  DeepSeek cost ≈ $0.008 for 4 calls. Details: `EXPERIMENT_LOG.md`.
+- **Finding:** every stage ran end to end. Baseline selection 12/18; train
+  batch 1/4; two analyst calls (2 + 4 edits), a merge (6 edits) and a ranking
+  call (kept 4) all parsed on the first attempt; the candidate (2,966 →
+  4,752 chars) scored 12/18; the gate **rejected** it (ties are rejected).
+- **Finding:** the new diagnostics worked: the optimizer call log matched the
+  trainer's token counts exactly; the SDK lines confirmed 4 HTTP requests and
+  no hidden retries; all 40 traced episodes passed the consistency check.
+- **Finding:** the per-task results differ on 2 tasks in opposite directions
+  (+`val:0012` cool, −`val:0014` heat). The candidate also had fewer
+  fallbacks (17 → 6), fewer 8000-token replies (20 → 11) and shorter
+  pick-two episodes.
+
+### Interpretations (not established)
+- A single 18-task evaluation at temperature 0.7 cannot separate a small
+  skill effect from sampling noise; we have no repeat runs to estimate that
+  noise. The lower fallback/cap counts are one-run observations.
+- The success analyst generalized from one trajectory and misattributed the
+  success (the episode ended on *taking* the statue under the lit lamp, not
+  on examining). Its kept edit omits that the object must be held. This is a
+  concrete example of the failure-localization problem the research question
+  is about; whether independent task contracts would catch it is a
+  hypothesis, not a result.
+- **Finding (clarification):** live responses (64328962, 64359024) report
+  only the alias `deepseek-flash` in `model`; the dated version in
+  `BASELINE_ARCHITECTURE.md` remains a provider-documentation claim that the
+  API does not confirm.
+
+### Remaining issues
+Noise level of the gate; the paper-aligned protocol (selection size,
+reflection rounds, reasoning effort, seeds); whether condition B changes
+the optimizer's edits. None of these were run.
+
+### Next actions
+Review with the user (milestone 8). No further jobs are authorized.
+

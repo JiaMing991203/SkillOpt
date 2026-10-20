@@ -1,11 +1,12 @@
 # Research Development State
 
-**Last verified:** 2026-10-20 13:33 EDT (git, cluster snapshots, `squeue`, `sacct`)
-**Current milestone:** first end-to-end original SkillOpt optimization step on
-ALFWorld (CLAUDE.md §9, item 6).
-**Status:** the first training smoke (condition A, strict parser + traces) is
-**submitted as job 64359024** (user-authorized 2026-10-20, one submission).
-Do not resubmit; check `sacct -j 64359024` first.
+**Last verified:** 2026-10-20 16:10 EDT (git, `squeue`, `sacct`, fetched run)
+**Current milestone:** review of the first original SkillOpt optimization
+step (CLAUDE.md §9 items 6–7; `IMPLEMENTATION_PLAN.md` milestone 8).
+**Status (verified):** the first training smoke (condition A, strict parser +
+traces, job 64359024) **completed**: every loop stage ran; the candidate tied
+the baseline at 12/18 and the gate **rejected** it. The one authorized
+submission is used up. Nothing is running.
 
 > Read this file first after a new session or any compaction, then verify it
 > against git and Slurm (section B and section F) before acting. History lives
@@ -13,24 +14,20 @@ Do not resubmit; check `sacct -j 64359024` first.
 
 ## A. Current objective
 
-Run **one** SkillOpt optimization step (rollout → reflection → edit → gate) to
-verify the complete loop. A skill improvement is **not** required for the
-smoke test to count as operational.
+Review the completed training smoke with the user, then decide the
+paper-aligned baseline protocol (milestone 9). No experiment is authorized.
 
-Configuration (user-approved 2026-10-20 for exactly one submission):
+Result of job 64359024 (verified; details in `EXPERIMENT_LOG.md`):
 
-| Item | Planned value |
+| Item | Value |
 |---|---|
-| Target | Qwen/Qwen3.5-4B @ `851bf6e8…`, vLLM 0.28.0, thinking disabled, temperature 0.7, max_tokens 8000, native sampler, prefix caching off |
-| Optimizer | DeepSeek `deepseek-flash` (pinned in `research/cluster/experiment.env`) |
-| Reasoning parser | **strict** (condition A, upstream). `qwen_compat` (condition B) is prepared as a separate condition, not authorized |
-| Config | `configs/research/alfworld_smoke_strict_traced.yaml` = `alfworld_smoke.yaml` + `trace_log: true` (resolved diff verified, job 64358982): 1 epoch × 1 step, 4 train tasks (`train:0017, 0036, 0004, 0013` at seed 42), full 18-task selection gate (`val:0000`–`val:0017`), workers 8, patch mode, edit budget 4, slow update / meta at upstream defaults, `eval_test: false` |
-| Diagnostics | `optimizer_calls.jsonl` (opt-in backend call log: prompts, replies, usage, errors), `OPENAI_LOG=debug` SDK HTTP lines in `job.log`, `trace.json` per episode. None affect requests, actions or scores (tests in 64358982) |
-| Resources | 1 A40, 4 CPUs, 48 GB (one spgpu billing unit), 5 h limit |
-| No Lean | Lean / contract work has not started and must not start yet |
-
-The run plan, budgets and retry/cost bounds are in `IMPLEMENTATION_PLAN.md`
-("Next experiment").
+| Config | `configs/research/alfworld_smoke_strict_traced.yaml` (= strict smoke + `trace_log: true`), commit `12a153e` |
+| Baseline selection (initial skill) | 12/18 (0.667) |
+| Train batch `train:0017, 0036, 0004, 0013` | 1/4 |
+| DeepSeek | 4 calls (2 analysts, merge, ranking), 0 retries, 0 parse failures; 6 edits proposed → 4 kept |
+| Candidate selection | 12/18 (0.667); +`val:0012`, −`val:0014` |
+| Gate | **reject** (tie; strict `>` rule) — `best_skill.md` = initial skill |
+| Cost | 2.57 h on one A40 unit ≈ $0.28; DeepSeek ≈ $0.008 |
 
 ## B. Repository and environment
 
@@ -40,7 +37,8 @@ The run plan, budgets and retry/cost bounds are in `IMPLEMENTATION_PLAN.md`
 | Upstream base | `microsoft/SkillOpt` @ `1a44050` |
 | Remote | `origin` = public research fork; `origin/research/alfworld-baseline` = local HEAD |
 | Latest code commit | `12a153e` (strict+trace config, opt-in optimizer call log, config resolver); pushed |
-| Latest deployed snapshot | `12a153e` (`$SNAPSHOT_ROOT/12a153e5ffa3`), used by tests 64358982 and training job 64359024. Do not modify it while the job runs |
+| Latest deployed snapshot | `12a153e` (`$SNAPSHOT_ROOT/12a153e5ffa3`), used by tests 64358982 and training job 64359024 |
+| Local docs | results recorded in local commits after `12a153e` (docs only; not pushed, push needs approval) |
 | Cluster envs | controller `skillopt`; vLLM `skillopt-vllm-0.28.0` (in use); `skillopt-vllm` (0.25.1, preserved, unused) |
 | Data / model | ALFWorld `json_2.1.1` in `$ALFWORLD_DATA`; Qwen weights in `$HF_HOME` (2/2 shards verified) |
 | Private settings | `research/cluster/site.env` (git-ignored; template `site.env.example`); DeepSeek key only in `$SECRETS_FILE` on the cluster |
@@ -58,10 +56,11 @@ Workflow: edit locally → commit → (approved) push → `research/deploy.sh` �
 - First ALFWorld episode solved in 3 actions (64333791); 8 fixed train tasks: **4/8 successes**, traces consistent (64337548).
 - Opt-in `env.reasoning_parser` (strict | qwen_compat) and `env.trace_log` implemented and tested; defaults equal upstream (`8f739f7`; `BASELINE_ARCHITECTURE.md` §2e).
 - Offline analysis: runaway 8000-token generations under the lockstep rollout caused most of the 31-minute rollout (64351263).
+- **One complete original SkillOpt step** incl. the gate (64359024); optimizer call log, SDK request lines and traces all consistent.
 - Run manifests sanitized; `billing.json` and `resource_usage.csv` recorded per run.
 
-Cumulative compute so far: GPU ≈ 1.03 physical GPU-h, ≈ 1.47 billable
-GPU-equivalent h (≈ $0.16); DeepSeek: 2 paid calls (≈ $0.00007).
+Cumulative compute so far: GPU ≈ 3.60 physical GPU-h, ≈ 4.04 billable
+GPU-equivalent h (≈ $0.44); DeepSeek: 8 paid calls (≈ $0.008).
 
 ## D. Current issues and uncertainties
 
@@ -72,8 +71,12 @@ GPU-equivalent h (≈ $0.16); DeepSeek: 2 paid calls (≈ $0.00007).
 - **Long generations:** 7/277 replies hit the 8000-token cap (5 became
   `look` fallbacks). Together with lockstep stepping they dominate runtime.
   Changing the cap or `env.workers` would be a new, separately labeled condition.
-- **Runtime estimate for the smoke:** ~1.5–3.3 h (a planning estimate); a 2 h
-  allocation is likely too short.
+- **Gate noise (interpretation):** one 18-task evaluation at temperature 0.7;
+  a 1-task swap is 5.6 points. Run-to-run noise is unmeasured, so the tie
+  (and the lower fallback/cap counts) say little about skill quality.
+- **Credit assignment (interpretation):** the success analyst misattributed
+  `train:0004`'s success (it ended on *taking* the statue under the lit lamp);
+  the kept "Light before examine" edit omits holding the object.
 - **SkillOpt saves no optimizer prompts or raw replies** and drops unparsable
   replies silently (verified in code). The opt-in call log in `12a153e` closes
   this for our runs; upstream behavior is unchanged when it is off.
@@ -91,35 +94,29 @@ GPU-equivalent h (≈ $0.16); DeepSeek: 2 paid calls (≈ $0.00007).
 | GPU requests: **1 A40 = 4 CPUs = 48 GB** (spgpu bills the max of weighted resources) | approved (user) |
 | Keep Qwen checkpoint, generation settings, 8000-token cap, `env.workers` 8, evaluator, skill-update rules, selection split unchanged for the smoke | approved (user) |
 | Conditions kept separate: **A** strict upstream, **B** + `qwen_compat`, **C** future Python/Lean contract feedback. B's gains are never credited to C | approved (user) |
-| Run condition A (strict) + `trace_log` as the first training smoke | **user-approved 2026-10-20** (one submission; 64359024) |
+| Run condition A (strict) + `trace_log` as the first training smoke | user-approved 2026-10-20; **done** (64359024) |
 | `trace_log` and the optimizer call log may be on in any condition (diagnostic only) | verified in code and tests (64358982); per-run choice |
 
 ## F. Active operations and approvals
 
-- **Active Slurm job:** **64359024** (`smoke`, STAGE=train, commit `12a153e`,
-  `TRAIN_CONFIG=configs/research/alfworld_smoke_strict_traced.yaml`,
-  1 A40 / 4 CPUs / 48 GB / 5 h, submitted 13:31 EDT; PENDING at last check).
-  Run dir: `$RUN_ROOT/<timestamp>_smoke_train_64359024`.
-  Status: `ssh gl sacct -j 64359024 -X -o State,Elapsed`; log: `<run dir>/job.log`.
-  Expected outputs: `skillopt/{selection_eval_baseline,steps/step_0001,skills,history.json,summary.json}`,
-  `optimizer_calls.jsonl`, `optimizer_calls_summary.json`, `trace_check_*.json`, `run_summary.json`, `billing.json`.
-- **User authorization (2026-10-20, from the user's message):** exactly
-  **one** strict-parser training smoke as configured in section A. On failure:
-  preserve evidence and stop; no automatic retry, no setting changes.
-- **Not authorized:** any resubmission, condition B (`qwen_compat`) training,
-  additional iterations, held-out test evaluation, 8000-token-cap or workers
-  experiments, two-replica serving, Lean/contract work.
+- **Active Slurm jobs:** none (`squeue` empty, 16:10). Last jobs: 64358982
+  (tests, 195 passed), 64359024 (training smoke, COMPLETED 0:0, 2:34:00).
+- **Authorized but not executed:** none. The one training submission
+  approved on 2026-10-20 was used by 64359024.
+- **Pending user decisions:** (1) push the local results/docs commits;
+  (2) next experiment, if any (e.g. repeat runs to measure gate noise,
+  condition B, the paper-aligned protocol questions in `IMPLEMENTATION_PLAN.md`).
+- **Not authorized:** any new GPU job or paid API call, condition B
+  training, additional iterations, held-out test evaluation, token-cap or
+  workers experiments, two-replica serving, Lean/contract work.
 
 ## G. Next actions
 
-1. Monitor 64359024 to a terminal state (`sacct`), then `research/fetch_run.sh 64359024`.
-2. Inspect: baseline and candidate selection scores, `patches/`, `merged_patch.json`,
-   `ranked_edits.json` (if any), `candidate_skill.md`, `edit_apply_report.json`,
-   `step_record.json` (gate action), `optimizer_calls_summary.json` (attempts,
-   parse outcomes, tokens, cost), `trace_check_*.json`, `billing.json`.
-3. Update `EXPERIMENT_LOG.md`, `DAILY_LOG.md`, this file; report to the user.
-4. Review results with the user before any further experiment.
-5. Later (non-blocking, user request): record pre-implementation research
+1. Review job 64359024 with the user (milestone 8): edits, gate, traces,
+   optimizer call log (`$LOCAL_RUNS/20261020-133347_smoke_train_64359024`).
+2. Decide milestone 9 questions (selection size, slow-update gating,
+   reflection rounds, reasoning effort, seeds/repeats, budget).
+3. Later (non-blocking, user request): record pre-implementation research
    decisions, incl. the rationale for independently specified task contracts (Option B).
 
 ## H. Evidence and references

@@ -583,7 +583,7 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   workers 8, max_api_workers 8, analyst_workers 2, minibatch 8, max_steps 50,
   lr fixed, `eval_test: false`, slow update / meta on (upstream defaults).
 
-## 2026-10-20 — training smoke, condition A strict + traces (job 64359024) — SUBMITTED
+## 2026-10-20 — training smoke, condition A strict + traces (job 64359024) — COMPLETED; candidate rejected (tie 12/18)
 
 - **Purpose:** one original SkillOpt optimization step (rollout → reflect →
   merge → clip → apply → gate) end to end (CLAUDE.md §9 item 6).
@@ -598,7 +598,75 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   (DeepSeek off-peak). No API-side spend cap; ≤ 9 HTTP requests per call site.
 - **Diagnostics enabled:** `trace.json` per episode, `optimizer_calls.jsonl`,
   `OPENAI_LOG=debug` (content-free SDK request lines in `job.log`).
-- **Outcome:** pending (to be filled in after completion).
+- **Run dir:** runs/20261020-133347_smoke_train_64359024 (fetched to `$LOCAL_RUNS`).
+- **Outcome:** COMPLETED, exit 0, 2 h 34 min (13:33–16:07 EDT). Every stage
+  ran: vLLM ready after 210 s, network check **pass**, preflight PASS
+  (optimizer via SkillOpt's backend, thinking active; target OK), baseline
+  selection, train rollout, reflection, merge, ranking, apply, candidate
+  selection, gate, epoch-end slow-update placeholder and meta-skill skip.
+- **Resources used (sacct / samplers):** 1 A40, 4 CPUs, 48 GB; billable 1.0
+  GPU-equivalent × 2.567 h ≈ **$0.28** (rate $0.1085/h). GPU memory peak
+  38.7 / 46.1 GB (vLLM reserves 0.85), mean GPU util 95.8%. Mean CPU use 0.18
+  cores (4.5% of 4); peak cgroup memory 16.1 GiB (process 4.1 GiB, page cache
+  11.9 GiB). The one-unit request was ample.
+- **Time split:** vLLM + preflight ~4 min; baseline selection (18 episodes,
+  chunks 8/8/2) ≈ 78 min (derived); step 1 = 71 min: train rollout 782 s,
+  reflect 18 s, aggregate 11 s, ranking 14 s, candidate selection 3,431 s.
+- **Train rollout** (`train:0017, 0036, 0004, 0013`, batch seed 1043, as
+  predicted by the dataloader preview): **1/4** — only `train:0004`
+  (look_at_obj_in_light, 5 steps) succeeded; the other three used all 50
+  steps.
+- **Optimizer (DeepSeek, `optimizer_calls_summary.json`):** 4 calls, 4 HTTP
+  requests (all 200), **0 retries, 0 errors, 0 parse failures**, all
+  `finish_reason=stop`; `resp.model` = `deepseek-flash` (alias; the response
+  does not expose a version). Tokens: 13,762 in (0 cache hits), 9,631 out
+  (7,193 reasoning). Cost ≈ **$0.0078** at the off-peak rate in effect ($0.0157
+  if peak). Call-log totals match the trainer's `token_summary` exactly.
+
+  | Call | Input → output tokens | Result |
+  |---|---|---|
+  | success analyst (1 trajectory) | 1,445 → 1,306 | 2 edits |
+  | failure analyst (3 trajectories) | 8,548 → 3,398 | 4 edits |
+  | final merge | 2,100 → 2,451 | 6 edits (4 failure + 2 success) |
+  | ranking (6 > budget 4) | 1,669 → 2,476 | kept indices [0, 1, 2, 5] |
+
+- **Kept edits (candidate, 2,966 → 4,752 chars; all 4 applied):**
+  1. append "Room-Level Exploration (Breaking Navigation Loops)": never
+     revisit checked receptacles; move to unvisited areas (support 3).
+  2. insert after principle 3: take only the goal object; cleaning/heating/
+     cooling need no extra tool (support 3).
+  3. append "Pick-Two Progress Rule": never re-take a placed object; track
+     `placed_count` (support 3).
+  4. insert principle 9 "Light before examine": turn on the desklamp, then
+     examine; if lamp and object share a receptacle "do everything in place"
+     (support 1, from the single success).
+  Dropped by ranking: "Avoid Redundant Inspection" (failure analyst) and a
+  task-table rewrite for examine-in-light that called taking the object
+  "optional" (success analyst).
+- **Gate:** baseline selection hard **0.6667 (12/18)**; candidate **0.6667
+  (12/18)** → `action: reject` ("hard=0.6667 <= current=0.6667"; the rule is
+  strictly greater). `best_skill.md` = initial skill; `skills/skill_v0001.md`
+  = initial skill + the empty SLOW_UPDATE placeholder (upstream epoch-1
+  behavior). Rejected edits recorded in `trajectory_digest.json`.
+- **Per task (baseline → candidate):** identical on 16/18; candidate gained
+  `val:0012` (cool; 50 → 23 steps) and lost `val:0014` (heat; 15 → 50
+  steps). Steps 493 → 474; `look` fallbacks 17 → 6; replies at the 8000-token
+  cap 20 → 11; the two pick-two tasks finished faster (40 → 11, 50 → 28).
+- **Trajectory validity:** trace checks all consistent (18 + 4 + 18
+  episodes). 1,122 target requests, all HTTP 200; mean 580 generated tokens per
+  request, 72 generated tokens/s aggregate. As before, almost all replies lack
+  `<think>` tags (strict parser → `reasoning` null on 474/476 baseline and
+  468/468 candidate non-fallback steps), so the analysts saw actions and observations only.
+- **Deviations from plan:** none. Settings as approved; no retries.
+- **Interpretation (not established):** the tie is consistent with no effect
+  or a small effect in either direction: with one sample per task at
+  temperature 0.7, a 1-task swap (5.6 points) is within plausible run-to-run
+  noise, which we have not measured. The step, fallback and cap reductions
+  are single-run observations, not evidence of improvement. The kept
+  principle 9 generalizes from one success and misattributes it: the trace
+  shows `train:0004` ended when the agent *picked up* the statue under the
+  lit lamp (step 4), not when it examined the dresser; the edit never says
+  the object must be held.
 
 <!-- Template for job entries:
 

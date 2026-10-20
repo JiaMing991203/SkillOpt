@@ -19,13 +19,17 @@ and representative traces have been inspected with the user.
 | 4 | Qwen served on one A40 with loopback-only listeners | Done (vLLM 0.28.0) | job 64332934 (history: 64329002, 64330104, 64331018) |
 | 5 | ALFWorld rollouts with valid actions, scores, preserved traces | Done | jobs 64333791 (1 episode), 64337548 (8 episodes) |
 | 6 | Opt-in reasoning parser + trace instrumentation | Done | `8f739f7`; job 64336627 |
-| 7 | **One original SkillOpt optimization step incl. the gate** | **Next; awaiting authorization** | — |
-| 8 | Reproducibility review of the fetched training run | After 7 | — |
+| 7 | One original SkillOpt optimization step incl. the gate | **Done** (operational; candidate rejected on a 12/18 tie) | job 64359024 (`12a153e`) |
+| 8 | **Reproducibility review of the fetched training run** | **Next** (with the user) | — |
 | 9 | Decide the paper-aligned full-baseline protocol (selection size, slow-update gating, reflection rounds, reasoning effort, seeds, budget) | Not started | needs 7–8 |
 | 10 | Python contract diagnostics (condition C, control) | Not started | needs 9 |
 | 11 | Lean contract diagnostics (condition C) | Not started | needs 10 |
 
-## Next experiment: first training smoke (milestone 7)
+## First training smoke (milestone 7) — done
+
+Ran as job 64359024 with `alfworld_smoke_strict_traced.yaml` (results:
+`EXPERIMENT_LOG.md`). The plan below is kept as the record of what was
+estimated beforehand; actual: 2.57 GPU-h (≈ $0.28), DeepSeek ≈ $0.008.
 
 **Condition A: strict upstream parsing** (the user's planned first run).
 

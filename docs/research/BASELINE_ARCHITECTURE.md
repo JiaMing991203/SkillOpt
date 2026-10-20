@@ -308,7 +308,9 @@ passes `--optimizer_model <id>` and exports
 Provider documentation (api-docs.deepseek.com, read 2026-10-20; **not yet
 verified against live responses**):
 - API model id `deepseek-flash` currently maps to `DeepSeek-V4.1-Flash-1017`
-  (an alias that may move; we record the server's `resp.model`).
+  (an alias that may move; we record the server's `resp.model`). Live
+  responses (jobs 64328962, 64359024) return only the alias `deepseek-flash`,
+  so the dated version is not confirmed by the API.
 - Thinking is **on by default** with effort `high`. It is toggled via
   `extra_body={"thinking": {"type": "enabled"|"disabled"}}`. Reasoning comes
   back in `message.reasoning_content`. `temperature` and penalties are ignored
