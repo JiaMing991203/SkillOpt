@@ -32,3 +32,12 @@ model:
   # These equal the qwen_chat backend defaults; pinned so they are recorded.
   target_qwen_chat_temperature: 0.7
   target_qwen_chat_max_tokens: 8000
+
+# Research options of the ALFWorld adapter, recorded explicitly at their
+# upstream-equivalent values. "strict" = upstream <think>-tag reasoning
+# extraction; trace_log false = no trace.json. Diagnostic runs may enable
+# trace_log (does not change actions/outcomes; tests/test_alfworld_trace_log.py).
+# reasoning_parser: qwen_compat is a separate experimental condition.
+env:
+  reasoning_parser: strict
+  trace_log: false

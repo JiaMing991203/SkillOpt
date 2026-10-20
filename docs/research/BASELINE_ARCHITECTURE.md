@@ -206,7 +206,10 @@ Verified against `rollout.py` and the saved `conversation.json`:
 | SkillOpt reflection (as designed) | task description/type, per-step action + next observation, success/failure, step count | agent reasoning (empty `reasoning`, see 2c) |
 | Our analysis / future verification | per step: raw reply (`model_response`), parsed action, next observation (`env_feedback`), reward, done; final `won`; gamefile path | **initial observation** (the room description before step 0); **full per-step prompt** (`obs["text"]`, including the **admissible-action list**); the **executed** (lowercased, projected) action; the env's `is_action_valid` flag; per-step latency/token usage; fallback cause details (2b) |
 
-Consequence: contracts such as "every action is in the admissible set" or
+With `trace_log: true` (section 2e), every field in the "Missing" column
+except latency-free fallback internals is recorded in `trace.json`.
+
+Consequence (without trace_log): contracts such as "every action is in the admissible set" or
 "the agent saw object X before acting on it" cannot be checked from today's
 traces. Only the next observation is saved, and the admissible lists are
 not. A trace extractor for Lean/Python contracts would need opt-in,
@@ -214,6 +217,54 @@ additive logging of these fields (behind a flag, default off, so baseline
 runs are unaffected).
 
 Not changed for the baseline (per instructions): thinking mode, prompts, parser.
+
+### 2e. Opt-in research options (added 2026-10-20; defaults = upstream)
+
+Both are ALFWorld adapter options (`env.reasoning_parser`, `env.trace_log`),
+recorded explicitly in `configs/research/alfworld_qwen35_deepseek.yaml` at
+upstream-equivalent values.
+
+**`reasoning_parser`** (`skillopt/envs/alfworld/response_compat.py`):
+- `strict` (default): identical to upstream `_extract_think` (tested on every
+  case, including the fallback sentinels).
+- `qwen_compat`: (1) if strict finds non-empty reasoning, return exactly that;
+  (2) otherwise take the text **before the first `<action>`**, remove
+  `<think>`/`</think>` delimiters, and collapse whitespace to one line;
+  (3) return `None` if nothing remains. It never invents text, never
+  includes the action or anything after it, and never alters actions. Steps
+  gain a `reasoning_source` field (`think_tags` / `untagged_prefix` / `none`)
+  only in this mode.
+- Untrusted data: recovered text goes into the **same** `reasoning` slot the
+  strict parser fills (no new prompt channel). The one-line form prevents it
+  from forging the formatter's `[step N …]` / `### Trajectory` lines (tested).
+  It can still contain instruction-like text, the same risk class as
+  upstream's tagged reasoning and observations. The upstream analyst prompt
+  does not label trajectories as untrusted, and we do not change prompts.
+
+**`trace_log`** (`rollout.py`, default off) writes
+`predictions/<id>/trace.json` (`schema: lso.alfworld_trace.v1`) **in
+addition to** the unchanged `conversation.json` / `results.jsonl`:
+
+| Level | Fields |
+|---|---|
+| Episode | task id/type/description, gamefile, system prompt, skill SHA-256, reasoning parser, max_steps, **initial observation**, initial prompt observation, **initial admissible actions**, final {won, done, n_steps, timed_out, hard} |
+| Step | **observation before acting**, prompt observation + full-prompt SHA-256, **admissible actions before acting**, raw response, parsed action, **executed action** (recomputed with the env manager's own pure projection on copies), projection validity, env `is_action_valid`, executed-in-admissible, reasoning + source, feedback, reward, done, won, call {latency, token usage, exception text, unparsed response} |
+
+Tests (`tests/test_alfworld_trace_log.py`, deterministic fake env using the
+real projection): enabling trace_log leaves results, `conversation.json`,
+executed actions and `compute_score` identical; `qwen_compat` changes only
+`reasoning` (+ `reasoning_source`).
+
+### 2f. Experimental conditions (keep separate; never attribute across them)
+
+| Condition | What differs | What it can show |
+|---|---|---|
+| **A. Strict upstream SkillOpt** | nothing (`reasoning_parser: strict`) | the reproduced baseline |
+| **B. SkillOpt + Qwen response-format compatibility** | `reasoning_parser: qwen_compat`: the optimizer also sees the agent's untagged explanations | the effect of restoring the reasoning channel. This is a **format fix, not verification**, and its gains must never be credited to Python/Lean contracts |
+| **C. Future contract-diagnostic feedback** (Python, then Lean) | adds contract-violation reports to the optimizer input | must be compared against **B** (and A) under the same parser, with Python diagnostics as the control for Lean |
+
+`trace_log` is diagnostics-only and may be on in any condition, since it does
+not change behavior. The comparison arms must use the same parser setting.
 
 **Proposal (not for the baseline):** for the failure-localization research,
 add opt-in instrumentation behind a config flag, off by default. It would

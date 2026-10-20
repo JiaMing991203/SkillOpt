@@ -12,6 +12,7 @@ import os
 from skillopt.datasets.base import BatchSpec
 from skillopt.envs.base import EnvAdapter
 from skillopt.envs.alfworld.dataloader import ALFWorldDataLoader
+from skillopt.envs.alfworld.response_compat import REASONING_PARSERS
 from skillopt.envs.alfworld.rollout import (
     build_alfworld_env,
     run_alfworld_batch,
@@ -61,6 +62,12 @@ class ALFWorldAdapter(EnvAdapter):
         Trajectories per analyst group, M (default 8).
     edit_budget : int
         Maximum edits per minibatch, L (default 4).
+    reasoning_parser : str
+        Research option. "strict" (default, upstream) or "qwen_compat"; only
+        changes how a step's ``reasoning`` field is extracted.
+    trace_log : bool
+        Research option. If True, also write predictions/<id>/trace.json
+        (diagnostics only; default False).
     """
 
     def __init__(
@@ -82,7 +89,17 @@ class ALFWorldAdapter(EnvAdapter):
         minibatch_size: int = 8,
         edit_budget: int = 4,
         max_completion_tokens: int = 16384,
+        reasoning_parser: str = "strict",
+        trace_log: bool | str = False,
     ) -> None:
+        if reasoning_parser not in REASONING_PARSERS:
+            raise ValueError(f"unknown reasoning_parser {reasoning_parser!r}; expected one of {REASONING_PARSERS}")
+        if isinstance(trace_log, str):
+            if trace_log.strip().lower() not in {"true", "false", "1", "0", "yes", "no", ""}:
+                raise ValueError(f"trace_log must be a boolean, got {trace_log!r}")
+            trace_log = trace_log.strip().lower() in {"true", "1", "yes"}
+        self.reasoning_parser = reasoning_parser
+        self.trace_log = bool(trace_log)
         self.max_steps = max_steps
         self.workers = max(int(workers or 1), 1)
         self.max_api_workers = max_api_workers
@@ -353,6 +370,8 @@ class ALFWorldAdapter(EnvAdapter):
                 max_api_workers=self.max_api_workers,
                 max_completion_tokens=self.max_completion_tokens,
                 result_ids=getattr(env_manager, "_skillopt_result_ids", None),
+                reasoning_parser=self.reasoning_parser,
+                trace_log=self.trace_log,
             )
 
         with open(results_path, "w") as f:
@@ -418,6 +437,8 @@ class ALFWorldAdapter(EnvAdapter):
                     diagnostic_mode=diagnostic_mode,
                     diagnostic_instruction=diagnostic_instruction,
                     result_ids=chunk_ids,
+                    reasoning_parser=self.reasoning_parser,
+                    trace_log=self.trace_log,
                 )
             finally:
                 self._close_env(chunk_env)

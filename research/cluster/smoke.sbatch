@@ -23,6 +23,9 @@
 
 STAGE="${STAGE:?set STAGE=vllm|rollout|train}"
 ROLLOUT_EPISODES="${ROLLOUT_EPISODES:-1}"
+ROLLOUT_SPLIT="${ROLLOUT_SPLIT:-valid_seen}"          # train | valid_seen (never valid_unseen here)
+ROLLOUT_CFG_OPTIONS="${ROLLOUT_CFG_OPTIONS:-}"        # e.g. "env.trace_log=true"
+case "$ROLLOUT_SPLIT" in train|valid_seen) ;; *) echo "ROLLOUT_SPLIT must be train or valid_seen" >&2; exit 2 ;; esac
 
 source research/cluster/lib.sh
 load_site
@@ -47,11 +50,11 @@ nvidia-smi --query-gpu=timestamp,memory.used,memory.total,utilization.gpu \
 LSO_GPU_MON_PID=$!
 # Manifest and env freezes first, so a failed vLLM start still leaves them
 # (job 64329002 lost both); rewritten after start to add the vLLM command.
-write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES"
+write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES" "rollout_split=$ROLLOUT_SPLIT" "rollout_cfg_options=$ROLLOUT_CFG_OPTIONS"
 freeze_env "$CTL_ENV" ctl
 freeze_env "$LSO_VLLM_ENV" vllm
 start_vllm 900
-write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES"
+write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES" "rollout_split=$ROLLOUT_SPLIT" "rollout_cfg_options=$ROLLOUT_CFG_OPTIONS"
 
 PREFLIGHT=(--target)
 [ "$STAGE" = "train" ] && PREFLIGHT+=(--optimizer)
@@ -79,8 +82,8 @@ case "$STAGE" in
         "$CTL_ENV/bin/python" scripts/eval_only.py \
             --config configs/research/alfworld_qwen35_deepseek.yaml \
             --skill skillopt/envs/alfworld/skills/initial.md \
-            --split valid_seen --test_env_num "$ROLLOUT_EPISODES" \
-            --out_root "$OUT" || status=$?
+            --split "$ROLLOUT_SPLIT" --test_env_num "$ROLLOUT_EPISODES" \
+            --out_root "$OUT" ${ROLLOUT_CFG_OPTIONS:+--cfg-options $ROLLOUT_CFG_OPTIONS} || status=$?
         ;;
     train)
         "$CTL_ENV/bin/python" scripts/train.py \

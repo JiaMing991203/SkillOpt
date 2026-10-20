@@ -18,6 +18,8 @@ WIRING_KEYS = {
     "target_qwen_chat_thinking_mode", "target_qwen_chat_temperature", "target_qwen_chat_max_tokens",
 }
 SCALE_KEYS = {"num_epochs", "train_size", "batch_size", "analyst_workers", "eval_test"}
+# Research adapter options recorded at upstream-equivalent values (strict / off).
+RESEARCH_OPTION_KEYS = {"reasoning_parser", "trace_log"}
 
 
 def _flat(path):
@@ -29,7 +31,7 @@ def _diff(a, b):
 
 
 def test_baseline_changes_only_model_wiring():
-    assert _diff(_flat(UPSTREAM), _flat(BASELINE)) <= WIRING_KEYS
+    assert _diff(_flat(UPSTREAM), _flat(BASELINE)) <= WIRING_KEYS | RESEARCH_OPTION_KEYS
 
 
 def test_smoke_changes_only_scale_on_top_of_baseline():
@@ -44,6 +46,9 @@ def test_baseline_wiring_values():
     assert cfg["target_qwen_chat_thinking_mode"] == "disabled"
     # Blank so the run cannot silently use the backend's gpt-4o-mini default.
     assert cfg["optimizer_model"] == ""
+    # research options at upstream-equivalent values in the baseline
+    assert cfg["reasoning_parser"] == "strict"
+    assert cfg["trace_log"] is False
 
 
 def test_smoke_keeps_original_gate_and_selection_split():

@@ -15,7 +15,7 @@ require_clean_snapshot
 start_job_log
 write_manifest stage=run_tests
 
-TESTS="${TESTS:-tests/test_research_configs.py tests/test_research_summarize_run.py tests/test_research_classify_listeners.py tests/test_gate.py tests/test_gate_no_regression.py tests/test_alfworld_paths.py tests/test_openai_compatible_backend.py tests/test_openai_compatible_config.py tests/test_qwen_backend.py}"
+TESTS="${TESTS:-tests/test_research_configs.py tests/test_research_summarize_run.py tests/test_research_classify_listeners.py tests/test_alfworld_response_compat.py tests/test_alfworld_trace_log.py tests/test_gate.py tests/test_gate_no_regression.py tests/test_alfworld_paths.py tests/test_openai_compatible_backend.py tests/test_openai_compatible_config.py tests/test_qwen_backend.py}"
 # shellcheck disable=SC2086
 status=0
 PYTHONPATH="$SNAPSHOT_DIR" "$CTL_ENV/bin/python" -m pytest -q $TESTS --junitxml="$RUN_DIR/pytest.xml" || status=$?

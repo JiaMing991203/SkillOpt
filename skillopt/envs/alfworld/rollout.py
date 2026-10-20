@@ -8,10 +8,13 @@ Provides:
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
 import json
 import os
 import re
+import time
 
+from skillopt.envs.alfworld.response_compat import REASONING_PARSERS, extract_reasoning
 from skillopt.model import chat_target
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -43,6 +46,28 @@ def _extract_action(model_response: str) -> str | None:
 def _extract_think(model_response: str) -> str | None:
     match = re.search(r"<think>(.*?)</think>", model_response, re.DOTALL)
     return match.group(1).strip() if match else None
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+def _admissible_snapshot(env_manager, env_num: int) -> list:
+    """Copy of the admissible-command lists the env exposes, or Nones."""
+    envs = getattr(env_manager, "envs", None)
+    try:
+        cmds = envs.get_admissible_commands if envs is not None else None
+    except Exception:  # noqa: BLE001 - diagnostics must never break a rollout
+        cmds = None
+    if not cmds:
+        return [None] * env_num
+    return [list(c) if c is not None else None for c in cmds]
+
+
+def _py(value):
+    """numpy scalars -> plain Python for JSON."""
+    item = getattr(value, "item", None)
+    return item() if callable(item) else value
 
 
 def _build_skill_prompt(skill_content: str) -> str:
@@ -156,6 +181,8 @@ def run_alfworld_batch(
     diagnostic_mode: bool = False,
     diagnostic_instruction: str = "",
     result_ids: list[str] | None = None,
+    reasoning_parser: str = "strict",
+    trace_log: bool = False,
 ) -> list[dict]:
     """Run a batch of ALFWorld episodes.
 
@@ -176,7 +203,20 @@ def run_alfworld_batch(
     ]
 
     Also saves conversation.json per environment in out_root/predictions/<task_id>/
+
+    Opt-in research diagnostics (both default to upstream behavior):
+      reasoning_parser  "strict" (upstream ``<think>`` regex) or "qwen_compat"
+                        (also recovers untagged explanation text before
+                        ``<action>``; see response_compat.py). Only the
+                        ``reasoning`` field is affected; actions are not.
+      trace_log         also write predictions/<task_id>/trace.json with the
+                        initial observation, per-step prompt observation,
+                        admissible actions, raw response, parsed and executed
+                        action, validity, feedback, reward and termination.
+                        conversation.json and results are unchanged.
     """
+    if reasoning_parser not in REASONING_PARSERS:
+        raise ValueError(f"unknown reasoning_parser {reasoning_parser!r}; expected one of {REASONING_PARSERS}")
     skill_prompt = _build_skill_prompt(skill_content)
 
     obs, infos = env_manager.reset({})
@@ -205,6 +245,26 @@ def run_alfworld_batch(
     # Per-env conversation records
     conversations: list[list[dict]] = [[] for _ in range(env_num)]
 
+    system_prompt = "You are an expert agent operating in the ALFRED Embodied Environment."
+    traces: list[dict] | None = None
+    if trace_log:
+        admissible0 = _admissible_snapshot(env_manager, env_num)
+        traces = [
+            {
+                "schema": "lso.alfworld_trace.v1",
+                "system_prompt": system_prompt,
+                "skill_sha256": _sha256(skill_content),
+                "reasoning_parser": reasoning_parser,
+                "max_steps": max_steps,
+                "diagnostic_mode": bool(diagnostic_mode),
+                "initial_observation": obs["anchor"][i] if "anchor" in obs else None,
+                "initial_prompt_observation": obs["text"][i],
+                "initial_admissible_actions": admissible0[i],
+                "steps": [],
+            }
+            for i in range(env_num)
+        ]
+
     for step_idx in range(max_steps):
         if all(env_dones):
             break
@@ -222,12 +282,26 @@ def run_alfworld_batch(
                 prompt = _append_diagnostic_instruction(prompt, diagnostic_instruction)
             prompts[i] = prompt
 
+        # Trace only: state the agent sees before acting (read, never modified).
+        pre_state: dict[int, dict] = {}
+        call_info: dict[int, dict] | None = {} if trace_log else None
+        if trace_log:
+            admissible_now = _admissible_snapshot(env_manager, env_num)
+            for i in active_indices:
+                pre_state[i] = {
+                    "observation_before": obs["anchor"][i] if "anchor" in obs else None,
+                    "prompt_observation": obs["text"][i],
+                    "prompt_sha256": _sha256(prompts[i]),
+                    "admissible_actions": admissible_now[i],
+                }
+
         # Call API in parallel
         actions = ["None"] * env_num
 
         def call_api(idx):
+            t0 = time.monotonic()
             try:
-                response, _ = chat_target(
+                response, usage = chat_target(
                     system="You are an expert agent operating in the ALFRED Embodied Environment.",
                     user=prompts[idx],
                     max_completion_tokens=max_completion_tokens,
@@ -235,14 +309,23 @@ def run_alfworld_batch(
                     stage="rollout",
                     timeout=None,
                 )
+                if call_info is not None:
+                    call_info.setdefault(idx, {})["usage"] = usage
                 response = (response or "").strip()
                 if not response:
                     return idx, "<think>empty model response</think><action>look</action>"
                 if _extract_action(response) is None:
+                    if call_info is not None:
+                        call_info.setdefault(idx, {})["unparsed_response"] = response
                     return idx, "<think>missing action tag</think><action>look</action>"
                 return idx, response
-            except Exception:
+            except Exception as exc:
+                if call_info is not None:
+                    call_info.setdefault(idx, {})["error"] = f"{type(exc).__name__}: {exc}"[:1000]
                 return idx, "<think>error</think><action>look</action>"
+            finally:
+                if call_info is not None:
+                    call_info.setdefault(idx, {})["latency_s"] = round(time.monotonic() - t0, 3)
 
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_api_workers)
         try:
@@ -258,9 +341,11 @@ def run_alfworld_batch(
                     pending_futs.remove(future)
                     try:
                         idx, response = future.result()
-                    except Exception:  # noqa: BLE001
+                    except Exception as exc:  # noqa: BLE001
                         idx = futures[future]
                         response = "<think>error</think><action>look</action>"
+                        if call_info is not None:
+                            call_info.setdefault(idx, {})["error"] = f"future failed: {type(exc).__name__}: {exc}"[:1000]
                     actions[idx] = response
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -273,16 +358,47 @@ def run_alfworld_batch(
 
         # Record trajectory
         for i in active_indices:
+            reasoning, reasoning_source = extract_reasoning(model_responses[i], reasoning_parser)
             step_record = {
                 "step": step_idx,
                 "action": _extract_action(model_responses[i]),
-                "reasoning": _extract_think(model_responses[i]),
+                "reasoning": reasoning,
                 "model_response": model_responses[i],
                 "env_feedback": obs["anchor"][i] if "anchor" in obs else "",
                 "reward": float(rewards[i]),
                 "done": bool(dones[i]),
             }
+            if reasoning_source is not None:  # opt-in parser only; strict keeps upstream fields
+                step_record["reasoning_source"] = reasoning_source
             conversations[i].append(step_record)
+
+            if traces is not None:
+                # Recompute what the env manager executed with its own pure
+                # projection function, on copies (does not touch real actions).
+                from skillopt.envs.alfworld.vendor.alfworld_projection import alfworld_projection
+
+                admissible_before = pre_state.get(i, {}).get("admissible_actions")
+                executed, proj_valid = alfworld_projection([model_responses[i]], [list(admissible_before or [])])
+                info_i = infos[i] if isinstance(infos[i], dict) else {}
+                traces[i]["steps"].append({
+                    "step": step_idx,
+                    **pre_state.get(i, {}),
+                    "raw_response": model_responses[i],
+                    "parsed_action": step_record["action"],
+                    "executed_action": executed[0],
+                    "projection_valid": bool(proj_valid[0]),
+                    "env_is_action_valid": _py(info_i.get("is_action_valid")),
+                    "executed_action_admissible": (
+                        executed[0] in admissible_before if admissible_before is not None else None
+                    ),
+                    "reasoning": reasoning,
+                    "reasoning_source": reasoning_source or "strict",
+                    "env_feedback": step_record["env_feedback"],
+                    "reward": step_record["reward"],
+                    "done": step_record["done"],
+                    "won": bool(_py(info_i.get("won", False))),
+                    "call": (call_info or {}).get(i),
+                })
 
         # Update done status
         for i in range(env_num):
@@ -334,6 +450,18 @@ def run_alfworld_batch(
             os.makedirs(conv_dir, exist_ok=True)
             with open(os.path.join(conv_dir, "conversation.json"), "w") as f:
                 json.dump(conversations[i], f, ensure_ascii=False, indent=2)
+            if traces is not None:
+                trace = dict(traces[i])
+                trace.update({
+                    "task_id": task_id,
+                    "gamefile": gamefile,
+                    "task_type": task_type,
+                    "task_description": task_desc,
+                    "final": {"won": won, "done": env_dones[i], "n_steps": n_turns,
+                              "timed_out": not env_dones[i], "hard": result["hard"]},
+                })
+                with open(os.path.join(conv_dir, "trace.json"), "w") as f:
+                    json.dump(trace, f, ensure_ascii=False, indent=2)
 
     return results
 
