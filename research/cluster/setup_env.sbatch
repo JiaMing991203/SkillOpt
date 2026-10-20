@@ -1,6 +1,7 @@
 #!/bin/bash
 # One-time environment setup on a CPU node (no GPU needed to install wheels).
-#   - creates two NEW conda envs (refuses to modify an existing one)
+#   - creates two NEW conda envs (never modifies an env it did not create;
+#     resumes only its own marked, incomplete envs)
 #   - downloads Qwen3.5-4B at the pinned revision into $HF_HOME
 #   - downloads ALFWorld game files into $ALFWORLD_DATA
 #   - runs import smoke checks
@@ -19,38 +20,60 @@ exec > >(tee -a "$RUN_DIR/job.log") 2>&1
 write_manifest stage=setup_env
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 
+# Envs created by this script carry a marker file; only such envs are ever
+# resumed after a failed install. An existing env without the marker (i.e.
+# not created by setup_env) is never modified.
+CREATED_MARK=.lso_created_by_setup_env
+DONE_MARK=.lso_setup_complete
+
+ensure_env() {
+    local prefix="$1" pyver="$2" label="$3"; shift 3
+    if [ -e "$prefix/$DONE_MARK" ]; then
+        log "$label env already complete; leaving it unchanged"
+        return
+    fi
+    if [ -e "$prefix" ] && [ ! -e "$prefix/$CREATED_MARK" ]; then
+        die "$label env exists but was not created by setup_env; refusing to modify it"
+    fi
+    if [ -e "$prefix" ]; then
+        log "resuming incomplete $label env from an earlier setup_env job ($(cat "$prefix/$CREATED_MARK"))"
+    else
+        log "creating $label env (python $pyver)"
+        conda create -y -p "$prefix" "python=$pyver" pip
+        echo "job=${SLURM_JOB_ID:-none} commit=$GIT_COMMIT" > "$prefix/$CREATED_MARK"
+    fi
+    # Some dependencies build from source and shell out to a bare `python`
+    # (fast-downward-textworld runs `python build.py` + cmake), so the env's
+    # bin must be first on PATH, as with `conda activate`. Job 64323201
+    # failed without this.
+    (
+        export PATH="$prefix/bin:$PATH"
+        python -m pip install --upgrade pip
+        python -m pip install "$@"
+    )
+}
+
 # ── Controller env: SkillOpt + ALFWorld (TextWorld only, no THOR) ────────────
-if [ -e "$CTL_ENV" ]; then
-    log "controller env exists, leaving it unchanged: \$CTL_ENV"
-else
-    log "creating controller env \$CTL_ENV (python $CTL_PYTHON_VERSION)"
-    conda create -y -p "$CTL_ENV" "python=$CTL_PYTHON_VERSION" pip
-    "$CTL_ENV/bin/python" -m pip install --upgrade pip
-    # Non-editable install would copy a snapshot into site-packages; instead we
-    # install deps only and run SkillOpt from the snapshot via PYTHONPATH.
-    "$CTL_ENV/bin/python" -m pip install \
-        "openai>=1.30.0" "pyyaml>=6.0" "numpy>=1.24.0" "openpyxl>=3.1.0" \
-        "azure-identity>=1.15.0" "azure-core>=1.30.0" "httpx>=0.27.0" \
-        "alfworld==$ALFWORLD_VERSION" "gymnasium>=0.29.0" omegaconf "json_repair>=0.61.0" \
-        "pytest>=8.0.0" "huggingface_hub"
-fi
+# Dependencies only; SkillOpt itself runs from the snapshot via PYTHONPATH.
+# alfworld -> textworld[pddl] -> fast-downward-textworld (sdist; needs cmake
+# >= 3.12, make, a C++11 compiler: system cmake 3.26 / gcc 8.5 on the cluster).
+ensure_env "$CTL_ENV" "$CTL_PYTHON_VERSION" controller \
+    "openai>=1.30.0" "pyyaml>=6.0" "numpy>=1.24.0" "openpyxl>=3.1.0" \
+    "azure-identity>=1.15.0" "azure-core>=1.30.0" "httpx>=0.27.0" \
+    "alfworld==$ALFWORLD_VERSION" "gymnasium>=0.29.0" omegaconf "json_repair>=0.61.0" \
+    "pytest>=8.0.0" "huggingface_hub"
 
 log "controller import check"
 if ! PYTHONPATH="$SNAPSHOT_DIR" "$CTL_ENV/bin/python" -c \
     "import alfworld.agents.environment, textworld, gymnasium, omegaconf; import skillopt.envs.alfworld.adapter; print('controller imports ok')"; then
     die "controller import check failed (see traceback above); env left for inspection"
 fi
+touch "$CTL_ENV/$DONE_MARK"
 
 # ── vLLM env ─────────────────────────────────────────────────────────────────
-if [ -e "$VLLM_ENV" ]; then
-    log "vLLM env exists, leaving it unchanged: \$VLLM_ENV"
-else
-    log "creating vLLM env \$VLLM_ENV (python $VLLM_PYTHON_VERSION, vllm==$VLLM_VERSION)"
-    conda create -y -p "$VLLM_ENV" "python=$VLLM_PYTHON_VERSION" pip
-    "$VLLM_ENV/bin/python" -m pip install --upgrade pip
-    "$VLLM_ENV/bin/python" -m pip install "vllm==$VLLM_VERSION"
-fi
+ensure_env "$VLLM_ENV" "$VLLM_PYTHON_VERSION" vLLM "vllm==$VLLM_VERSION"
 "$VLLM_ENV/bin/python" -c "import vllm, torch, transformers; print('vllm', vllm.__version__, 'torch', torch.__version__, 'cuda', torch.version.cuda, 'transformers', transformers.__version__)"
+touch "$VLLM_ENV/$DONE_MARK"
 
 # ── Target model weights (pinned revision) ───────────────────────────────────
 log "downloading $TARGET_MODEL_ID@$TARGET_MODEL_REVISION into \$HF_HOME"
