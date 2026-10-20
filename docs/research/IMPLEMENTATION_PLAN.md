@@ -47,8 +47,11 @@ representative traces have been inspected.
 2. **Slow-update gating:** paper says gated; code default force-accepts.
 3. **Reflection rounds:** paper says up to 3; code does 1 (multi-round was
    never wired in). A paper-aligned mode would be new code.
-4. **DeepSeek reasoning mode:** the backend cannot send reasoning controls;
-   record the provider default from preflight, then decide.
+4. **DeepSeek reasoning mode:** per provider docs, `deepseek-flash` thinks by
+   default at effort `high`; the backend cannot send `extra_body`, so runs use
+   that default, whereas the paper's optimizer used `medium`. Confirm with
+   `check_compute`, then decide whether a small, flagged backend option is
+   justified (it would apply equally to all comparison arms).
 5. **Batch size:** default 40 > 39 train tasks.
 6. **Seeds/repeats:** an 18-task gate is noisy; plan repeats.
 7. **Fallback diagnostics:** for the Lean work, add opt-in per-step

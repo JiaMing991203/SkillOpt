@@ -70,11 +70,14 @@ conventionally 140 and 134 games. So the paper's test set matches the repo
 
 **Verified (data census, setup_env job 64323909):** the downloaded
 `json_2.1.1` has train 3553, **valid_seen 140**, **valid_unseen 134** games.
-The paper's "140 selection" therefore equals all of `valid_seen`, and its
-"134 test" equals all of `valid_unseen` (the repo's test split). The
-`split_{train,val,test}.json` files the manifest cites do **not** exist in the
+The `split_{train,val,test}.json` files the manifest cites do **not** exist in the
 `alfworld-download` output. The 18 val items sit at scattered positions in
 sorted `valid_seen` (0, 1, 10, 27, …, 122), not a prefix.
+
+**Interpretation (not established):** the counts match exactly, so the paper's
+"140 selection" most likely means all of `valid_seen` and its "134 test" all
+of `valid_unseen` (the repo's test split). This stays an inference until the
+exact split procedure is known.
 
 **Unknown:** why the released selection split is an 18-game subset and how it
 was sampled. No upstream issue mentions it (searched 2026-10-19). Proposal: decide before full runs whether to
@@ -147,14 +150,26 @@ No source change needed. Our research config
 passes `--optimizer_model <id>` and exports
 `OPTIMIZER_OPENAI_COMPATIBLE_API_KEY` from a cluster-only secrets file.
 
-Open points (**Unknown** until checked from a compute node):
-- The exact API model id for "DeepSeek V4.1 Flash" — `check_compute.sbatch`
-  lists `GET /models` and records `resp.model` for one call.
-- Whether that model thinks by default and how its reasoning is controlled.
-  The backend cannot send reasoning controls, so we get the provider default;
-  we log `has_reasoning_content` in preflight. Reasoning tokens (if any) count
-  against `max_tokens`, which is why the config raises the backend cap from
-  8000 to the caller's 16384.
+Provider documentation (api-docs.deepseek.com, read 2026-10-20; **not yet
+verified against live responses**):
+- API model id `deepseek-flash` currently maps to `DeepSeek-V4.1-Flash-1017`
+  (an alias that may move; we record the server's `resp.model`).
+- Thinking is **on by default** with effort `high`. It is toggled via
+  `extra_body={"thinking": {"type": "enabled"|"disabled"}}`. Reasoning comes
+  back in `message.reasoning_content`. `temperature` and penalties are ignored
+  in thinking mode.
+- Prices per 1M tokens (off-peak / peak): input cache hit $0.003 / $0.006,
+  cache miss $0.15 / $0.30, output $0.60 / $1.20. Peak is 01-04 and 06-10 UTC
+  on weekdays.
+
+Consequence: SkillOpt's `openai_compatible` backend sends neither
+`reasoning_effort` nor `extra_body`, so the optimizer runs at the provider
+default (**thinking on, effort high**). The paper's optimizer used
+`reasoning_effort: medium`. This is a recorded deviation, not changed for the
+baseline. The backend returns only `message.content`, so reasoning should not
+leak into skill edits. Whether reasoning tokens count against `max_tokens` is
+not documented; `check_compute` measures it. That is also why the config
+raises the backend cap from 8000 to the caller's 16384.
 
 ## 5. How skill edits are generated and validated (Verified)
 

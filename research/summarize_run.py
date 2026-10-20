@@ -161,6 +161,47 @@ def vllm_throughput(run_dir: str) -> dict | None:
     }
 
 
+def gpu_usage(run_dir: str) -> dict | None:
+    """Peak/mean from the 5-second nvidia-smi samples (MiB, %)."""
+    mem, util, total = [], [], None
+    try:
+        with open(os.path.join(run_dir, "gpu_usage.csv"), encoding="utf-8") as f:
+            for line in f:
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) < 4:
+                    continue
+                try:
+                    mem.append(float(parts[1])); total = float(parts[2]); util.append(float(parts[3]))
+                except ValueError:
+                    pass
+    except OSError:
+        return None
+    if not mem:
+        return None
+    return {
+        "samples": len(mem),
+        "peak_memory_used_mib": max(mem),
+        "memory_total_mib": total,
+        "peak_utilization_pct": max(util),
+        "mean_utilization_pct": round(sum(util) / len(util), 1),
+    }
+
+
+def vllm_http_statuses(run_dir: str) -> dict | None:
+    """Count chat-completion HTTP status codes in vLLM's access log."""
+    counts: dict[str, int] = {}
+    pat = re.compile(r'"POST /v1/chat/completions HTTP/[\d.]+" (\d{3})')
+    try:
+        with open(os.path.join(run_dir, "vllm.log"), encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = pat.search(line)
+                if m:
+                    counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    except OSError:
+        return None
+    return counts
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("out_root")
@@ -194,6 +235,8 @@ def main() -> int:
         "token_summary": (summary or {}).get("token_summary"),
         "skills": sorted(os.listdir(os.path.join(root, "skills"))) if os.path.isdir(os.path.join(root, "skills")) else [],
         "vllm_throughput": vllm_throughput(a.run_dir) if a.run_dir else None,
+        "vllm_http_statuses": vllm_http_statuses(a.run_dir) if a.run_dir else None,
+        "gpu_usage": gpu_usage(a.run_dir) if a.run_dir else None,
     }
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
@@ -203,8 +246,9 @@ def main() -> int:
               f"nothing_happens={r['nothing_happens']} format_invalid={r['format_invalid']}")
     for g in gate:
         print("gate:", {k: g.get(k) for k in ("step", "action", "selection_hard", "current_score", "best_score")})
-    if report["vllm_throughput"]:
-        print("vllm:", report["vllm_throughput"])
+    for key in ("vllm_throughput", "vllm_http_statuses", "gpu_usage"):
+        if report[key]:
+            print(f"{key}:", report[key])
     return 0
 
 

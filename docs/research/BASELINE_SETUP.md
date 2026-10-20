@@ -104,10 +104,12 @@ experiment).
 |---|---|---|
 | `setup_env` | CPU, 4 cores, 16 GB, ≤2 h | Create the two new envs (installs run with the env activated on `PATH`; `alfworld` builds `fast-downward-textworld` from source with system cmake/gcc; envs it creates get a marker and are resumed if incomplete; envs it did not create are never touched), download Qwen3.5-4B at the pinned revision, `alfworld-download`, import check, check all 191 split gamefiles exist, write `alfworld_data_census.json` (game counts per ALFWorld split, presence of the `split_*.json` files the manifest cites, positions of the 18 val items in `valid_seen`). |
 | `run_tests` | CPU, 2 cores, 8 GB, ≤30 min | Research-config guards, fallback classifier, gate / ALFWorld path / backend tests. |
-| `check_compute` | CPU, 1 core, 4 GB, ≤15 min | Outbound HTTPS from a compute node; list DeepSeek models; one tiny chat call if `OPTIMIZER_MODEL` is set. |
+| `check_compute` | CPU, 1 core, 4 GB, ≤15 min | Outbound HTTPS from a compute node; list DeepSeek models; if `OPTIMIZER_MODEL` is listed, two tiny calls **through SkillOpt's `openai_compatible` backend** (configured from the research YAML): plain text, and a JSON edit parsed by SkillOpt's `extract_json`. Records resolved model, `reasoning_content` presence, whether SkillOpt's returned text excludes reasoning, full usage, and estimated cost. |
 | `smoke STAGE=vllm` | 1 A40, 8 cores, 64 GB, ≤1 h | Start vLLM, verify loopback-only listeners, send one real ALFWorld prompt through SkillOpt's `qwen_chat` backend, require an `<action>` tag. |
-| `smoke STAGE=rollout` | same | + DeepSeek preflight; `ROLLOUT_EPISODES` (default 1) ALFWorld episodes via `eval_only.py`; vLLM throughput from `/metrics`. |
-| `smoke STAGE=train` | same; walltime set from the rollout measurement | One original SkillOpt step (see §7). |
+| `smoke STAGE=rollout` | same | `ROLLOUT_EPISODES` (default 1) ALFWorld episodes via `eval_only.py`; **no DeepSeek calls**; vLLM throughput from `/metrics`, HTTP status counts from `vllm.log`. |
+| `smoke STAGE=train` | same; walltime set from the rollout measurement | DeepSeek preflight, then one original SkillOpt step (see §7). |
+
+All smoke stages sample GPU memory and utilization every 5 s (`gpu_usage.csv`; peak/mean in `run_summary.json → gpu_usage`).
 
 ### Files in every run directory
 

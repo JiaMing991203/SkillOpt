@@ -3,8 +3,11 @@
 Runs on a compute node. It does not change any SkillOpt behaviour; it calls
 the same backend modules SkillOpt uses and records what the servers report.
 
-  --optimizer   DeepSeek (openai_compatible): list models, one tiny chat call,
-                record the resolved model id / fingerprint / token usage.
+  --optimizer   DeepSeek through SkillOpt's openai_compatible backend: list
+                models, then two tiny calls (plain text; JSON parsed by
+                SkillOpt's extract_json). Records resolved model id, whether
+                reasoning_content came back and whether SkillOpt excludes it,
+                full token usage, and estimated cost.
   --target      Job-local vLLM (qwen_chat): list models, then send one real
                 ALFWorld-format prompt and check that an <action> tag comes back.
 
@@ -30,41 +33,130 @@ def _get_json(url: str, key: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def check_optimizer(report: dict) -> bool:
-    from openai import OpenAI
+# USD per 1M tokens for deepseek-flash, as listed on
+# https://api-docs.deepseek.com/quick_start/pricing (read 2026-10-20).
+# Peak = 01:00-04:00 and 06:00-10:00 UTC, Mon-Fri.
+DEEPSEEK_FLASH_PRICES = {
+    "off_peak": {"cache_hit": 0.003, "cache_miss": 0.15, "output": 0.6},
+    "peak": {"cache_hit": 0.006, "cache_miss": 0.3, "output": 1.2},
+}
 
-    base = os.environ["DEEPSEEK_BASE_URL"].rstrip("/")
+
+def _deepseek_cost(usage: dict) -> dict:
+    hit = int(usage.get("prompt_cache_hit_tokens") or 0)
+    miss = int(usage.get("prompt_cache_miss_tokens") or (int(usage.get("prompt_tokens") or 0) - hit))
+    out = int(usage.get("completion_tokens") or 0)
+    return {
+        tier: round((hit * p["cache_hit"] + miss * p["cache_miss"] + out * p["output"]) / 1e6, 6)
+        for tier, p in DEEPSEEK_FLASH_PRICES.items()
+    }
+
+
+def check_optimizer(report: dict) -> bool:
+    """Two tiny calls through SkillOpt's own openai_compatible backend.
+
+    The backend is configured exactly as the trainer does it, from the research
+    YAML (base URL, max_tokens) plus the requested model id. The OpenAI client
+    inside the backend is wrapped so the raw server response (resolved model,
+    reasoning_content, full usage) is recorded next to what SkillOpt returns.
+    No call is made unless the requested model id is listed by GET /models.
+    """
+    from skillopt.config import flatten_config, load_config
+    from skillopt.model import openai_compatible_backend as oc
+    from skillopt.utils.json_utils import extract_json
+
+    cfg = flatten_config(load_config(os.path.join(REPO, "configs/research/alfworld_qwen35_deepseek.yaml")))
+    base = str(cfg["optimizer_openai_compatible_base_url"]).rstrip("/")
     key = os.environ["OPTIMIZER_OPENAI_COMPATIBLE_API_KEY"]
-    out: dict = {"base_url": base}
+    out: dict = {"base_url": base, "calls": []}
     report["optimizer"] = out
 
     models = _get_json(f"{base}/models", key)
     out["available_models"] = sorted(m.get("id") for m in models.get("data", []))
     requested = os.environ.get("OPTIMIZER_MODEL", "").strip()
     out["requested_model"] = requested
-    if not requested:
-        out["status"] = "SKIPPED_CHAT: OPTIMIZER_MODEL not set; choose one of available_models"
+    if not requested or requested not in out["available_models"]:
+        out["status"] = f"SKIPPED_CHAT: requested model {requested!r} not in available_models (no paid call made)"
         return False
 
-    client = OpenAI(base_url=base, api_key=key, timeout=120)
-    t0 = time.time()
-    resp = client.chat.completions.create(
-        model=requested,
-        messages=[{"role": "user", "content": "Reply with exactly the word OK."}],
-        max_tokens=512,
+    oc.configure_openai_compatible(
+        optimizer_base_url=base,
+        optimizer_model=requested,
+        optimizer_max_tokens=cfg.get("optimizer_openai_compatible_max_tokens"),
     )
-    msg = resp.choices[0].message
-    out.update({
-        "latency_s": round(time.time() - t0, 2),
-        "resolved_model": resp.model,
-        "system_fingerprint": getattr(resp, "system_fingerprint", None),
-        "finish_reason": resp.choices[0].finish_reason,
-        "content": msg.content,
-        "has_reasoning_content": bool(getattr(msg, "reasoning_content", None)),
-        "usage": resp.usage.model_dump() if resp.usage else None,
-    })
-    out["status"] = "PASS" if (msg.content or "").strip() else "FAIL: empty content"
-    return out["status"] == "PASS"
+    out["skillopt_backend_settings"] = {
+        "model": oc.OPTIMIZER_CONFIG.deployment,
+        "max_tokens_cap": oc.OPTIMIZER_CONFIG.max_tokens,
+        "temperature": oc.OPTIMIZER_CONFIG.temperature,
+        "sends_reasoning_controls": False,  # backend drops reasoning_effort; no extra_body
+    }
+
+    raw: list = []
+    completions = oc._get_client("optimizer").chat.completions
+    original_create = completions.create
+
+    def recording_create(*args, **kwargs):
+        resp = original_create(*args, **kwargs)
+        raw.append((kwargs, resp))
+        return resp
+
+    completions.create = recording_create
+
+    probes = [
+        ("plain", "You are a helpful assistant.", "Reply with exactly the word OK."),
+        ("json", "You revise skill documents. Respond with a JSON object only.",
+         'Return {"edits": [{"op": "append", "content": "<one short rule>"}]} where the rule tells '
+         "a household robot to open closed containers before concluding an object is absent."),
+    ]
+    ok = True
+    for name, system, user in probes:
+        raw.clear()
+        t0 = time.time()
+        text, usage = oc.chat_optimizer(system=system, user=user, retries=1, stage=f"preflight_{name}")
+        call: dict = {
+            "probe": name,
+            "latency_s": round(time.time() - t0, 2),
+            "skillopt_returned_text": text,
+            "skillopt_recorded_usage": usage,
+            "raw_captured": bool(raw),
+        }
+        if raw:
+            kwargs, resp = raw[-1]
+            msg = resp.choices[0].message
+            reasoning = getattr(msg, "reasoning_content", None) or (getattr(msg, "model_extra", None) or {}).get("reasoning_content")
+            usage_full = resp.usage.model_dump() if resp.usage else {}
+            call.update({
+                "request_fields_sent": sorted(k for k in kwargs if k != "messages"),
+                "request_max_tokens": kwargs.get("max_tokens"),
+                "resolved_model": resp.model,
+                "system_fingerprint": getattr(resp, "system_fingerprint", None),
+                "finish_reason": resp.choices[0].finish_reason,
+                "raw_content": msg.content,
+                "reasoning_present": bool(reasoning),
+                "reasoning_chars": len(reasoning or ""),
+                "reasoning_preview": (reasoning or "")[:300],
+                "skillopt_text_equals_content": text == (msg.content or ""),
+                "skillopt_text_contains_reasoning": bool(reasoning) and reasoning[:80] in (text or ""),
+                "usage_full": usage_full,
+                "estimated_cost_usd": _deepseek_cost(usage_full),
+            })
+        if name == "plain":
+            call["status"] = "PASS" if (text or "").strip() else "FAIL: empty content"
+        else:
+            parsed = extract_json(text or "")
+            call["parsed_by_skillopt_extract_json"] = parsed
+            call["status"] = "PASS" if isinstance(parsed, dict) and parsed.get("edits") else "FAIL: no edits parsed"
+        ok = ok and call["status"] == "PASS"
+        out["calls"].append(call)
+
+    completions.create = original_create
+    out["thinking_active"] = any(c.get("reasoning_present") for c in out["calls"])
+    out["total_estimated_cost_usd"] = {
+        tier: round(sum(c.get("estimated_cost_usd", {}).get(tier, 0) for c in out["calls"]), 6)
+        for tier in DEEPSEEK_FLASH_PRICES
+    }
+    out["status"] = "PASS" if ok else "FAIL"
+    return ok
 
 
 def check_target(report: dict) -> bool:

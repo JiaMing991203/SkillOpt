@@ -4,11 +4,13 @@
 #
 #   STAGE=vllm     start vLLM, send one ALFWorld-format prompt through the
 #                  qwen_chat backend, check for an <action> tag (no DeepSeek)
-#   STAGE=rollout  + DeepSeek check, then ROLLOUT_EPISODES (default 1) real
-#                  ALFWorld episodes via scripts/eval_only.py on the selection
-#                  split, no optimization; measures target throughput
-#   STAGE=train    + one small original SkillOpt iteration using
-#                  configs/research/alfworld_smoke.yaml (gate included)
+#   STAGE=rollout  ROLLOUT_EPISODES (default 1) real ALFWorld episodes via
+#                  scripts/eval_only.py on the selection split; no optimizer,
+#                  no DeepSeek calls; measures target throughput
+#   STAGE=train    + DeepSeek preflight, then one small original SkillOpt
+#                  iteration using configs/research/alfworld_smoke.yaml
+#
+# Every stage samples GPU memory/utilization every 5 s into gpu_usage.csv.
 #
 # Submit via research/submit.sh, e.g.  STAGE=vllm research/submit.sh smoke
 # (the partition comes from GPU_PARTITION in the private site.env).
@@ -34,18 +36,23 @@ export TARGET_QWEN_CHAT_MODEL="$TARGET_MODEL_ID"
 export PYTHONPATH="$SNAPSHOT_DIR"
 export PYTHONUNBUFFERED=1
 
-if [ "$STAGE" != "vllm" ]; then
+# Only the training stage talks to the optimizer.
+if [ "$STAGE" = "train" ]; then
     load_secrets
     [ -n "${OPTIMIZER_MODEL:-}" ] || die "OPTIMIZER_MODEL is empty; run check_compute first and pin the DeepSeek model id"
 fi
 
+nvidia-smi --query-gpu=timestamp,memory.used,memory.total,utilization.gpu \
+    --format=csv,noheader,nounits -l 5 > "$RUN_DIR/gpu_usage.csv" 2>/dev/null &
+GPU_MON_PID=$!
 start_vllm 900
+trap 'stop_vllm; kill "$GPU_MON_PID" 2>/dev/null || true' EXIT
 write_manifest "stage=$STAGE" "rollout_episodes=$ROLLOUT_EPISODES"
 freeze_env "$CTL_ENV" ctl
 freeze_env "$VLLM_ENV" vllm
 
 PREFLIGHT=(--target)
-[ "$STAGE" != "vllm" ] && PREFLIGHT+=(--optimizer)
+[ "$STAGE" = "train" ] && PREFLIGHT+=(--optimizer)
 "$CTL_ENV/bin/python" research/preflight_endpoints.py "${PREFLIGHT[@]}" --out "$RUN_DIR/preflight.json" \
     || die "preflight failed; see $RUN_DIR/preflight.json"
 
