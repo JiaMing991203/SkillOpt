@@ -4,9 +4,12 @@ Milestones, the next planned experiment, deferred work and open questions.
 Current status and approvals: `STATE.md`. Decision history and reasons:
 `DAILY_LOG.md`. Measurements: `EXPERIMENT_LOG.md`.
 
-Current milestone: **operational, reproducible original SkillOpt + ALFWorld
-baseline on the cluster** (CLAUDE.md §9). No Lean work until the baseline step
-and representative traces have been inspected with the user.
+**Current priority (user decision 2026-10-20): the Lean-guided
+contract-feedback prototype (Option B, independently specified task
+contracts)** — see "Lean-guided prototype roadmap" below. The original
+SkillOpt + ALFWorld baseline is operational (milestones 0–8). E1 (evaluation
+noise) is supporting work that must not block the prototype; E3 (optimizer
+replay) is deferred until the pipeline produces genuine reports.
 
 ## Milestones
 
@@ -21,9 +24,8 @@ and representative traces have been inspected with the user.
 | 6 | Opt-in reasoning parser + trace instrumentation | Done | `8f739f7`; job 64336627 |
 | 7 | One original SkillOpt optimization step incl. the gate | **Done** (operational; candidate rejected on a 12/18 tie) | job 64359024 (`12a153e`) |
 | 8 | Review of the training run: logger audit, `train:0004` credit study, randomness inspection | **Done (offline)** | `EXPERIMENT_LOG.md` (offline analyses of 64359024) |
-| 9 | Decide the full-baseline protocol: evaluation noise (E1), acceptance/assessment procedure (E2), selection size, slow-update gating, reflection rounds, reasoning effort, seeds, budget | **Next** (E1 proposed, not authorized) | needs 7–8 |
-| 10 | Python contract diagnostics (condition C) | Not started | needs 9 |
-| 11 | Lean contract diagnostics (condition D) | Not started | needs 10 |
+| 9 | Baseline protocol (supporting, in parallel): E1 evaluation noise → E2 assessment procedure; selection size, slow-update gating, reflection rounds, reasoning effort, seeds | Supporting; E1 planned, submission not yet requested | needs 7–8 |
+| L0–L7 | **Lean-guided contract feedback (main track)** | **Planning done; L0 next** | roadmap below |
 
 ## First training smoke (milestone 7) — done
 
@@ -84,9 +86,178 @@ Artifacts to inspect afterwards: `selection_eval_baseline/`,
 | Two vLLM replicas | free when a job already pays for 2 GPU units | needs a loopback proxy (an explicitly allowed listener) or a backend change; vLLM data parallelism still uses TCP rendezvous |
 | DeepSeek reasoning effort "medium" | paper setting; we run the provider default ("high") | needs a flagged backend option |
 
-## Proposed next experiments (not authorized; for discussion)
+## Lean-guided prototype roadmap (main track)
 
-### E1. Evaluation noise of the 18-task selection score (GPU, no API)
+Goal: a minimal end-to-end pipeline that (1) takes task requirements from the
+benchmark's trusted specification, (2) represents execution facts from
+recorded ALFWorld trajectories, (3) checks them with a Lean 4 checker whose
+correctness is proven, (4) emits PASS / FAIL / UNKNOWN diagnostics with
+evidence, and (5) makes them available to SkillOpt's optimizer, without
+changing the native scorer or the validation gate. First task family:
+`look_at_obj_in_light`; the design is generic over ALFWorld's goal language
+(all six task types use only `and`, `exists`, `not`, `=` and atoms;
+`EXPERIMENT_LOG.md`, offline analyses).
+
+```mermaid
+flowchart LR
+  subgraph T["Trusted benchmark artifacts"]
+    G["game.tw-pddl<br/>(:goal, objects, domain)"]
+    E["TextWorld PDDL engine<br/>(same engine as the scorer)"]
+  end
+  R["Recorded trace.json<br/>(executed actions, feedback, won)"] --> RP["Offline replay<br/>(CPU, deterministic)"]
+  G --> RP
+  E --> RP
+  RP -->|"fidelity check vs recorded<br/>feedback / admissible / won"| EV["Evidence JSON<br/>state facts per step + provenance"]
+  G --> CX["Contract extractor<br/>goal → formula AST + obligations"]
+  CX --> LC["Lean checker (proved)"]
+  EV --> LC
+  CX --> PC["Python checker (control)"]
+  EV --> PC
+  LC --> REP["Report JSON<br/>PASS / FAIL / UNKNOWN + evidence"]
+  PC --> REP2["Report JSON (control)"]
+  REP --> RD["Renderer (shared)"] --> SO["SkillOpt reflection<br/>(opt-in field; scorer and gate unchanged)"]
+```
+
+### Trust boundary
+
+| Layer | Source | Trusted because | Residual risk |
+|---|---|---|---|
+| Task requirement | `(:goal ...)` in each game's `game.tw-pddl` | it is the formula the scorer checks (`check_goal`) | our parser/translation (validated against `won`, below) |
+| Environment state | ground facts from deterministic **offline replay** of the recorded `executed_action`s through TextWorld's PDDL engine (`_facts`, computed every step; `pddl.py:79`) | same engine that scored the episode; replay must reproduce recorded feedback, admissible commands and `won` at every step | Python fact mirror vs C++ state (validated: goal evaluated on replayed facts must equal the engine's `won` at every step); replay assumes determinism (no RNG found in `pddl.py`) |
+| Observation-inferred state | parsing feedback text ("You arrive at...", "On the X, you see...") | not trusted: text hides closed-receptacle contents, `isOn`, co-location, and cooling's side effect | used only in a later study of what text alone supports, with UNKNOWN |
+| Checker logic | Lean definitions + theorems | proofs checked by Lean's kernel | compiled executable trusts Lean's compiler; JSON glue unverified |
+| Report wording | fixed renderer + glossary | deterministic, identical for C and D | wording effects on the optimizer (E3) |
+
+**What Lean can guarantee** (if all theorems are proven with no `sorry` and
+no axioms beyond Lean's standard three, checked by `#print axioms`): given
+the evidence states and the goal formula, the verdict, each obligation's
+status, the first step at which it held, the completing step and any
+regression are exactly what the formal semantics says; the obligation list
+is equivalent to the goal; with partial evidence (later), PASS/FAIL is
+returned only when every completion of the evidence agrees, otherwise
+UNKNOWN. **Lean cannot guarantee** that the evidence matches what really
+happened, that our translation of the PDDL goal is faithful, that the goal
+captures everything worth learning, that a failed obligation *caused* the
+failure, or that the optimizer uses the report well. (Lean4Agent's
+`trustExternalVerification` axiom, which concludes any predicate from any
+tool result, is the kind of shortcut we must avoid.)
+
+### Components
+
+- **Reuse from Lean4Agent (MIT, `e6a78cb`), as patterns only:** Lean reading
+  a JSON trace and printing a JSON verdict; Python calling a Lean executable
+  by subprocess; a per-step digest layout (verdict, failed predicates,
+  evidence). **Not reused:** its Mathlib dependency (Lean 4.20 + all of
+  Mathlib), LLM-generated specs from the workflow's own steps (conflicts with
+  independence), workflow-node mapping (fixed action sequences), LLM-judge
+  injection, trust axioms.
+- **New, generic over ALFWorld:** goal extractor (s-expression parser for
+  the PDDL subset), offline replay + fidelity checker, evidence schema with
+  interned symbols and provenance, Lean package `AlfContracts` (core Lean 4,
+  no Mathlib; Batteries only if needed), Python reference checker, report
+  schema + renderer, SkillOpt adapter hook.
+- **Adapted in SkillOpt (opt-in, default off):** an ALFWorld adapter option
+  `env.contract_feedback: none | spec_only | python | lean` that, before
+  reflection on training rollouts, replays and checks each episode and
+  attaches `contract_report` to the result row; one additive block in
+  `fmt_minibatch_trajectories` that prints it under a labeled heading when
+  present. With `none`, prompts must stay byte-identical (tested), and the
+  scorer, gate, selection rollouts and edit rules are untouched.
+
+### Contracts
+
+- Obtained per game from the trusted `(:goal ...)`: the formula AST plus the
+  object universe and types from `:objects`/`:init`. No skill text, no LLM.
+- **Obligations** = the goal's top-level conjuncts, and inside an
+  existential the body's conjuncts per candidate witness (e.g. for a heat
+  task: "some apple is hot" and "that apple is in a countertop"). The
+  decomposition is proven equivalent to the goal.
+- A glossary maps predicates to fixed English ("isToggled ?l → the lamp has
+  been switched on"), shared by both checkers and the spec-only control.
+
+### Evidence
+
+`{episode, gamefile_id, objects: [{id, name, types}], steps: [{t, action,
+feedback, admissible_ok, state: [atom...], provenance: "env_replay",
+fidelity: ok|mismatch}]}` with symbols interned to integers for fast kernel
+evaluation. States after a fidelity mismatch are not trusted: obligations that
+depend on them are UNKNOWN. **Hidden-information policy:** reports describe
+the agent's trajectory and the goal; they never name locations of objects the
+agent did not observe (the replayed state knows them).
+
+### Lean package `AlfContracts` (sketch)
+
+- Syntax: `Formula := atom | and | not | eq | exists (type) body`; ground
+  `Atom`; `World := objects + true atoms` (closed world, as in PDDL).
+- Semantics: `Holds : World → Valuation → Formula → Prop`; checker
+  `eval : World → Formula → Bool`; theorem `eval w φ = true ↔ Holds w [] φ`.
+- Trace level: `Trace := List World`; `firstSat`, `completingStep`,
+  `regressions`, per-obligation status; theorems: minimality of `firstSat`,
+  conjunction of obligations ↔ goal, verdict ↔ `Holds` at the final state.
+- Later: `eval3` (Kleene, open-world existentials) for partial evidence, with
+  soundness over all completions.
+- Executable `alfcheck`: evidence JSON + contract JSON → report JSON. Optional
+  certificate mode for audits: a generated `theorem ... := by decide` per
+  episode, checked by the kernel.
+
+### Python control
+
+The same evidence, contract AST, obligation definitions and report schema,
+implemented independently in Python (recursive evaluation, typed
+existential enumeration) without proofs. Differential testing against Lean on
+every episode; disagreements are bugs to explain. A separate spec-only
+control renders the contract text without any trajectory checking.
+
+### Milestones
+
+| # | Deliverable | Acceptance test |
+|---|---|---|
+| L0 | Design note: contract semantics, report schema, trust boundary, hidden-info policy | reviewed with the user |
+| L1 | Offline replay + evidence JSON for the 48 traced episodes (CPU job) | replay reproduces recorded feedback, admissible commands and `won` at every step (or marks UNKNOWN with reason) |
+| L2 | Goal extractor + obligations + spec-only renderer | evaluating the extracted goal on replayed states equals the engine's `won` at **every step of all 48 episodes** |
+| L3 | Python reference checker + report schema + renderer | golden reports for `train:0004` and `val:0001`; mutation tests (drop the pick-up, drop the toggle, reorder, add no-op actions) change diagnostics as expected |
+| L4 | Lean toolchain on the cluster (approval needed) + `AlfContracts` with proofs + `alfcheck` | no `sorry`; `#print axioms` shows only Lean's standard axioms; Lean and Python reports identical on all 48 episodes |
+| L5 | SkillOpt integration (opt-in), offline prompt rendering | `none` → byte-identical analyst prompts; scorer/gate diff guards pass; rendered `train:0004` prompt reviewed with the user (no API call) |
+| L6 | E3 with genuine reports (paid, small) | per-arm edit statistics; needs approval |
+| L7 | Small optimization runs: A vs spec-only vs C vs D (B separate) | design informed by E1/E2; needs approval |
+
+### Uncertainties
+
+1. **C vs D may be indistinguishable by construction (interpretation).** If
+   both checkers are correct, their reports are identical, so the optimizer
+   cannot behave differently. Lean's value then has to be shown as
+   *assurance* (differential testing, injected-bug detection, sound UNKNOWN
+   handling under partial evidence, proven faithfulness of the obligation
+   decomposition), not as a higher score. The optimization question becomes
+   "contract feedback vs reflection-only vs spec-only".
+2. **Is goal-derived information enough?** Failures may need richer
+   obligations (domain preconditions, admissibility, opened receptacles).
+3. **Replay fidelity** (conditional effects, fact mirror) — tested in L1/L2.
+4. **Lean toolchain** — not installed on the cluster; no local Lean runs
+   (CLAUDE.md), so each Lean iteration is a CPU job.
+5. **Information leakage** — replayed state is privileged; the policy above
+   must hold, or gains may come from leaked task facts.
+6. **Small reflection batches** (4 training episodes per step).
+
+### First implementation steps (proposed)
+
+1. **L0 design note** (local only): formal semantics, obligation and report
+   schema, hidden-information policy, file layout — Python in
+   `skillopt/envs/alfworld/contracts/` (imported only when the option is on),
+   Lean in `lean/AlfContracts/`, tests in `tests/`.
+2. **L1 + L2 in Python** (local code, then one small CPU job, no GPU/API):
+   replay the 48 traced episodes, emit evidence JSON, extract goals, and run
+   the two oracle tests (replay fidelity; goal evaluation = `won` at every
+   step). This validates the trusted-evidence layer before any Lean work.
+3. **Approval request:** install a pinned stable Lean toolchain (elan, user
+   space in project storage, no Mathlib) with a CPU setup job, then L3/L4.
+
+## Supporting and deferred experiments (not authorized)
+
+### E1. Evaluation noise of the 18-task selection score (GPU, no API) — supporting
+
+Kept as a small supporting study (user, 2026-10-20). It does not modify the
+benchmark scorer or the validation gate and does not block the Lean track.
 
 - **Question:** how often does the single-run strict gate accept a skill
   that is no better (here: identical)? For identical skills,
@@ -130,14 +301,12 @@ repeated, paired final evaluation on held-out tasks. A reasonable split:
 keep the upstream gate inside optimization for fidelity, and use (d) for the
 final comparison. Decision after E1.
 
-### E3. Optimizer replay pilot (paid API, ≈ $0.05; offline inputs)
+### E3. Optimizer replay pilot — **deferred** (user, 2026-10-20)
 
-Replay the recorded `train:0004` success-analyst prompt
-(`optimizer_calls.jsonl`) N = 5 times each: (i) unchanged, (ii) plus the
-PDDL goal text only (specification control), (iii) plus a contract report
-(see below). Measure how often the proposed edit omits holding the object or
-claims `examine` is sufficient. This estimates DeepSeek's own variability
-and gives a cheap first signal for C before any optimization run.
+Not before the contract pipeline produces genuine reports (milestone L5).
+Then: replay recorded analyst prompts N times each with (i) the original
+input, (ii) goal-specification-only text, (iii) the Python-checker report,
+(iv) the Lean-checker report. Hand-constructed feedback is not used.
 
 ## Open methodology questions
 
@@ -166,7 +335,8 @@ and gives a cheap first signal for C before any optimization run.
 
 Contracts come from the benchmark's trusted task specification (the PDDL
 goal in each `game.tw-pddl`), not from the skill. Example (from the
-`train:0004` study; do not implement yet), `look_at_obj_in_light(T)`:
+`train:0004` study; the first family of the roadmap above),
+`look_at_obj_in_light(T)`:
 
 - Obligations, all in one state: (G1) a DeskLamp is `isToggled`; (G2) the
   agent is at the lamp's receptacle location; (G3) the agent holds an object
@@ -182,11 +352,7 @@ goal in each `game.tw-pddl`), not from the skill. Example (from the
   export ground-truth PDDL facts per step is an open question. Lean checks
   the logic, not the extraction.
 
-## Future conditions (do not start yet)
+## Future conditions
 
-- **C (Python):** independent task contracts evaluated in Python on
-  `trace.json` (initial observation, admissible actions, executed actions,
-  feedback), reported to the optimizer.
-- **D (Lean):** the same contracts in Lean. Compare against C (and the
-  specification-only control); richer reports alone do not show unique
-  value from Lean.
+C (Python) and D (Lean) are now planned in "Lean-guided prototype roadmap"
+(milestones L0–L7). Neither is a validated optimization condition yet.

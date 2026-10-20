@@ -478,3 +478,55 @@ evaluation noise. No jobs, no API calls.
 ### Next actions
 Await the user's decision on E1–E3 and on pushing the docs commit.
 
+---
+
+## 2026-10-20 — Priority change: Lean-guided contract feedback
+
+### Objective
+Move the main effort from baseline investigation to the research
+contribution: SkillOpt guided by independently specified, Lean-checked task
+contracts (Option B). Planning only; no jobs, no API calls.
+
+### Work completed
+- **User decision:** E1 stays as supporting work (scorer and gate unchanged,
+  must not block); E3 is deferred until the pipeline produces genuine reports.
+- **Lean4Agent review (findings, commit `e6a78cb`):** it verifies that an
+  agent followed an LLM-specified *workflow*; specs are LLM-generated from the
+  workflow's own step instructions; Lean 4.20 + all of Mathlib (52 files
+  import it); no temporal operators; its `trustExternalVerification` axiom
+  concludes any predicate from any tool result (the result's `passed` flag is
+  not used), which makes the corresponding proofs vacuous (our inference;
+  not compiled). Its SWE "Lean" feedback largely relays benchmark test
+  results. Reusable only as patterns (JSON trace → Lean, subprocess bridge,
+  per-step digest).
+- **Trusted-state investigation (findings):** TextWorld's PDDL engine
+  computes the full ground fact set every step (`pddl.py:79`) and `won` with
+  Fast Downward's `check_goal`; requesting facts changes nothing else; no RNG
+  in the engine. ALFWorld goals across all six types use only `and`,
+  `exists`, `not`, `=`; pick-two uses inequality, not counting. The goal
+  checks `isToggled`, not `isOn`. Text feedback hides `isOn`, closed
+  receptacles' contents and co-location.
+- Wrote the roadmap (L0–L7) with trust boundary, Lean guarantees, components,
+  Python control, acceptance tests and uncertainties
+  (`IMPLEMENTATION_PLAN.md`).
+
+### Decisions and reasons
+- **Proposal:** trusted evidence by deterministic offline replay of recorded
+  actions through the same engine, validated by reproducing recorded feedback,
+  admissible commands and `won`, and by checking that our goal evaluation
+  equals `won` at every step. Reason: no change to the experiment code path
+  and the strongest available trust anchor.
+- **Proposal:** a fresh, small Lean package (core Lean, no Mathlib) with
+  proven checker correctness and `#print axioms` limited to Lean's standard
+  axioms, instead of reusing Lean4Agent's library.
+- **Interpretation (important):** if the Python and Lean checkers are both
+  correct, their reports are identical, so C and D cannot differ in
+  optimization outcome by construction. Lean's value must be demonstrated as
+  assurance (bug detection, sound UNKNOWN handling, proven decomposition),
+  while the optimization comparison is contract feedback vs reflection vs
+  specification-only text.
+
+### Next actions
+User review of the roadmap; on approval, L0 design note and L1–L2 (replay,
+evidence, goal extraction, oracle tests on 48 episodes).
+

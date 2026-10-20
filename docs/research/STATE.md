@@ -1,9 +1,10 @@
 # Research Development State
 
-**Last verified:** 2026-10-20 16:46 EDT (git, `squeue`, fetched run, offline analyses)
-**Current milestone:** decide the full-baseline protocol, starting with
-evaluation noise (`IMPLEMENTATION_PLAN.md` milestone 9). Milestone 8 (review of
-the training smoke) is done offline.
+**Last verified:** 2026-10-20 18:02 EDT (git, `squeue`; planning only, no jobs)
+**Current milestone (user priority change, 2026-10-20):** the Lean-guided
+contract-feedback prototype (Option B), milestones L0–L7 in
+`IMPLEMENTATION_PLAN.md`. Planning is done; **L0 (design note) is next**. E1
+is supporting work; E3 is deferred until genuine reports exist.
 **Status (verified):** the first training smoke (condition A, strict parser +
 traces, job 64359024) **completed**: every loop stage ran; the candidate tied
 the baseline at 12/18 and the gate **rejected** it. The user accepted it as a
@@ -16,21 +17,26 @@ job or paid API call is authorized**.
 
 ## A. Current objective
 
-Decide how to measure and handle evaluation noise before any further
-optimization run (proposal E1 in `IMPLEMENTATION_PLAN.md`), then the rest of
-the baseline protocol. No experiment is authorized.
+Build the smallest end-to-end contract-checking pipeline (Proposal, not yet
+implemented; details in `IMPLEMENTATION_PLAN.md`, "Lean-guided prototype
+roadmap"):
 
-Result of job 64359024 (verified; details in `EXPERIMENT_LOG.md`):
+1. Task requirements from each game's trusted PDDL `(:goal ...)`, never from
+   the skill.
+2. Trusted execution facts by deterministic offline replay of recorded
+   actions through TextWorld's PDDL engine, checked against the recorded
+   feedback, admissible commands and `won`.
+3. A Lean 4 checker (core Lean, no Mathlib) with proven correctness, and an
+   independent Python checker as the control.
+4. PASS / FAIL / UNKNOWN reports with evidence, attached to SkillOpt's
+   reflection input behind an opt-in option (scorer and gate unchanged).
 
-| Item | Value |
-|---|---|
-| Config | `configs/research/alfworld_smoke_strict_traced.yaml` (= strict smoke + `trace_log: true`), commit `12a153e` |
-| Baseline selection (initial skill) | 12/18 (0.667) |
-| Train batch `train:0017, 0036, 0004, 0013` | 1/4 |
-| DeepSeek | 4 calls (2 analysts, merge, ranking), 0 retries, 0 parse failures; 6 edits proposed → 4 kept |
-| Candidate selection | 12/18 (0.667); +`val:0012`, −`val:0014` |
-| Gate | **reject** (tie; strict `>` rule) — `best_skill.md` = initial skill |
-| Cost | 2.57 h on one A40 unit ≈ $0.28; DeepSeek ≈ $0.008 |
+First family: `look_at_obj_in_light`; design generic over all six ALFWorld
+goal types. Test data: 48 traced episodes (all six types) from 64337548 and
+64359024.
+
+Baseline result for reference (job 64359024, verified): baseline 12/18,
+candidate 12/18, gate rejected; ≈ $0.28 GPU, ≈ $0.008 DeepSeek.
 
 ## B. Repository and environment
 
@@ -111,32 +117,33 @@ GPU-equivalent h (≈ $0.44); DeepSeek: 8 paid calls (≈ $0.008).
 | Keep Qwen checkpoint, generation settings, 8000-token cap, `env.workers` 8, evaluator, skill-update rules, selection split unchanged for the smoke | approved (user) |
 | Conditions kept separate: **A** strict-parser baseline, **B** Qwen-compatible parser, **C** independently specified Python-contract feedback, **D** equivalent Lean-contract feedback. B–D are not validated conditions; parser or explanation-text gains are never credited to verification | user decision 2026-10-20 |
 | Contracts are derived from the benchmark's trusted specification (PDDL goal), not from the skill | user direction 2026-10-20 |
+| Main effort shifts to the Lean-guided prototype; E1 supporting (scorer and gate unchanged, must not block); E3 deferred until the pipeline produces genuine reports (then: original vs spec-only vs Python vs Lean) | user decision 2026-10-20 |
+| Lean4Agent is reused only for patterns (JSON trace → Lean, subprocess bridge, digest format); not its Mathlib stack, LLM-generated specs, workflow mapping or trust axioms | proposal (from code review), pending user review |
 | Run condition A (strict) + `trace_log` as the first training smoke | user-approved 2026-10-20; **done** (64359024) |
 | `trace_log` and the optimizer call log may be on in any condition (diagnostic only) | verified in code and tests (64358982); per-run choice |
 
 ## F. Active operations and approvals
 
-- **Active Slurm jobs:** none (`squeue` empty, 16:46). Last jobs: 64358982
-  (tests), 64359024 (training smoke, COMPLETED).
+- **Active Slurm jobs:** none (`squeue` empty, 18:02).
 - **Authorized but not executed:** none.
-- **Done with approval (2026-10-20):** pushed docs commits `79d7a59`,
-  `8db42fa` after a scope and secrets review.
-- **Pending user decisions:** (1) push the local docs commit(s) from the
-  offline review; (2) E1 evaluation-noise jobs (3 × 18-episode rollouts of the
-  initial skill, ≈ $0.33–0.46, no API); (3) E3 optimizer replay pilot (paid,
-  ≈ $0.05); (4) call-log redaction hardening (code change, needs CPU tests).
-- **Not authorized:** any GPU job or paid API call, new optimization runs,
-  changes to experimental semantics, condition B/C/D runs, Lean work.
+- **Pending user decisions:** (1) push the local docs commits (`cfeb2b8` and
+  this planning update); (2) start implementation of L0–L2 (local code plus
+  one small CPU job: replay + oracle tests, no GPU/API); (3) install a pinned
+  Lean toolchain on the cluster (CPU setup job, user space, no Mathlib);
+  (4) when to submit E1 (3 rollout jobs, ≈ $0.33–0.46); (5) call-log
+  redaction hardening.
+- **Not authorized:** any GPU job, paid API call, new optimization run,
+  E3, change to scorer/gate/experimental semantics, Lean toolchain install.
 
 ## G. Next actions
 
-1. Discuss the offline findings and proposals E1–E3 with the user.
-2. If E1 is approved: submit the three rollout jobs exactly as written in
-   `IMPLEMENTATION_PLAN.md`, then analyze per-task flip rates.
-3. Use E1 to decide the acceptance/assessment procedure (E2) for the
-   C-versus-D comparison.
-4. Later (non-blocking): record pre-implementation research decisions,
-   incl. the rationale for independent task contracts (Option B).
+1. User review of the roadmap (`IMPLEMENTATION_PLAN.md`) and the open
+   research uncertainty "C vs D may be indistinguishable by construction".
+2. On approval: L0 design note; L1 replay + evidence JSON; L2 goal
+   extraction; oracle tests on the 48 traced episodes (CPU job).
+3. Then L3 Python checker, L4 Lean package (after toolchain approval).
+4. Supporting: E1 when the user asks for it. Later: record pre-implementation
+   research decisions (Option B rationale).
 
 ## H. Evidence and references
 
@@ -148,8 +155,10 @@ work) · `BASELINE_ARCHITECTURE.md` (code paths, conditions A/B/C) ·
 
 ## I. Handoff warnings
 
-- Do not start Lean/contract integration before the baseline step has been
-  inspected with the user.
+- Lean-guided work is now the main track, but implementation (L0–L2) awaits
+  the user's go-ahead and the Lean toolchain install needs approval. Never
+  derive contracts from the skill; keep the condition-A path byte-identical
+  when contract feedback is off; never change the scorer or the gate.
 - Do not resubmit failed or finished GPU jobs automatically; check `jobs.tsv`
   and `sacct` first.
 - Do not change model, sampling, token cap, workers, evaluator, skill-update
