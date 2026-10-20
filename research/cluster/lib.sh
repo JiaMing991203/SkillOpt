@@ -132,6 +132,7 @@ manifest = {
         "vllm_version_pinned": env.get("LSO_VLLM_VERSION"),
         "vllm_env": {
             "VLLM_HOST_IP": "127.0.0.1",
+            "GLOO_SOCKET_IFNAME": "lo",
             "VLLM_USE_FLASHINFER_SAMPLER": env.get("LSO_VLLM_USE_FLASHINFER_SAMPLER"),
         },
         "vllm_args": env.get("LSO_VLLM_ARGS"),
@@ -174,20 +175,54 @@ _free_port() {
     python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'
 }
 
-# Fails the job if any TCP listener in vLLM's process group is bound to
-# anything other than loopback. Records all of them in vllm_listeners.txt.
+# Classifies every TCP listener in vLLM's process session with
+# research/classify_listeners.py (raw lines in vllm_listeners.txt, result in
+# vllm_listeners.json) and sets LSO_NETWORK_STATUS:
+#   pass        all loopback (HTTP API included)
+#   unresolved  only torch's rendezvous TCPStore listens beyond loopback;
+#               NOT allowed: callers must not run agent stages
+#   fail        anything else -> the job stops here
 check_vllm_listeners() {
-    local pids
+    local pids rc
     pids=$(pgrep -s "$LSO_VLLM_PID" | tr '\n' ' ')   # setsid: session id == LSO_VLLM_PID
     : > "$RUN_DIR/vllm_listeners.txt"
     for pid in $pids; do
         ss -ltnpH 2>/dev/null | grep "pid=$pid," >> "$RUN_DIR/vllm_listeners.txt" || true
     done
-    log "vLLM TCP listeners:"; sed 's/^/    /' "$RUN_DIR/vllm_listeners.txt"
-    [ -s "$RUN_DIR/vllm_listeners.txt" ] || die "found no vLLM listeners; cannot verify binding"
-    if awk '{print $4}' "$RUN_DIR/vllm_listeners.txt" | grep -vqE '^(127\.0\.0\.1|\[::1\]):[0-9]+$'; then
-        die "vLLM has a non-loopback TCP listener (see vllm_listeners.txt)"
-    fi
+    rc=0
+    "$CTL_ENV/bin/python" "$SNAPSHOT_DIR/research/classify_listeners.py" \
+        --ss-file "$RUN_DIR/vllm_listeners.txt" --http-port "$LSO_VLLM_PORT" \
+        --vllm-log "$RUN_DIR/vllm.log" --out "$RUN_DIR/vllm_listeners.json" || rc=$?
+    case "$rc" in
+        0) LSO_NETWORK_STATUS=pass ;;
+        3) LSO_NETWORK_STATUS=unresolved ;;
+        *) die "vLLM listener check failed (see vllm_listeners.json)" ;;
+    esac
+    export LSO_NETWORK_STATUS
+    log "network status: $LSO_NETWORK_STATUS"
+}
+
+# Keeps the server up for a fixed window so its listeners can be probed from
+# OUTSIDE the node (research/probe_listeners.sh, run from a login node). The
+# node's addresses and the listener ports are written to probe_window.json.
+open_probe_window() {
+    local secs="${LSO_PROBE_WINDOW_S:-180}"
+    "$CTL_ENV/bin/python" - "$RUN_DIR" "$secs" <<'PY'
+import json, os, subprocess, sys, time
+run_dir, secs = sys.argv[1], int(sys.argv[2])
+ips = subprocess.run(["hostname", "-I"], capture_output=True, text=True).stdout.split()
+lis = json.load(open(os.path.join(run_dir, "vllm_listeners.json")))
+json.dump({
+    "node_ips": ips,
+    "listeners": [{"host": x["host"], "port": x["port"], "class": x["class"], "is_http_api": x["is_http_api"]}
+                  for x in lis["listeners"]],
+    "opened_at": time.time(),
+    "closes_at": time.time() + secs,
+}, open(os.path.join(run_dir, "probe_window.json"), "w"), indent=2)
+PY
+    log "probe window open for ${secs}s (probe_window.json)"
+    sleep "$secs"
+    log "probe window closed"
 }
 
 # Confirms from vllm.log which top-k/top-p sampler vLLM selected, and fails the
@@ -210,10 +245,12 @@ check_vllm_sampler() {
 
 # Starts a vLLM OpenAI-compatible server for this job only.
 #  - HTTP server bound to 127.0.0.1 (--host)
-#  - VLLM_HOST_IP=127.0.0.1 so the torch.distributed rendezvous of the
-#    single-GPU executor also uses loopback instead of the node's network IP
-#    (vllm/v1/executor/uniproc_executor.py uses get_ip(); engine<->API
-#    sockets are local IPC files when single-node)
+#  - VLLM_HOST_IP=127.0.0.1: the rendezvous ADDRESS clients use is loopback
+#    (uniproc_executor.py: tcp://get_ip():port). torch's TCPStore server still
+#    binds all interfaces (no bind-address option; job 64330104)
+#  - GLOO_SOCKET_IFNAME=lo: vLLM's Gloo CPU process groups bind to loopback
+#    instead of the hostname's interface (7 node-IP listeners in 64330104)
+#  - engine<->API sockets are local IPC files when single-node
 #  - per-job random API key via env (not argv): compute nodes can be shared
 #    with other users' jobs, so loopback alone is not private
 #  - own process group (setsid) so cleanup reaches the engine subprocess
@@ -233,9 +270,9 @@ start_vllm() {
         --limit-mm-per-prompt '{"image":0,"video":0}'
         --seed 0
     )
-    export LSO_VLLM_ARGS="VLLM_HOST_IP=127.0.0.1 VLLM_USE_FLASHINFER_SAMPLER=$LSO_VLLM_USE_FLASHINFER_SAMPLER vllm ${args[*]}"
+    export LSO_VLLM_ARGS="VLLM_HOST_IP=127.0.0.1 GLOO_SOCKET_IFNAME=lo VLLM_USE_FLASHINFER_SAMPLER=$LSO_VLLM_USE_FLASHINFER_SAMPLER vllm ${args[*]}"
     log "starting: $LSO_VLLM_ARGS"
-    VLLM_API_KEY="$VLLM_API_KEY" VLLM_HOST_IP=127.0.0.1 HF_HUB_OFFLINE=1 \
+    VLLM_API_KEY="$VLLM_API_KEY" VLLM_HOST_IP=127.0.0.1 GLOO_SOCKET_IFNAME=lo HF_HUB_OFFLINE=1 \
         VLLM_USE_FLASHINFER_SAMPLER="$LSO_VLLM_USE_FLASHINFER_SAMPLER" \
         setsid "$LSO_VLLM_ENV/bin/vllm" "${args[@]}" > "$RUN_DIR/vllm.log" 2>&1 &
     LSO_VLLM_PID=$!

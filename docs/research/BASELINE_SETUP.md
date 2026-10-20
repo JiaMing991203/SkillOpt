@@ -143,7 +143,9 @@ and the node name. Treat run directories as private; review before sharing.
 | Channel | Binding | Source |
 |---|---|---|
 | OpenAI HTTP API | `--host 127.0.0.1 --port <random free port>` | vLLM CLI |
-| torch.distributed rendezvous (single-GPU executor) | the node's network IP by default (`get_ip()` in `vllm/v1/executor/uniproc_executor.py`); forced to loopback with `VLLM_HOST_IP=127.0.0.1` | vLLM 0.25.1 source, read on the cluster |
+| torch.distributed rendezvous address (single-GPU executor) | `tcp://<VLLM_HOST_IP>:<port>` (`uniproc_executor.py`); we set `VLLM_HOST_IP=127.0.0.1`, so **clients** connect over loopback | vLLM 0.25.1 source |
+| torch c10d **TCPStore server** (rendezvous store) | **all interfaces** (`0.0.0.0`, observed in job 64330104). Created by `torch.distributed.rendezvous._create_c10d_store` (`is_master=True` on rank 0). `TCPStoreOptions` (torch 2.11 header) has a `port` but **no bind address**; only `masterListenFd` (a pre-bound socket) restricts it, and the `tcp://` rendezvous path does not expose it | torch 2.11 source/header + job 64330104 |
+| Gloo CPU process groups (vLLM creates one per parallel dimension) | hostname's interface by default (7 node-IP listeners in 64330104); **`GLOO_SOCKET_IFNAME=lo`** binds them to loopback | torch docs; string present in `libtorch_cpu.so`; to verify in the next job |
 | API server ↔ engine core | local IPC (Unix socket) when single-node (`get_engine_client_zmq_addr(local_only=True)`) | same |
 
 **Sampler:** `VLLM_USE_FLASHINFER_SAMPLER=0` (from `LSO_VLLM_USE_FLASHINFER_SAMPLER` in
@@ -157,7 +159,14 @@ Project variables use the `LSO_` prefix; only real vLLM settings
 (`VLLM_HOST_IP`, `VLLM_USE_FLASHINFER_SAMPLER`, `VLLM_API_KEY`) reach vLLM.
 
 `lib.sh:check_vllm_listeners` lists every TCP listener in vLLM's process
-session after startup and **fails the job if any is not loopback**. Loopback
+session and classifies it with `research/classify_listeners.py`. **pass**
+means every listener is loopback. **unresolved** means the only non-loopback
+listener is the logged rendezvous TCPStore port. That is *not* allowed:
+`STAGE=vllm` exits 3, and rollout/train refuse to start. **fail** means
+anything else (including the HTTP API off loopback), and the job stops
+immediately. `STAGE=vllm` also opens a 180 s probe window, during which
+`research/probe_listeners.sh <job>` connects to each listener from a login node
+to test reachability from outside the node. Loopback
 is still reachable by other users' jobs on a shared node, hence the per-job
 random API key (passed via env, not argv). **Unverified until `STAGE=vllm`
 runs:** that `ss` is available on compute nodes and shows the listeners, and

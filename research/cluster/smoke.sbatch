@@ -58,6 +58,17 @@ PREFLIGHT=(--target)
 "$CTL_ENV/bin/python" research/preflight_endpoints.py "${PREFLIGHT[@]}" --out "$RUN_DIR/preflight.json" \
     || die "preflight failed; see $RUN_DIR/preflight.json"
 
+# STAGE=vllm keeps the server up briefly so its sockets can be probed from a
+# login node (research/probe_listeners.sh). Agent stages run only when every
+# vLLM listener is loopback (LSO_NETWORK_STATUS=pass); "unresolved" (the
+# torch rendezvous TCPStore on a wildcard address) is not auto-allowed.
+[ "$STAGE" = "vllm" ] && open_probe_window
+if [ "$LSO_NETWORK_STATUS" != "pass" ]; then
+    log "network not cleared (status=$LSO_NETWORK_STATUS); no agent stage will run"
+    assert_run_dir_clean
+    exit 3
+fi
+
 OUT="$RUN_DIR/skillopt"
 status=0
 scrape_vllm_metrics before
