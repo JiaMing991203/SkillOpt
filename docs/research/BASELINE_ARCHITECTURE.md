@@ -263,6 +263,13 @@ executed actions and `compute_score` identical; `qwen_compat` changes only
 | **B. SkillOpt + Qwen response-format compatibility** | `reasoning_parser: qwen_compat`: the optimizer also sees the agent's untagged explanations | the effect of restoring the reasoning channel. This is a **format fix, not verification**, and its gains must never be credited to Python/Lean contracts |
 | **C. Future contract-diagnostic feedback** (Python, then Lean) | adds contract-violation reports to the optimizer input | must be compared against **B** (and A) under the same parser, with Python diagnostics as the control for Lean |
 
+**Condition B side effect (measured, job 64351263):** compat restores
+reasoning *in full*, because upstream never truncates trajectory text. Analyst
+prompts grow ~10× (4-failure minibatch: ~8–11k → ~84–112k tokens), and a few
+runaway deliberations dominate the added text. This is within DeepSeek's 1M
+context and cheap, but A-vs-B differs in prompt *length* as well as in
+*information*. Any per-step cap would be a further, separately labeled change.
+
 `trace_log` is diagnostics-only and may be on in any condition, since it does
 not change behavior. The comparison arms must use the same parser setting.
 

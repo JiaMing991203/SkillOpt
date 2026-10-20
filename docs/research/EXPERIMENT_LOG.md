@@ -513,6 +513,47 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   causal invariance (trace on vs off) is established by the deterministic
   fake-env tests, since a real on/off pair is not comparable under sampling.
 
+## 2026-10-20 — offline analysis of job 64337548 (jobs 64351262 tests, 64351263 analysis)
+
+- **Commit / snapshot:** `7e78fb3` / `snapshots/7e78fb3321b7`. CPU only; no
+  inference, no API. **185 tests passed.** `rollout_analysis.json` fetched locally.
+- **Output tokens (277 replies):** median 171, p75 383, p90 969, max 8000
+  (cap). Histogram: <100: 36, 100–199: 121, 200–499: 67, 500–999: 27,
+  1000–1999: 12, 2000–3999: 7, 8000: 7.
+- **Action-tag position (272 non-fallback replies):** the first `<action>`
+  sits at a median **95%** of the reply (p25 93%, min 45%). Nothing follows
+  `</action>` in ≥ 90% of replies. 2 replies have several action tags.
+- **The 7 capped replies:** 5 contain **no `<action>` at all** within 8000
+  tokens, so the rollout substituted `look` (`missing_action_tag`). 2 contain
+  tags, so they parsed: `train:0000` step 45 (5 tags; first at 75%, executed
+  `examine alarmclock 2`) and `train:0027` step 14 (**174** tags; first at
+  45%, executed `go to cabinet 1`, then 14k chars more). In both, the
+  **first** tag was executed although generation continued.
+- **Walltime reconciliation:** each capped reply was the slowest request of
+  a *different* lockstep step: 7 × ~141 s = **989 s (16.5 min)**. The other
+  43 steps' slowest requests sum to **755 s (12.6 min)** (mean 17.6 s ≈ the
+  p90 latency). The critical path is 1,744 s. Measured wall 1,857 s minus
+  that leaves ~113 s of env build (~90 s) and stepping.
+- **By outcome:** failed episodes 6/7 capped and 13/14 ≥ 2000-token replies
+  (200 requests, mean 614 tokens). Successful episodes 1 capped (the heat
+  success) and 1 ≥ 2000 (77 requests, mean 359).
+- **Exact analyst prompts** (SkillOpt's own builders with ALFWorld prompts,
+  chat_optimizer replaced by a recorder; tokens ≈ chars/4–chars/3):
+
+  | Group | strict | qwen_compat |
+  |---|---|---|
+  | all 4 failures (one failure minibatch) | 31,772 chars (~8–11k tok) | **336,709 chars (~84–112k tok)** |
+  | all 4 successes | 14,776 (~3.7–4.9k) | 103,047 (~26–34k) |
+  | single worst episode (train:0000) | 12,276 (~3–4k) | 162,122 (~41–54k) |
+
+  The cause: upstream `_clip_text` deliberately never truncates ("the
+  optimizer is given the full content"). Compat therefore passes all
+  recovered reasoning: median 661 chars per step, p90 3,186, max 21,430; 16
+  steps > 5k chars hold 35% of it.
+- **Planned training batch** (smoke config, seed 42, epoch 1): `train:0017`
+  (clean), `train:0036` (pick_two), `train:0004` (look), `train:0013`
+  (clean; a 50-step failure in 64337548).
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

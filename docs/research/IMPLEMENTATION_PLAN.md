@@ -136,6 +136,43 @@ id. Continue only from the first step without COMPLETED + checks passed.
 - Resources: 1 A40, 8 CPUs, 64 GB, 1 h limit; expected 10–15 min.
 - Cost: ≤ ~0.25 A40-hours; no DeepSeek calls.
 
+## Prepared, not submitted: first training smoke (condition B, Qwen-compatible baseline)
+
+- Command (from the next deployed commit):
+  `STAGE=train TRAIN_CONFIG=configs/research/alfworld_smoke_qwen_compat.yaml research/submit.sh smoke HEAD -- --time=05:00:00`
+- Config: `alfworld_smoke_qwen_compat.yaml` = strict smoke + `reasoning_parser:
+  qwen_compat` + `trace_log: true` (test asserts no other difference).
+  Qwen3.5-4B @ 851bf6e, thinking off, temperature 0.7, max_tokens 8000;
+  optimizer `deepseek-flash` (pinned in experiment.env); 1 epoch × 1 step, 4
+  train tasks (`train:0017, 0036, 0004, 0013`), full 18-task selection gate,
+  upstream workers (8), edit budget 4, patch mode, slow update / meta at
+  upstream defaults (no calls at epoch 1), `eval_test: false`.
+- Resources: 1 A40, 4 CPUs, 48 GB (1 billing unit), 5 h limit.
+- GPU-time **estimate**: vLLM startup ~4 min; selection baseline 18 episodes
+  (chunks 8/8/2) ~35–80 min; train 4 ~10–30 min; optimizer ~2–6 min;
+  candidate selection 18 ~35–80 min (0 on a skill-hash cache hit or with no
+  patches). Total **~1.5–3.3 h**; billable ≤ 5 h × $0.108 = **≤ $0.54**,
+  expected ~$0.20–0.36.
+- DeepSeek **estimate** (not a cap): at most 4 optimizer call sites in one
+  step (failure analyst, success analyst, final merge if both produce edits,
+  ranking if > 4 merged edits; one patch per group, so no group merges).
+  Inputs: failure analyst up to ~112k tok (observed worst-like), success
+  ~35k, merge/ranking ~5k. Output ≤ 16,384 per call (thinking counts).
+  Per attempt at peak ≈ $0.054 / $0.030 / $0.022 / $0.022, so **≈ $0.13 for
+  one full step if every output hit the cap**; expected ~$0.03–0.08. Plus 2
+  tiny preflight calls (~$0.0001).
+- Retry layers (verified in code): call sites pass `retries=3` to the
+  backend loop, and the OpenAI SDK client (no `max_retries` set) adds up to 2
+  retries for connection, 429 and 5xx errors. That is ≤ 9 HTTP requests per
+  call site and ≤ 36 per step. Failed requests are normally not billed. A
+  parse failure is **not** retried (the step gets no patch). Worst case if
+  every request were billed at full size and peak price: 36 × $0.054 ≈ $1.9
+  (not expected). There is no API-side spend cap; after the run we check
+  `summary.json → token_summary` and `step_record.json → tokens`.
+- Context: largest observed-like analyst prompt ~112k tok ≪ 1M (DeepSeek).
+  The theoretical compat worst case (many 8000-token replies with an action)
+  could exceed the context and fail the call (no patch, not billed).
+
 ## Training-smoke budget (planning estimate from job 64337548; needs a decision)
 
 With upstream `env.workers: 8`, an 8-episode chunk took ~31 min, driven by
