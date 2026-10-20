@@ -1,0 +1,34 @@
+# Research baseline: original SkillOpt on ALFWorld with
+#   target    = Qwen/Qwen3.5-4B served by a job-local vLLM (qwen_chat backend)
+#   optimizer = DeepSeek V4.1 Flash via the hosted API (openai_compatible backend)
+#
+# Only model wiring is set here. Training, gate, split and scoring settings are
+# inherited unchanged from configs/alfworld/default.yaml.
+#
+# Supplied at runtime by research/cluster/smoke.sbatch (never stored here):
+#   --optimizer_model                       resolved DeepSeek model id (OPTIMIZER_MODEL)
+#   OPTIMIZER_OPENAI_COMPATIBLE_API_KEY     env, from the cluster secrets file
+#   TARGET_QWEN_CHAT_BASE_URL / _API_KEY    env, the job-local vLLM endpoint
+_base_: ../alfworld/default.yaml
+
+model:
+  optimizer_backend: openai_compatible
+  target_backend: qwen_chat
+  # Left blank on purpose: the backend would otherwise fall back silently to
+  # "gpt-4o-mini". smoke.sbatch refuses to start without --optimizer_model.
+  optimizer: ""
+  target: Qwen/Qwen3.5-4B
+
+  optimizer_openai_compatible_base_url: https://api.deepseek.com
+  # The openai_compatible backend caps requests at min(caller, max_tokens) and
+  # defaults max_tokens to 8000; SkillOpt's analyst/merge callers ask for 16384.
+  # Raised so the cap is the caller's request, not a backend default.
+  optimizer_openai_compatible_max_tokens: 16384
+
+  # Pin Qwen's thinking mode instead of inheriting the server's chat-template
+  # default. "disabled" matches the repo's note on reproducing the published
+  # non-thinking numbers; the ALFWorld prompt already asks for <think> tags.
+  target_qwen_chat_thinking_mode: disabled
+  # These equal the qwen_chat backend defaults; pinned so they are recorded.
+  target_qwen_chat_temperature: 0.7
+  target_qwen_chat_max_tokens: 8000

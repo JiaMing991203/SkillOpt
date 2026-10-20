@@ -1,0 +1,30 @@
+# Smoke-test sizes for ONE small SkillOpt iteration. Inherits the research
+# baseline wiring; only scale knobs change. Algorithm, prompts, scorer, the
+# strict validation gate, and the slow-update / meta-skill settings are the
+# upstream defaults.
+#
+#   1 epoch x 1 step on 4 training tasks
+#   gate evaluated on the full 18-task selection split (sel_env_num: 0, the
+#   repo default; a first-N subset would contain a single task type)
+#   no held-out test evaluation (eval_test: false), so the test split is unseen
+#
+# Upstream behaviour kept on purpose (documented, not changed): at epoch 1 the
+# slow update makes no LLM calls but injects an empty SLOW_UPDATE placeholder
+# into the current skill after the gate and re-saves skills/skill_v0001.md
+# (trainer.py ~1810-1824); the meta skill records skip_first_epoch. With
+# eval_test: false neither triggers extra rollouts. The gated candidate stays
+# in steps/step_0001/candidate_skill.md.
+_base_: alfworld_qwen35_deepseek.yaml
+
+train:
+  num_epochs: 1
+  train_size: 4
+  batch_size: 4
+
+gradient:
+  analyst_workers: 2
+
+evaluation:
+  use_gate: true
+  sel_env_num: 0
+  eval_test: false
