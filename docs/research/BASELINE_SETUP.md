@@ -106,7 +106,7 @@ experiment).
 | `setup_vllm_env` | CPU, 4 cores, 32 GB, ≤2 h | Create **only** the vLLM env for `LSO_VLLM_VERSION` at `LSO_VLLM_ENV` (one env per version; others untouched), then verify the installed code: version pin, torch/CUDA build, `UniProcExecutor` uses `file://` rendezvous, Qwen3.5 registered, native-sampler switch present, and every `vllm serve` flag we pass (`vllm_env_check.json`, `vllm_serve_help.txt`). |
 | `run_tests` | CPU, 2 cores, 8 GB, ≤30 min | Research-config guards, fallback classifier, gate / ALFWorld path / backend tests. |
 | `check_compute` | CPU, 1 core, 4 GB, ≤15 min | Outbound HTTPS from a compute node; list DeepSeek models; if `OPTIMIZER_MODEL` is listed, two tiny calls **through SkillOpt's `openai_compatible` backend** (configured from the research YAML): plain text, and a JSON edit parsed by SkillOpt's `extract_json`. Records resolved model, `reasoning_content` presence, whether SkillOpt's returned text excludes reasoning, full usage, and estimated cost. |
-| `smoke STAGE=vllm` | 1 A40, 8 cores, 64 GB, ≤1 h | Start vLLM, verify loopback-only listeners, send one real ALFWorld prompt through SkillOpt's `qwen_chat` backend, require an `<action>` tag. |
+| `smoke STAGE=vllm` | 1 A40, 4 cores, 48 GB (one billing unit; §6c), ≤1 h | Start vLLM, verify loopback-only listeners, send one real ALFWorld prompt through SkillOpt's `qwen_chat` backend, require an `<action>` tag. |
 | `smoke STAGE=rollout` | same | `ROLLOUT_EPISODES` (default 1) ALFWorld episodes via `eval_only.py`; **no DeepSeek calls**; vLLM throughput from `/metrics`, HTTP status counts from `vllm.log`. |
 | `smoke STAGE=train` | same; walltime set from the rollout measurement | DeepSeek preflight, then one original SkillOpt step (see §7). |
 
@@ -238,30 +238,23 @@ the time limit) and `resource_usage.csv` (job-cgroup memory: total / process
 / page cache, and CPU time). Physical GPU-hours and billable GPU-equivalent
 hours are reported separately.
 
-## 7. Compute budget for the training smoke
+## 7. Estimating compute for rollouts and training
 
-DeepSeek cost: the ~$0.50 worst case (about 12 calls) is a **planning estimate, not a
-guaranteed cap**, until the optimizer's token and retry limits are verified
-(per-call `max_tokens` 16384, `retries=3` at each call site, plus the
-backend's own retry loop).
+Method (measured basis in `EXPERIMENT_LOG.md`, jobs 64337548 and 64351263):
 
-Upper bound on target calls for `STAGE=train`: (18 baseline val + 4 train + 18
-candidate val) episodes × 50 steps = **2,000 calls**. That is a ceiling.
-Successful episodes stop early, and an identical candidate skill reuses the
-cached score. Up to 8 episodes run concurrently.
+- Rollouts run in **lockstep chunks** of `env.workers` (8) episodes. Each step
+  waits for the slowest active reply, so chunk time ≈ Σ over steps of the
+  slowest reply, not mean latency × steps. Add ~90 s env build per chunk and
+  ~4 min vLLM startup per job.
+- The long tail matters: in 64337548, 7 replies capped at 8000 tokens (~141 s
+  each) accounted for 16.5 of 29 minutes on the critical path.
+- Upper bound on target calls for one smoke step: (18 + 4 + 18) episodes × 50
+  steps = 2,000; a ceiling, not an estimate.
+- Optimizer calls: at most 4 per step; ≤ 9 HTTP attempts each (backend 3 ×
+  SDK up to 3). Prompt sizes depend on the reasoning parser.
 
-Plan: run `STAGE=rollout` with one episode first. It reports `requests`,
-`mean_e2e_latency_s`, `generation_tokens_per_s` and token counts per request
-(`run_summary.json → vllm_throughput`), plus vLLM startup time. From those:
-
-- time per episode ≈ steps × mean latency (1 request in flight);
-- training-smoke wall time ≈ startup + Σ over the three rollout phases of
-  ⌈episodes / 8⌉ × (steps × latency under 8-way concurrency) + optimizer calls.
-
-One sequential episode does not measure batched throughput, so latency under
-8 concurrent requests is an extrapolation. If the estimate is close to the
-walltime, run `ROLLOUT_EPISODES=8` first to measure concurrent throughput
-directly.
+Current estimates for the next run are kept in `IMPLEMENTATION_PLAN.md`
+("Next experiment"). They are planning estimates, not caps.
 
 ## 8. Safety notes
 

@@ -98,6 +98,7 @@ Preferred cycle:
 - Initially prefer the SkillOpt controller and local vLLM server **within the same single-node Slurm allocation**, so the controller can contact a loopback endpoint.
 - Check outbound API connectivity from the **compute node**, not only the login node.
 - Verify valid ALFWorld action formatting before large runs.
+- On `spgpu`, billing is the maximum of weighted resources: **one A40 unit = 4 CPUs = 48 GB**. Request whole units per GPU unless a measured need justifies more, and record billing per run (`docs/research/BASELINE_SETUP.md` §6c).
 
 ### Job-management rules
 
@@ -222,12 +223,32 @@ Use this as guidance, not a rigid template; routine updates should be brief.
 
 ## 8. Documentation and Reproducibility
 
-Keep the following **local** research documents current:
+Keep the following **local** research documents current. Give each one a distinct purpose:
 
-- `docs/research/IMPLEMENTATION_PLAN.md` — milestones, decisions, completion evidence, blockers, next actions.
+- `docs/research/STATE.md` — **current handoff**: active objective, verified status, blockers, active jobs, pending approvals, and next actions. Update in place; keep concise.
+- `docs/research/DAILY_LOG.md` — **chronological development journal**: meaningful work, discoveries, decisions and their reasons, failures, and corrections. Append dated entries; do not rewrite history.
+- `docs/research/IMPLEMENTATION_PLAN.md` — milestones, proposed work, priorities, and completion criteria.
 - `docs/research/BASELINE_ARCHITECTURE.md` — verified SkillOpt components and actual source locations.
 - `docs/research/BASELINE_SETUP.md` — local/cluster repository layout, deployment, dependencies, Slurm execution instructions.
-- `docs/research/EXPERIMENT_LOG.md` — experiments, results, deviations, and observations.
+- `docs/research/EXPERIMENT_LOG.md` — authoritative detailed experiment records: configurations, job IDs, results, deviations, and supporting artifacts.
+
+### Session continuity and context compaction
+
+**Persistent files, not conversation memory or compaction summaries, are the handoff mechanism.** This project spans multiple sessions; automatic compaction may occur without warning. Keep records current throughout work, not just at session end.
+
+- **Session start / after `/compact` / after automatic compaction:** Read `STATE.md` before substantial work. Review the relevant plan and recent log entries. Check `git status`, branch, local/deployed commit IDs, and relevant Slurm jobs before acting. If records and reality differ, reconcile them using code, scheduler state, and artifacts; mark uncertainty rather than guessing.
+- **At meaningful checkpoints:** Update `STATE.md` after a material code milestone, new blocker, important decision, experiment submission or completion, or changed authorization. Record completed findings and decision rationale in `DAILY_LOG.md`; put measured experiment details in `EXPERIMENT_LOG.md`.
+- **Before manually running `/compact`:** Finish or safely pause the current operation when possible; refresh `STATE.md` and any outstanding log entry. Preserve commands and results needed for recovery, particularly exact commits, job IDs/run paths, task/config selection, failures, and pending user decisions.
+- **After compaction / on resumption:** Read `STATE.md` again and identify what was completed, what remains uncertain, and what action is actually authorized. Do **not** infer that an experiment completed, repeat a job submission, or redo a code change merely because its result disappeared from conversation context.
+- **If interrupted while a job is running:** Record the job ID, submitted commit, run directory, expected outputs, latest verified status, and exact recovery/status-check steps in `STATE.md`. A live Slurm job need not be cancelled just because the local session ends.
+- **Keep `STATE.md` short and actionable:** Include a last-verified timestamp, milestone, local/deployed revisions, active/pending jobs, verified accomplishments, blockers, decisions, user approvals or limits, next steps, and pointers to evidence. Update or replace stale sections; do not append historical narratives.
+- **Keep `DAILY_LOG.md` useful over months:** Append entries by date for substantive progress and *why* decisions were made; link to commits, jobs and the detailed experiment log. Record later corrections as new entries rather than quietly rewriting earlier conclusions. Omit routine command-by-command transcripts.
+- **Do not duplicate whole logs:** `STATE.md` is the present, `DAILY_LOG.md` the development history, `IMPLEMENTATION_PLAN.md` the plan, and `EXPERIMENT_LOG.md` the experiment evidence. Use links/paths and archive old daily entries if necessary.
+- **Before any costly, paid, or destructive action:** confirm the user's authorization still covers it, and check `docs/research/jobs.tsv`, `squeue`, `sacct`, and existing run directories so an operation that was already submitted or completed is never repeated.
+- **Label statements in `STATE.md`** as verified results, interpretations, proposals, or user-approved decisions (as in §6), so a later session cannot mistake a proposal for an approval.
+- **Security and authority survive compaction:** Do not copy secrets or private cluster settings into tracked documents. A prior approval applies only to its original scope and budget; compaction never authorizes new jobs, paid API calls, destructive operations, or pushing changes.
+
+If `STATE.md` or `DAILY_LOG.md` does not yet exist, create it locally from **verified** repository, Git, and experiment records. Label missing information instead of inventing a history. Keep this `CLAUDE.md` focused on enduring rules; do not paste changing run status into it.
 
 Each cluster run should have a unique directory containing, where available:
 

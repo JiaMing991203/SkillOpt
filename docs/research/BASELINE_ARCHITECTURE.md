@@ -383,7 +383,7 @@ optimizer model id, stdout logs (no log file). Our wrapper adds these
 |---|---|---|
 | Controller (SkillOpt + ALFWorld) | Python ≥ 3.10; `openai`, `pyyaml`, `numpy`, `openpyxl`, `azure-identity`, `azure-core`, `httpx` (core); `alfworld` (→ `textworld[pddl]`), `gymnasium`, `omegaconf`, `json_repair` | `alfworld` base install is enough for TextWorld; `[full]` (THOR, torch, detectors) is not needed. `torch` is optional (`vendor/env_base.py:12-18`). |
 | ALFWorld data | `alfworld-download` → `$ALFWORLD_DATA/json_2.1.1`, `logic/alfred.{pddl,twl2}` | ~GBs of small files. |
-| Target server | `vllm` (we pin 0.25.1, which registers `Qwen3_5ForConditionalGeneration`), CUDA GPU | Qwen3.5-4B is an image-text-to-text checkpoint; we serve text only (`--limit-mm-per-prompt` image/video 0). |
+| Target server | `vllm` (pinned **0.28.0** since 2026-10-20 for its file-based rendezvous; 0.25.1 also registers `Qwen3_5ForConditionalGeneration`; see `BASELINE_SETUP.md` §6b), CUDA GPU | Qwen3.5-4B is an image-text-to-text checkpoint; we serve text only (`--limit-mm-per-prompt` image/video 0). |
 | Optimizer | Outbound HTTPS from the compute node to `api.deepseek.com`, API key | |
 
 ## 8. Code vs. published method
