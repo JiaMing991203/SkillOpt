@@ -411,6 +411,28 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   configuration, so SkillOpt's reflection would reason from actions and
   observations only. One easy episode is not a success-rate estimate.
 
+## 2026-10-20 — offline: run_tests (job 64336623) and parser demo (job 64336627)
+
+- **Commit / snapshot:** `8f739f7` / `snapshots/8f739f76a794`. CPU only, no
+  model or API calls.
+- **run_tests:** **179 passed**, 0 failed/skipped (61 parser cases, 4
+  fake-env equivalence tests: trace_log leaves results, conversations,
+  executed actions and `compute_score` identical; compat changes only
+  `reasoning`/`reasoning_source`).
+- **Parser demo** on the saved episode `runs/20261020-031601_smoke_rollout_64333791`
+  (`reasoning_parser_demo.json`, `reflection_input_{strict,qwen_compat}.txt`):
+
+  | Step | Action | Raw reply chars | Strict reasoning | Compat reasoning |
+  |---|---|---|---|---|
+  | 0 | go to desk 1 | 482 | 0 | 451 (untagged_prefix) |
+  | 1 | use desklamp 1 | 362 | 0 | 329 (untagged_prefix) |
+  | 2 | take alarmclock 2 from desk 1 | 1,777 | 0 | 1,728 (untagged_prefix) |
+
+  The reflection input has 0 think lines / 488 chars under strict and 3 think
+  lines / 3,044 chars under compat. Actions, observations and outcome are
+  identical by construction. The difference is the action tag and
+  whitespace.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

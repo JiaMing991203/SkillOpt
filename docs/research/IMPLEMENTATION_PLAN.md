@@ -118,6 +118,24 @@ id. Continue only from the first step without COMPLETED + checks passed.
     concurrency 1 with ~9% mean GPU use. An 8-episode test (needs approval)
     would measure concurrent throughput before planning training.
 
+## Prepared, not submitted: 8-episode throughput test (needs approval)
+
+- Command: `STAGE=rollout ROLLOUT_EPISODES=8 ROLLOUT_SPLIT=valid_seen
+  ROLLOUT_CFG_OPTIONS="env.trace_log=true" research/submit.sh smoke`
+- Tasks: `val:0000`–`val:0007` (first 8 of the selection split in file order:
+  3 look_at_obj_in_light, 3 pick_and_place_simple, 2
+  pick_clean_then_place_in_recep). Evaluation only, no optimization, held-out
+  test untouched.
+- Model/serving: as in job 64333791 (Qwen3.5-4B @ 851bf6e, vLLM 0.28.0,
+  native sampler, prefix caching off, thinking disabled, temperature 0.7,
+  max_tokens 8000, initial skill, max_steps 50); `reasoning_parser: strict`
+  (compat comparison done offline from the saved raw replies);
+  `trace_log: true`.
+- Concurrency: `env.workers` 8 (one chunk of 8 simulators), `max_api_workers`
+  8 (up to 8 concurrent requests, lockstep per step).
+- Resources: 1 A40, 8 CPUs, 64 GB, 1 h limit; expected 10–15 min.
+- Cost: ≤ ~0.25 A40-hours; no DeepSeek calls.
+
 ## Next actions
 
 1. User: create `$SECRETS_FILE` on the cluster (`BASELINE_SETUP.md` §4).
