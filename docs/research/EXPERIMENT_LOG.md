@@ -248,6 +248,66 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
      by environment in torch 2.11).
 - **Not done, per instructions:** no retry; STAGE=rollout not submitted.
 
+## 2026-10-20 — run_tests (job 64330988)
+
+- Commit `0724e27` (Gloo loopback, listener classifier, probe window).
+  **113 passed** (includes 8 classifier tests built from 64330104's socket layout).
+
+## 2026-10-20 — smoke STAGE=vllm (job 64331018) — network UNRESOLVED (exit 3); rollout not run
+
+- **Purpose:** validate `GLOO_SOCKET_IFNAME=lo`, inspect the remaining
+  sockets, and test their reachability from outside the node.
+- **Commit / snapshot:** `0724e27` / `snapshots/0724e27fd50c`
+- **Resources requested / used:** spgpu, 1 A40, 8 cores, 64 GB, 1 h / ran
+  **7 min 34 s** (includes the 180 s probe window), 2 min 52 s CPU. Peak GPU
+  memory 38.98 / 46 GiB.
+- **Run dir:** `runs/20261020-014508_smoke_vllm_64331018` (fetched locally,
+  including `vllm_listeners.json`, `probe_window.json`, `probe_from_login.json`)
+- **Outcome:** exit 3 by design. `network status: unresolved`; no agent stage ran.
+- **Verified, model loading:** weights 15.8 s; torch.compile 54.9 s (again not
+  served from cache); engine init 165.3 s; KV cache 27.92 GiB. **Ready after
+  ~250 s.** Native sampler confirmed (`vllm_sampler.txt` = native). 0 ERROR
+  lines in `vllm.log`.
+- **Verified, inference (target preflight PASS):** one ALFWorld-format prompt
+  (initial skill + template) through SkillOpt's `qwen_chat` backend (thinking
+  disabled, temperature 0.7, max_tokens 8000). 973 prompt / 317 completion
+  tokens in 5.78 s (about 55 completion tokens/s for one request, prefill
+  included). HTTP 200. Extracted action `go to countertop 1` is admissible.
+- **Verified, formatting finding:** the response contains `</think>` and a
+  well-formed `<action>…</action>`, but **no opening `<think>`**. Qwen's chat
+  template pre-fills `<think>\n\n</think>\n\n` when `enable_thinking=false`
+  (`chat_template.jinja` line 150). Consequences (from code): the action parses
+  fine, but `rollout._extract_think` (`<think>(.*?)</think>`) would return None,
+  so trajectory steps would have `reasoning: null`. The analyst's
+  `fmt_trajectory` uses only `reasoning`/`action`/`env_feedback`, so the
+  optimizer would not see the agent's reasoning. The vendored validity flag
+  would also be 0 (it is unused for scoring). One sample only; an episode is
+  needed to see whether this is systematic.
+- **Verified, sockets** (`vllm_listeners.json`; probe from a login node to
+  each of the node's 3 addresses, 24 connects):
+
+  | Socket | Created by | Bound to | From login node |
+  |---|---|---|---|
+  | HTTP API | vLLM API server (`--host 127.0.0.1`) | 127.0.0.1 | refused |
+  | 6 Gloo CPU-group listeners | torch ProcessGroupGloo (vLLM `parallel_state`) | **127.0.0.1** (was node IP in 64330104) | refused |
+  | rendezvous store | torch c10d `TCPStore` server (`rendezvous._create_c10d_store`, rank 0) | **0.0.0.0** | **OPEN on all 3 addresses** |
+
+  The rendezvous port matches `distributed_init_method=tcp://127.0.0.1:<port>`
+  in `vllm.log`. The 64330104 layout had 7 Gloo listeners and this run had 6.
+  The count difference is unexplained, but all are loopback now.
+- **Code findings (torch 2.11 / vLLM 0.25.1, installed copies):** vLLM's
+  single-GPU executor always uses `tcp://<VLLM_HOST_IP>:<free port>`, with no
+  setting to change it. torch's `tcp://` handler creates a `TCPStore` server on
+  rank 0. `TCPStoreOptions` has `port` but **no bind address**. The only
+  supported restriction is `masterListenFd` (a pre-bound socket), which the
+  `tcp://` path does not expose. There is therefore no supported environment
+  or config setting that restricts this listener without changing vLLM's code
+  path.
+- **Great Lakes isolation:** ARC's public documentation describes the node
+  networks (Ethernet + InfiniBand) but no per-job or per-user firewalling. The
+  probe shows the store is reachable from a login node, which all cluster
+  users share.
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)

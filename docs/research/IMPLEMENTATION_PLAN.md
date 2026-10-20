@@ -15,7 +15,7 @@ representative traces have been inspected.
 | 2b | `deploy.sh` + `setup_env` job (new envs, model, ALFWorld data, data census) | **Done** | job 64323201 FAILED (PATH; fixed in `70de16f`); job 64323909 COMPLETED — see EXPERIMENT_LOG |
 | 2c | `run_tests` job | **Done** | job 64326614: 104 passed |
 | 2d | DeepSeek key on cluster + `check_compute` job | **Done** | job 64328962 PASS via SkillOpt backend |
-| 3a | `STAGE=vllm` smoke (Qwen endpoint, loopback check) | **Blocked** | 64329002 FAILED (FlashInfer needs `nvcc`; fixed with native sampler). 64330104: server ready in 230 s with native sampler, then FAILED the fail-closed listener check (torch Gloo/TCPStore sockets on node IP / 0.0.0.0). Network policy decision needed |
+| 3a | `STAGE=vllm` smoke (Qwen endpoint, loopback check) | **Blocked** | 64329002 FAILED (FlashInfer needs `nvcc`; fixed with native sampler). 64330104: server ready in 230 s with native sampler, then FAILED the fail-closed listener check (torch Gloo/TCPStore sockets on node IP / 0.0.0.0). 64331018: Gloo moved to loopback; only torch's rendezvous TCPStore (0.0.0.0) remains, reachable from a login node → status unresolved, rollout not run. Decision needed (see EXPERIMENT_LOG) |
 | 3b | `STAGE=rollout` smoke, 1 episode: validity + **throughput measurement** | After 2d, 3a | — |
 | 3c | Estimate time/compute for training smoke from 3b; approve walltime | After 3b | — |
 | 3d | `STAGE=train` smoke (one SkillOpt iteration + gate) | After 3c | — |
