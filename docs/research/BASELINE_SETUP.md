@@ -146,6 +146,16 @@ and the node name. Treat run directories as private; review before sharing.
 | torch.distributed rendezvous (single-GPU executor) | the node's network IP by default (`get_ip()` in `vllm/v1/executor/uniproc_executor.py`); forced to loopback with `VLLM_HOST_IP=127.0.0.1` | vLLM 0.25.1 source, read on the cluster |
 | API server ↔ engine core | local IPC (Unix socket) when single-node (`get_engine_client_zmq_addr(local_only=True)`) | same |
 
+**Sampler:** `VLLM_USE_FLASHINFER_SAMPLER=0` (from `LSO_VLLM_USE_FLASHINFER_SAMPLER` in
+`experiment.env`) selects vLLM's native PyTorch top-k/top-p sampler. FlashInfer's
+sampler JIT-compiles a CUDA module at startup and needs `nvcc`, which the job
+does not provide (job 64329002). The sampling semantics are the same; the
+kernel and RNG path differ. `lib.sh:check_vllm_sampler` reads `vllm.log`
+and fails the job unless the native sampler was selected. The setting is
+recorded in `manifest.json → target.vllm_env` and is shared by all arms.
+Project variables use the `LSO_` prefix; only real vLLM settings
+(`VLLM_HOST_IP`, `VLLM_USE_FLASHINFER_SAMPLER`, `VLLM_API_KEY`) reach vLLM.
+
 `lib.sh:check_vllm_listeners` lists every TCP listener in vLLM's process
 session after startup and **fails the job if any is not loopback**. Loopback
 is still reachable by other users' jobs on a shared node, hence the per-job
@@ -155,6 +165,11 @@ that `setsid` keeps the server PID (it should, because batch shells have no job
 control).
 
 ## 7. Compute budget for the training smoke
+
+DeepSeek cost: the ~$0.50 worst case (about 12 calls) is a **planning estimate, not a
+guaranteed cap**, until the optimizer's token and retry limits are verified
+(per-call `max_tokens` 16384, `retries=3` at each call site, plus the
+backend's own retry loop).
 
 Upper bound on target calls for `STAGE=train`: (18 baseline val + 4 train + 18
 candidate val) episodes × 50 steps = **2,000 calls**. That is a ceiling.

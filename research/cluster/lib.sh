@@ -130,6 +130,10 @@ manifest = {
         "temperature": env.get("TARGET_QWEN_CHAT_TEMPERATURE"),
         "max_tokens": env.get("TARGET_QWEN_CHAT_MAX_TOKENS"),
         "vllm_version_pinned": env.get("LSO_VLLM_VERSION"),
+        "vllm_env": {
+            "VLLM_HOST_IP": "127.0.0.1",
+            "VLLM_USE_FLASHINFER_SAMPLER": env.get("LSO_VLLM_USE_FLASHINFER_SAMPLER"),
+        },
         "vllm_args": env.get("LSO_VLLM_ARGS"),
     },
     "optimizer": {
@@ -186,6 +190,24 @@ check_vllm_listeners() {
     fi
 }
 
+# Confirms from vllm.log which top-k/top-p sampler vLLM selected, and fails the
+# job if it does not match LSO_VLLM_USE_FLASHINFER_SAMPLER. Writes vllm_sampler.txt.
+check_vllm_sampler() {
+    local native="FlashInfer top-p/top-k sampling disabled via VLLM_USE_FLASHINFER_SAMPLER=0"
+    local flashinfer="Using FlashInfer for top-p & top-k sampling"
+    if grep -qF "$flashinfer" "$RUN_DIR/vllm.log"; then
+        echo "flashinfer" > "$RUN_DIR/vllm_sampler.txt"
+    elif grep -qF "$native" "$RUN_DIR/vllm.log"; then
+        echo "native" > "$RUN_DIR/vllm_sampler.txt"
+    else
+        echo "unknown" > "$RUN_DIR/vllm_sampler.txt"
+    fi
+    log "vLLM top-k/top-p sampler: $(cat "$RUN_DIR/vllm_sampler.txt")"
+    if [ "$LSO_VLLM_USE_FLASHINFER_SAMPLER" = "0" ] && [ "$(cat "$RUN_DIR/vllm_sampler.txt")" != "native" ]; then
+        die "expected the native sampler (LSO_VLLM_USE_FLASHINFER_SAMPLER=0); see vllm.log"
+    fi
+}
+
 # Starts a vLLM OpenAI-compatible server for this job only.
 #  - HTTP server bound to 127.0.0.1 (--host)
 #  - VLLM_HOST_IP=127.0.0.1 so the torch.distributed rendezvous of the
@@ -211,9 +233,10 @@ start_vllm() {
         --limit-mm-per-prompt '{"image":0,"video":0}'
         --seed 0
     )
-    export LSO_VLLM_ARGS="VLLM_HOST_IP=127.0.0.1 vllm ${args[*]}"
+    export LSO_VLLM_ARGS="VLLM_HOST_IP=127.0.0.1 VLLM_USE_FLASHINFER_SAMPLER=$LSO_VLLM_USE_FLASHINFER_SAMPLER vllm ${args[*]}"
     log "starting: $LSO_VLLM_ARGS"
     VLLM_API_KEY="$VLLM_API_KEY" VLLM_HOST_IP=127.0.0.1 HF_HUB_OFFLINE=1 \
+        VLLM_USE_FLASHINFER_SAMPLER="$LSO_VLLM_USE_FLASHINFER_SAMPLER" \
         setsid "$LSO_VLLM_ENV/bin/vllm" "${args[@]}" > "$RUN_DIR/vllm.log" 2>&1 &
     LSO_VLLM_PID=$!
     export LSO_VLLM_PID
@@ -228,6 +251,7 @@ start_vllm() {
     echo "$waited" > "$RUN_DIR/vllm_startup_seconds.txt"
     log "vLLM ready on 127.0.0.1:$LSO_VLLM_PORT after ~${waited}s"
     check_vllm_listeners
+    check_vllm_sampler
 
     # Point SkillOpt's qwen_chat target role at the job-local server.
     export TARGET_QWEN_CHAT_BASE_URL="http://127.0.0.1:$LSO_VLLM_PORT/v1"

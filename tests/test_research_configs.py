@@ -57,3 +57,28 @@ def test_smoke_keeps_original_gate_and_selection_split():
     assert cfg["use_slow_update"] is True
     assert cfg["use_meta_skill"] is True
     assert cfg["slow_update_gate_with_selection"] is False
+
+
+def _experiment_env():
+    values = {}
+    with open("research/cluster/experiment.env", encoding="utf-8") as f:
+        for line in f:
+            line = line.split("#", 1)[0].strip()
+            if "=" in line:
+                key, val = line.split("=", 1)
+                values[key.strip()] = val.strip()
+    return values
+
+
+def test_vllm_serving_settings_are_pinned():
+    # Shared by every baseline and Lean-guided arm; changing them changes the target.
+    env = _experiment_env()
+    assert env["TARGET_MODEL_ID"] == "Qwen/Qwen3.5-4B"
+    assert env["TARGET_MODEL_REVISION"] == "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
+    assert env["LSO_VLLM_VERSION"] == "0.25.1"
+    assert env["LSO_VLLM_USE_FLASHINFER_SAMPLER"] == "0"  # native sampler (job 64329002)
+    # Must agree with the YAML the trainer reads.
+    cfg = _flat(BASELINE)
+    assert env["TARGET_QWEN_CHAT_THINKING_MODE"] == cfg["target_qwen_chat_thinking_mode"]
+    assert float(env["TARGET_QWEN_CHAT_TEMPERATURE"]) == float(cfg["target_qwen_chat_temperature"])
+    assert int(env["TARGET_QWEN_CHAT_MAX_TOKENS"]) == int(cfg["target_qwen_chat_max_tokens"])

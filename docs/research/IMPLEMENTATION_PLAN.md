@@ -36,6 +36,8 @@ representative traces have been inspected.
 | 2026-10-19 | `optimizer_openai_compatible_max_tokens: 16384` | Backend default 8000 silently caps SkillOpt's 16384 requests | keep 8000 |
 | 2026-10-19 | Smoke iteration: 1 epoch × 1 step, 4 train tasks, full 18-task val gate, no test eval; **slow update / meta skill / reflection at upstream defaults** | Exercise every stage and the real gate without changing upstream behaviour; with `eval_test: false` the epoch-1 slow-update placeholder costs nothing | disable slow/meta (earlier draft) |
 | 2026-10-19 | Measure throughput on 1 episode before submitting the training smoke | 2,000 target calls is the upper bound; walltime should come from data | submit with a guessed 2 h |
+| 2026-10-20 | vLLM serves with `VLLM_USE_FLASHINFER_SAMPLER=0` (native sampler), verified at startup, recorded in manifests, shared by all arms | FlashInfer sampler JIT needs `nvcc` (job 64329002); user-approved | `module load cuda/<ver>` (keeps FlashInfer, needs CUDA version choice) |
+| 2026-10-20 | Project variables renamed `LSO_VLLM_*` | `VLLM_*` is vLLM's namespace; `VLLM_PORT` collided with a real vLLM setting | — |
 | 2026-10-19 | No source changes to SkillOpt; all additions are new files (+ 2 `.gitignore` lines) | Preserve baseline semantics | — |
 
 ## Open questions (decide before larger experiments)
@@ -54,7 +56,10 @@ representative traces have been inspected.
    justified (it would apply equally to all comparison arms).
 5. **Batch size:** default 40 > 39 train tasks.
 6. **Seeds/repeats:** an 18-task gate is noisy; plan repeats.
-7. **Fallback diagnostics:** for the Lean work, add opt-in per-step
+7. **DeepSeek spend bound:** the training-smoke cost (~$0.50 worst case) is a
+   planning estimate until per-call token limits and all retry layers are
+   verified in code and in a real run's token log.
+8. **Fallback diagnostics:** for the Lean work, add opt-in per-step
    instrumentation (raw response, exception, retries, executed action), off
    for baseline runs.
 
