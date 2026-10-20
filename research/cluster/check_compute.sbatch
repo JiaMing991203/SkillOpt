@@ -22,5 +22,8 @@ for url in "$DEEPSEEK_BASE_URL/models" "https://huggingface.co/api/models/$TARGE
     curl -s -o /dev/null -w "  $url -> HTTP %{http_code} (%{time_total}s)\n" --max-time 20 "$url" || echo "  $url -> FAILED"
 done
 
+status=0
 PYTHONPATH="$SNAPSHOT_DIR" "$CTL_ENV/bin/python" research/preflight_endpoints.py \
-    --optimizer --out "$RUN_DIR/preflight.json"
+    --optimizer --out "$RUN_DIR/preflight.json" || status=$?
+assert_run_dir_clean
+exit "$status"

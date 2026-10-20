@@ -74,5 +74,6 @@ scrape_vllm_metrics after
 
 "$CTL_ENV/bin/python" research/summarize_run.py "$OUT" --run-dir "$RUN_DIR" \
     --out "$RUN_DIR/run_summary.json" || log "warning: summarize_run failed"
+assert_run_dir_clean
 log "stage $STAGE finished with status $status"
 exit "$status"

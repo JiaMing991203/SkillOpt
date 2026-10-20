@@ -5,8 +5,8 @@ resources, task/seed selection, outcome, and observations. Labels:
 **Verified** (seen in outputs), **Interpretation**, **Speculation**.
 Machine-readable submission records: `docs/research/jobs.tsv`.
 Fetched run directories: `$LOCAL_RUNS` (outside git). Machine-specific
-details (account, paths) stay in the private `site.env` and in each run's
-copy of it, not here.
+details (account, paths) stay in the private `site.env`, not here; runs
+record only its SHA-256 (`manifest.json → site_env_sha256`).
 
 ---
 

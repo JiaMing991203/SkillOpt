@@ -111,14 +111,30 @@ experiment).
 
 ### Files in every run directory
 
-`manifest.json` (commit, Slurm allocation, GPU, model id/revision, Qwen
-request settings, vLLM command line, requested optimizer model),
-`experiment.env` + `site.env` (copies of the settings used), `job.log`,
+`manifest.json` (sanitized; see below), `experiment.env` (copy of the
+tracked experiment settings), `job.log`,
 `vllm.log`, `vllm_models.json`, `vllm_listeners.txt`,
 `vllm_startup_seconds.txt`, `vllm_metrics_{before,after}.prom`,
 `preflight.json`, `pip_freeze_{ctl,vllm}.txt`, `skillopt/` (SkillOpt's own
 `out_root`), `run_summary.json`. `fetch_run.sh` adds `sacct.txt` and the Slurm
 `.out` file.
+
+**What is never written to a run directory:** `site.env` and `secrets.env`.
+The manifest records the commit, run id, Slurm job id / partition /
+CPU / memory / GPU count / time limit, GPU model and driver, model id and
+revision, Qwen request settings, the vLLM command line, and the requested
+optimizer model. It omits the Slurm account, node names and absolute paths,
+and represents the private `site.env` only by its SHA-256
+(`site_env_sha256`), so a change in site settings between runs is detectable.
+Every job ends with `assert_run_dir_clean`, which fails the job if a
+`site.env` / `secrets.env` file is present or if the DeepSeek key or the
+per-job vLLM key appears in any run file (values are never printed).
+
+**Still present (private artifacts):** SkillOpt's own outputs contain
+absolute cluster paths (`skillopt/config.json` → `out_root`;
+`results.jsonl` → `gamefile`, resolved against `$ALFWORLD_DATA`), and tool
+output in `job.log` / `vllm.log` (conda, pip, Hugging Face) can contain paths
+and the node name. Treat run directories as private; review before sharing.
 
 ## 6. vLLM networking
 
@@ -160,6 +176,6 @@ directly.
 
 - Jobs refuse to run if the snapshot has modified tracked files.
 - `deploy.sh` and `fetch_run.sh` never delete anything (no `--delete`).
-- The API key is read only inside jobs. It is never on a command line, and
-  SkillOpt redacts it from `config.json`.
+- The API key is read only inside jobs. It is never on a command line or in
+  the manifest, and `assert_run_dir_clean` checks every run file for it.
 - The fork is public: never commit `site.env`, secrets, run outputs, or traces.

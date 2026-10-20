@@ -5,7 +5,8 @@
 #   load_site                 # experiment.env (tracked) + private site.env
 #   init_run <name>           # creates $RUN_DIR, refuses to reuse one
 #   require_clean_snapshot    # records commit; aborts on a dirty tree
-#   write_manifest            # $RUN_DIR/manifest.json + copies of both env files
+#   write_manifest            # sanitized $RUN_DIR/manifest.json (+ tracked experiment.env)
+#   assert_run_dir_clean      # fail if settings files or key values reached the run dir
 #   start_vllm / stop_vllm    # job-scoped server, loopback only, random key
 #   scrape_vllm_metrics <tag> # Prometheus counters for throughput accounting
 
@@ -61,7 +62,7 @@ init_run() {
     [ -e "$RUN_DIR" ] && die "run dir already exists: $RUN_DIR"
     mkdir -p "$RUN_DIR"
     export RUN_DIR RUN_NAME="$name"
-    log "run dir: $RUN_DIR"
+    log "run dir: \$RUN_ROOT/$(basename "$RUN_DIR")"
 }
 
 require_clean_snapshot() {
@@ -74,28 +75,32 @@ require_clean_snapshot() {
     log "commit: $GIT_COMMIT"
 }
 
-# Records what this run is: code identity, Slurm allocation, hardware, models.
+# Records what this run is, in a SANITIZED form: code identity, Slurm
+# allocation size, GPU model, model/serving settings. It deliberately omits
+# the private site settings (account, node names, absolute paths) and never
+# touches the secrets file. The private site.env is represented only by its
+# SHA-256 digest, so a change of site settings between runs is detectable
+# without revealing them. experiment.env is tracked in git and copied as-is.
 # Extra key=value pairs are stored under "extra".
 write_manifest() {
     local out="$RUN_DIR/manifest.json"
     cp "$SNAPSHOT_DIR/research/cluster/experiment.env" "$RUN_DIR/experiment.env"
-    cp "$LSO_SITE_ENV" "$RUN_DIR/site.env"
-    nvidia-smi --query-gpu=name,driver_version,memory.total,uuid --format=csv,noheader \
+    SITE_ENV_SHA256=$(sha256sum "$LSO_SITE_ENV" | cut -d' ' -f1)
+    export SITE_ENV_SHA256
+    nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader \
         > "$RUN_DIR/gpus.txt" 2>/dev/null || echo "none" > "$RUN_DIR/gpus.txt"
     python3 - "$out" "$@" <<'PY'
-import json, os, socket, sys, datetime
+import json, os, sys, datetime
 out, extras = sys.argv[1], sys.argv[2:]
 env = os.environ
-keys = ["SLURM_JOB_ID", "SLURM_JOB_NAME", "SLURM_JOB_ACCOUNT", "SLURM_JOB_PARTITION",
-        "SLURM_JOB_NODELIST", "SLURM_CPUS_PER_TASK", "SLURM_MEM_PER_NODE",
-        "SLURM_GPUS_ON_NODE", "SLURM_JOB_GPUS", "CUDA_VISIBLE_DEVICES", "SLURM_TIMELIMIT"]
+keys = ["SLURM_JOB_ID", "SLURM_JOB_NAME", "SLURM_JOB_PARTITION", "SLURM_CPUS_PER_TASK",
+        "SLURM_MEM_PER_NODE", "SLURM_GPUS_ON_NODE", "SLURM_TIMELIMIT"]
 manifest = {
     "written_at": datetime.datetime.now().astimezone().isoformat(),
-    "host": socket.gethostname(),
     "run_name": env.get("RUN_NAME"),
-    "run_dir": env.get("RUN_DIR"),
+    "run_id": os.path.basename(env["RUN_DIR"]),
     "git_commit": env.get("GIT_COMMIT"),
-    "snapshot_dir": env.get("SNAPSHOT_DIR"),
+    "site_env_sha256": env.get("SITE_ENV_SHA256"),
     "slurm": {k: env.get(k) for k in keys if env.get(k) is not None},
     "gpus": open(os.path.join(env["RUN_DIR"], "gpus.txt")).read().strip().splitlines(),
     "target": {
@@ -116,7 +121,24 @@ manifest = {
 with open(out, "w") as f:
     json.dump(manifest, f, indent=2)
 PY
-    log "manifest: $out"
+    log "manifest written (sanitized)"
+}
+
+# Final guard for every job: no private settings or secrets in the artifacts.
+# Fails the job if a site.env / secrets.env file is in the run dir, or if the
+# DeepSeek key or the per-job vLLM key appears in any run file. Never prints
+# the key values.
+assert_run_dir_clean() {
+    local bad=0 f var
+    f=$(find "$RUN_DIR" \( -name 'site.env' -o -name 'secrets.env' \) -print -quit)
+    [ -z "$f" ] || { log "LEAK: settings file in run dir: ${f#"$RUN_DIR"/}"; bad=1; }
+    for var in DEEPSEEK_API_KEY VLLM_API_KEY; do
+        [ -n "${!var:-}" ] || continue
+        f=$(grep -rlF -- "${!var}" "$RUN_DIR" 2>/dev/null | head -1 || true)
+        [ -z "$f" ] || { log "LEAK: value of $var found in ${f#"$RUN_DIR"/}"; bad=1; }
+    done
+    [ "$bad" = 0 ] || die "secret/settings leak in run dir (see LEAK lines); do not share this run"
+    log "run dir check: no settings files or key values in artifacts"
 }
 
 freeze_env() {

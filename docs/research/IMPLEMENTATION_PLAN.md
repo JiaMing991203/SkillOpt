@@ -27,7 +27,7 @@ representative traces have been inspected.
 | Date | Decision | Why | Alternatives considered |
 |---|---|---|---|
 | 2026-10-19 | Slurm account chosen by user; stored only in private `site.env` | Fork is public; keep machine details out of git | — |
-| 2026-10-19 | Split settings: private `site.env` (untracked) + `site.env.example` (tracked placeholders) + `experiment.env` (tracked model/serving settings); each run copies both env files | Experiment-defining values must be versioned; machine details must not be public | single tracked file |
+| 2026-10-19 | Split settings: private `site.env` (untracked) + `site.env.example` (tracked placeholders) + `experiment.env` (tracked model/serving settings); each run copies only `experiment.env` plus a sanitized manifest with a `site.env` SHA-256; a final guard fails the job if settings files or key values reach the run dir | Experiment-defining values must be versioned; machine details must not be public | single tracked file |
 | 2026-10-19 | Two new envs (controller; vLLM with vllm==0.25.1) | Isolation from other projects' envs; 0.25.1 is known to support Qwen3.5 | reuse an existing env read-only |
 | 2026-10-19 | Model cache = existing HF cache on project storage | User asked for models under project storage; home quota nearly full | per-project cache dir |
 | 2026-10-19 | Controller + vLLM in one single-node GPU job; HTTP on 127.0.0.1, `VLLM_HOST_IP=127.0.0.1`, per-job key, listener check fails closed | CLAUDE.md §4; nodes are shared; vLLM's default rendezvous uses the node IP | separate server job |
