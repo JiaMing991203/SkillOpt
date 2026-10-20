@@ -328,3 +328,49 @@ readable as a development history.
 
 ### Next actions
 See `STATE.md` §G. The strict training smoke awaits authorization.
+
+---
+
+## 2026-10-20 — Training smoke authorized; pre-submission checks
+
+### Objective
+Submit the user-approved strict-parser training smoke with diagnostic traces,
+after verifying the configuration and the evidence capture.
+
+### Work completed
+- **User decision:** approve one strict-parser training smoke with a
+  separate strict + `trace_log` config (original strict config unchanged),
+  1 A40 / 4 CPUs / 48 GB, ≤ 5 h, original prompts, edit logic and gate.
+- Added `configs/research/alfworld_smoke_strict_traced.yaml` and tests.
+- **Finding (code):** SkillOpt writes only *parsed* optimizer results
+  (`patches/*.json`, `merged_patch.json`, `ranked_edits.json`); it saves no
+  prompts or raw replies, and drops unparsable analyst replies and ranking
+  failures without any file record (`reflect.py:353-355`, `clip.py:101-102`;
+  merge leaves only a "fallback" reasoning string). The backend retries
+  silently. So the user's request to preserve optimizer inputs/outputs and
+  parse outcomes could not be met without instrumentation.
+- Added an **opt-in** call log to the `openai_compatible` backend (one JSON
+  line per attempt: messages, reply, DeepSeek reasoning text, finish reason,
+  full usage incl. cache/reasoning tokens, or the error). It is off unless
+  `OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG` is set and is written so it cannot
+  alter a request, a return value or the retry loop (tested). The OpenAI
+  SDK in our env (3.35.1) logs no bodies, headers or URLs at debug level, so
+  `OPENAI_LOG=debug` adds content-free per-HTTP-request lines, including
+  the SDK's own internal retries.
+- Added `research/summarize_optimizer_calls.py` (parse outcome per call
+  using SkillOpt's own rule, tokens, cost by price tier) and
+  `research/resolve_config.py` (resolved configs, planned batch, selection
+  ids), both run automatically.
+- Tests 64358982: 195 passed; resolved diff confirmed. Deployed `12a153e`;
+  submitted training job **64359024**.
+
+### Decisions and reasons
+- **Interpretation:** the call log is a SkillOpt source change, but only in
+  the transport layer and off by default; it does not touch optimizer
+  prompts, edit rules or the gate. Keeping it in the backend (rather than a
+  runtime monkey-patch from a wrapper) makes it reviewable and testable.
+
+### Next actions
+Monitor 64359024; fetch and analyze; update logs; report. Later: write up the
+pre-implementation research decisions (incl. Option B contracts).
+

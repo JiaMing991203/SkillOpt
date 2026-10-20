@@ -554,6 +554,52 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
   (clean), `train:0036` (pick_two), `train:0004` (look), `train:0013`
   (clean; a 50-step failure in 64337548).
 
+## 2026-10-20 — pre-training checks: run_tests + resolved configs (job 64358982)
+
+- **Purpose:** verify the strict+trace config and the optimizer call log
+  before the training smoke.
+- **Commit:** `12a153e`   **Snapshot:** snapshots/12a153e5ffa3
+- **Resources:** CPU partition, 2 CPUs / 8 GB, ~10 s.
+- **Outcome:** COMPLETED. **195 passed** (185 earlier + 10 new). New tests:
+  - strict+trace smoke differs from the strict smoke only in `trace_log`,
+    and `scripts/train.py`'s `get_adapter` builds it as strict + traced with
+    all other adapter settings equal;
+  - the failure and success analyst prompts SkillOpt builds are
+    byte-identical with and without traces (trace-only evidence such as
+    backend error text never appears);
+  - only `skillopt/envs/alfworld/{rollout,adapter}.py` mention `trace.json`;
+  - call log: off by default; same `create()` kwargs, return values, token
+    totals and attempt count with it on; failed attempts logged; API key
+    never written; an unwritable log path changes nothing;
+  - `summarize_optimizer_calls.py` parse rules, costs, SDK HTTP lines.
+- **Resolved configs** (`resolved_configs.json`, as `scripts/train.py` reads
+  them): diff vs `alfworld_smoke.yaml` = `{trace_log: false → true}` for the
+  strict+trace config; `{reasoning_parser, trace_log}` for condition B. Train
+  batch (all three) `train:0017, 0036, 0004, 0013`; selection = `val:0000`–
+  `val:0017` (18). Key values: Qwen/Qwen3.5-4B, qwen_chat, thinking disabled,
+  temperature 0.7, max_tokens 8000; optimizer openai_compatible at
+  api.deepseek.com, max_tokens 16384 (model id from `OPTIMIZER_MODEL` =
+  `deepseek-flash`); 1 epoch, batch 4, edit budget 4, patch mode, gate on,
+  workers 8, max_api_workers 8, analyst_workers 2, minibatch 8, max_steps 50,
+  lr fixed, `eval_test: false`, slow update / meta on (upstream defaults).
+
+## 2026-10-20 — training smoke, condition A strict + traces (job 64359024) — SUBMITTED
+
+- **Purpose:** one original SkillOpt optimization step (rollout → reflect →
+  merge → clip → apply → gate) end to end (CLAUDE.md §9 item 6).
+- **Commit:** `12a153e`   **Snapshot:** snapshots/12a153e5ffa3
+- **Command:** `STAGE=train TRAIN_CONFIG=configs/research/alfworld_smoke_strict_traced.yaml research/submit.sh smoke 12a153e -- --time=05:00:00`
+- **Resources requested:** 1 A40, 4 CPUs, 48 GB, 5 h (one spgpu billing unit).
+- **Budget (estimate, recorded before the run):** GPU ~1.5–3.3 h, billable
+  ≤ 5 h × $0.108 ≈ $0.54 (expected $0.16–0.36). DeepSeek: ≤ 4 call sites
+  (failure analyst, success analyst, final merge if both groups produce
+  edits, ranking if > 4 merged edits); expected ~$0.01–0.03, ≈ $0.09 if every
+  output hit 16,384 tokens; + 2 tiny preflight calls. Submitted 17:31 UTC
+  (DeepSeek off-peak). No API-side spend cap; ≤ 9 HTTP requests per call site.
+- **Diagnostics enabled:** `trace.json` per episode, `optimizer_calls.jsonl`,
+  `OPENAI_LOG=debug` (content-free SDK request lines in `job.log`).
+- **Outcome:** pending (to be filled in after completion).
+
 <!-- Template for job entries:
 
 ## YYYY-MM-DD — <job name> (job <id>)
