@@ -1,0 +1,20 @@
+# OfficeQA twelve-question development pilot (feasibility study).
+#
+# Same mechanics as officeqa_check3.yaml on the frozen selection OQA-SEL-1 / P12: 12 TRAIN-split questions,
+# 6 easy / 6 hard, 6 single-source / 6 multi-source, disjoint from the three baseline-check questions.
+#
+# The pilot's comparison (plain progress report P vs connected action-and-stage feedback S / C) is run OFFLINE on
+# the traces this rollout produces, by research/officeqa/oqa_check.py. One rollout, three reports, identical
+# traces: the actor is never re-run per condition, so no condition can be credited with a different trajectory.
+_base_: officeqa_qwen35.yaml
+
+env:
+  split_mode: split_dir
+  split_dir: ""
+  data_dirs: []
+  search_mode: offline
+  use_local_tools: true
+  workers: 2                  # two in flight against one A40; raise only with a measured reason
+  max_tool_turns: 8
+  max_completion_tokens: 2048
+  limit: 0

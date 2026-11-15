@@ -1,0 +1,27 @@
+# OfficeQA three-question baseline check (feasibility study).
+#
+# Purpose: show that the released OfficeQA adapter runs end to end against our frozen target, and record what one
+# trace actually contains - the tool requests, the evidence returned for each, any intermediate calculation the
+# model writes down, and the native score. Three questions support no comparison; this is a mechanics check.
+#
+# Questions: the frozen selection OQA-SEL-1 / B3 (UID0002 easy single-source, UID0007 hard single-source,
+# UID0018 hard four-source), materialized by research/officeqa/oqa_materialize.py --which B3. They come from the
+# TRAIN split: no validation or test item is touched.
+#
+# Deviations from configs/officeqa/default.yaml are listed below with their reason, and in
+# docs/OFFICEQA_FEASIBILITY_PROTOCOL.md section 6.
+_base_: officeqa_qwen35.yaml
+
+env:
+  split_mode: split_dir
+  # Both set on the command line by the job script, because they are machine paths:
+  #   --cfg-options env.split_dir=<materialized B3 dir> env.data_dirs=<sparse treasury_bulletins_parsed>
+  split_dir: ""
+  data_dirs: []
+  search_mode: offline        # local document tools only: no web search, no Azure search, no custom search API
+  use_local_tools: true       # glob / read / grep; needs a vLLM server started with the tool-call flags
+  workers: 1                  # one question at a time: this check is about traces, not throughput
+  max_tool_turns: 8           # upstream 24; a 4B target on one A40 is the constraint, and 8 turns is enough to see
+                              # whether the tool loop works at all
+  max_completion_tokens: 2048  # upstream 16384; the supplied oracle pages already consume much of a 32k context
+  limit: 0

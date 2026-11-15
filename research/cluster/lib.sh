@@ -398,6 +398,16 @@ start_vllm() {
         --seed 0
     )
     if [ "$LSO_VLLM_ENABLE_PREFIX_CACHING" = "0" ]; then args+=(--no-enable-prefix-caching); fi
+    # Opt-in, additive: extra `vllm serve` flags a non-ALFWorld benchmark needs. OfficeQA's offline tool loop sends
+    # OpenAI function tools with tool_choice="auto", which vLLM 0.28.0 only turns into tool_calls when the server was
+    # started with --enable-auto-tool-choice --tool-call-parser <parser>; otherwise it silently returns the model's
+    # tool syntax as plain content (entrypoints/openai/chat_completion/serving.py, the `not self.enable_auto_tools`
+    # branch). Empty by default, so every existing ALFWorld run is byte-identical, and the value lands in
+    # LSO_VLLM_ARGS, which write_manifest records.
+    if [ -n "${LSO_VLLM_EXTRA_ARGS:-}" ]; then
+        # shellcheck disable=SC2206  # intentional word splitting: a flag list
+        args+=(${LSO_VLLM_EXTRA_ARGS})
+    fi
     # Private temp dir for the vLLM process only: vLLM >= 0.28 puts its file://
     # rendezvous store (PR #50999) and engine IPC sockets in tempfile.gettempdir(),
     # and the node's /tmp is shared with other users' jobs.

@@ -1,0 +1,28 @@
+# Research wiring: the released OfficeQA adapter with
+#   target    = Qwen/Qwen3.5-4B served by a job-local vLLM (qwen_chat backend)
+#   optimizer = DeepSeek V4.1 Flash via the hosted API (openai_compatible backend)
+#
+# Model wiring only; training, gate, split and scoring settings are inherited unchanged from
+# configs/officeqa/default.yaml. Mirrors configs/research/alfworld_qwen35_deepseek.yaml so the two benchmarks differ
+# only where they must.
+#
+# Supplied at runtime by research/cluster/officeqa.sbatch (never stored here):
+#   --optimizer_model                       resolved DeepSeek model id (OPTIMIZER_MODEL)
+#   OPTIMIZER_OPENAI_COMPATIBLE_API_KEY     env, from the cluster secrets file
+#   TARGET_QWEN_CHAT_BASE_URL / _API_KEY    env, the job-local vLLM endpoint
+_base_: ../officeqa/default.yaml
+
+model:
+  optimizer_backend: openai_compatible
+  target_backend: qwen_chat
+  # Left blank on purpose: the backend would otherwise fall back silently to "gpt-4o-mini".
+  optimizer: ""
+  target: Qwen/Qwen3.5-4B
+
+  optimizer_openai_compatible_base_url: https://api.deepseek.com
+  optimizer_openai_compatible_max_tokens: 16384
+
+  # Same target settings as the ALFWorld arm, so target behaviour is not a second variable between benchmarks.
+  target_qwen_chat_thinking_mode: disabled
+  target_qwen_chat_temperature: 0.7
+  target_qwen_chat_max_tokens: 8000
