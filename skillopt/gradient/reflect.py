@@ -109,6 +109,55 @@ def fmt_trajectory(
 # ── Minibatch trajectory formatting ──────────────────────────────────────────
 
 
+_OFFICEQA_REPORTS_MODULE = None
+
+
+def _officeqa_report_builder():
+    """Load research/officeqa/oqa_reports.py by path (it is research instrumentation, not a package)."""
+    global _OFFICEQA_REPORTS_MODULE
+    if _OFFICEQA_REPORTS_MODULE is None:
+        import importlib.util
+        import sys  # imported here to keep the upstream module's import block untouched
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        research_dir = os.path.join(repo_root, "research", "officeqa")
+        path = os.path.join(research_dir, "oqa_reports.py")
+        if research_dir not in sys.path:
+            sys.path.insert(0, research_dir)  # oqa_reports imports its siblings by bare name
+        spec = importlib.util.spec_from_file_location("oqa_reports", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _OFFICEQA_REPORTS_MODULE = module
+    return _OFFICEQA_REPORTS_MODULE
+
+
+def _officeqa_stage_report(report_dir: str, prediction_dir: str, tid: str, item: dict) -> str:
+    """Arm B's report for one item: the cached file if present, otherwise generated from the recorded trace."""
+    path = os.path.join(report_dir, f"{tid}.md")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    reports = _officeqa_report_builder()
+    results_path = os.path.join(os.path.dirname(os.path.abspath(prediction_dir)), "results.jsonl")
+    question = str(item.get("question") or item.get("task_description") or "")
+    try:
+        text, record = reports.build_one(prediction_dir, tid, question, results_path,
+                                         os.environ.get("OFFICEQA_STAGE_REPORT_CONDITION", "C"))
+    except reports.AnswerKeyLeak:
+        raise
+    except Exception as exc:  # noqa: BLE001 - one unparsable trace must not end a run
+        os.makedirs(report_dir, exist_ok=True)
+        with open(os.path.join(report_dir, "GENERATION_PROBLEMS.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"id": tid, "error": f"{type(exc).__name__}: {exc}"}) + "\n")
+        print(f"      [officeqa arm B] WARNING: no stage report for {tid}: {type(exc).__name__}: {exc}")
+        return ""
+    os.makedirs(report_dir, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    with open(os.path.join(report_dir, "GENERATED.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+    return text.strip()
+
+
 def fmt_minibatch_trajectories(
     items: list[dict],
     prediction_dir: str,
@@ -224,17 +273,19 @@ def fmt_minibatch_trajectories(
 
         # OfficeQA stage-and-action feedback (research arm B; opt-in, off unless the variable is set, so arm A's
         # prompt is byte-identical to upstream). Follows the same pattern as the codex/claude trace hooks above:
-        # the report is generated OUTSIDE SkillOpt by research/officeqa/oqa_reports.py from the recorded trace, is
-        # deterministic, and is written to <dir>/<task id>.md. Nothing here derives it from the skill or the
-        # answer key. A missing file is silently skipped, so a partially generated set cannot fail a run.
+        # the report is produced by research/officeqa/oqa_reports.py from the recorded trace, is deterministic
+        # (no model call), and is cached at <dir>/<task id>.md so the exact bytes the optimizer saw stay on disk.
+        # Nothing here derives it from the skill or the answer key.
+        #
+        # Epoch 2's traces do not exist until the run makes them, so a cached file that is absent is generated
+        # here from the prediction directory rather than skipped. An answer-key audit failure is re-raised: the
+        # whole point of arm B is that it adds reasoning, not the target. Any other generation error is recorded
+        # beside the reports and the item simply carries no report, so one odd trace cannot kill a run.
         stage_report_dir = os.environ.get("OFFICEQA_STAGE_REPORT_DIR", "").strip()
         if stage_report_dir:
-            stage_report_path = os.path.join(stage_report_dir, f"{tid}.md")
-            if os.path.exists(stage_report_path):
-                with open(stage_report_path, encoding="utf-8") as f:
-                    stage_report = f.read().strip()
-                if stage_report:
-                    header += f"\n#### Stage and Action Report\n{stage_report}\n"
+            stage_report = _officeqa_stage_report(stage_report_dir, prediction_dir, tid, item)
+            if stage_report:
+                header += f"\n#### Stage and Action Report\n{stage_report}\n"
 
         preview = item.get("spreadsheet_preview", "")
         if not preview:

@@ -139,12 +139,68 @@ def test_arm_b_is_arm_a_plus_the_report(rollout, tmp_path):
     assert restored == arm_a, "arm B differs from arm A by more than the injected report"
 
 
-def test_a_missing_report_file_is_skipped_not_fatal(rollout, tmp_path):
-    empty = tmp_path / "empty_reports"
+def test_a_report_is_generated_when_none_is_cached(rollout, tmp_path):
+    """Epoch 2's traces do not exist until the run makes them, so the hook generates and caches the report.
+
+    This replaces an earlier contract ("a missing file is skipped"), which would have left arm B with no report
+    on every epoch after the first and so quietly turned it back into arm A.
+    """
+    empty = tmp_path / "generated_reports"
     empty.mkdir()
     arm_a = _render([rollout["row"]], rollout["prediction_dir"])
     arm_b = _render([rollout["row"]], rollout["prediction_dir"], str(empty))
-    assert arm_b == arm_a, "a partially generated report set must not change the prompt for items without one"
+    assert "Stage and Action Report" in arm_b
+    assert (empty / "UID0033.md").is_file(), "the generated report must be cached for the audit to read"
+    cached = (empty / "UID0033.md").read_text(encoding="utf-8").strip()
+    assert cached and cached in arm_b
+    assert arm_b.replace(f"\n#### Stage and Action Report\n{cached}\n", "") == arm_a
+    # Deterministic: a second render reuses the cache and produces the same bytes.
+    assert _render([rollout["row"]], rollout["prediction_dir"], str(empty)) == arm_b
+    assert GOLD not in cached, "the report must not contain the expected answer"
+
+
+def test_an_item_with_no_trace_file_never_reaches_the_hook(rollout, tmp_path):
+    """Upstream already skips an item whose conversation.json is absent, so arm B cannot see one."""
+    reports = tmp_path / "reports_absent_trace"
+    reports.mkdir()
+    absent = dict(rollout["row"], id="UID9999", task_description="no trace was ever written")
+    prompt = _render([absent], rollout["prediction_dir"], str(reports))
+    assert prompt.strip() == "", "upstream drops items without a recorded conversation"
+    assert not (reports / "GENERATION_PROBLEMS.jsonl").exists()
+
+
+def test_a_trace_with_no_usable_events_is_recorded_not_fatal(rollout, tmp_path):
+    """A conversation that exists but yields no steps: the item carries no report and the reason is written down."""
+    pred = tmp_path / "predictions" / "UID0077"
+    pred.mkdir(parents=True)
+    (pred / "target_user_prompt.txt").write_text(USER_PROMPT, encoding="utf-8")
+    (pred / "conversation.json").write_text(json.dumps([{"role": "system", "content": "boot"}]), encoding="utf-8")
+    (tmp_path / "results.jsonl").write_text(json.dumps({"id": "UID0077", "hard": 0}) + "\n", encoding="utf-8")
+    reports = tmp_path / "reports_no_steps"
+    reports.mkdir()
+    row = dict(rollout["row"], id="UID0077")
+    prompt = _render([row], str(tmp_path / "predictions"), str(reports))
+    assert "Trajectory 1 (id=UID0077)" in prompt, "the trajectory itself is still shown to the analyst"
+    assert "Stage and Action Report" not in prompt
+    problems = (reports / "GENERATION_PROBLEMS.jsonl").read_text(encoding="utf-8")
+    assert "UID0077" in problems and "no conversation events" in problems
+
+
+def test_a_leaking_packet_stops_the_run(rollout, tmp_path, monkeypatch):
+    """An answer-key audit failure is re-raised, not swallowed: arm B adds reasoning, never the target."""
+    import oqa_reports
+
+    reports = tmp_path / "reports_leak"
+    reports.mkdir()
+
+    def _leak(*_args, **_kwargs):
+        raise oqa_reports.AnswerKeyLeak("UID0033: evaluator-only field reached the packet")
+
+    monkeypatch.setattr(oqa_reports, "build_one", _leak)
+    reflect = importlib.import_module("skillopt.gradient.reflect")
+    monkeypatch.setattr(reflect, "_OFFICEQA_REPORTS_MODULE", oqa_reports, raising=False)
+    with pytest.raises(oqa_reports.AnswerKeyLeak):
+        _render([rollout["row"]], rollout["prediction_dir"], str(reports))
 
 
 def test_the_report_itself_is_audited_for_the_key(rollout, tmp_path):

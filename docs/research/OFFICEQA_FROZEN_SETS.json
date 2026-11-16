@@ -1,0 +1,177 @@
+{
+  "rule": "OQA-SEL-2",
+  "sets": {
+    "train": {
+      "split": "train",
+      "target": 12,
+      "count": 12,
+      "ids": [
+        "UID0033",
+        "UID0034",
+        "UID0063",
+        "UID0017",
+        "UID0030",
+        "UID0031",
+        "UID0014",
+        "UID0026",
+        "UID0079",
+        "UID0028",
+        "UID0065",
+        "UID0085"
+      ],
+      "per_stratum": {
+        "easy/single": 3,
+        "easy/multi": 3,
+        "hard/single": 3,
+        "hard/multi": 3
+      },
+      "shortfall": 0,
+      "verdicts": {
+        "UID0033": "AVAILABLE",
+        "UID0034": "AVAILABLE",
+        "UID0063": "AVAILABLE",
+        "UID0017": "AVAILABLE",
+        "UID0030": "AVAILABLE_VIA_TOOLS",
+        "UID0031": "AVAILABLE",
+        "UID0014": "AVAILABLE",
+        "UID0026": "AVAILABLE",
+        "UID0079": "AVAILABLE",
+        "UID0028": "AVAILABLE",
+        "UID0065": "AVAILABLE",
+        "UID0085": "AVAILABLE"
+      }
+    },
+    "val": {
+      "split": "val",
+      "target": 12,
+      "count": 12,
+      "ids": [
+        "UID0041",
+        "UID0070",
+        "UID0001",
+        "UID0109",
+        "UID0052",
+        "UID0072",
+        "UID0027",
+        "UID0154",
+        "UID0142",
+        "UID0091",
+        "UID0086",
+        "UID0161"
+      ],
+      "per_stratum": {
+        "easy/single": 3,
+        "easy/multi": 3,
+        "hard/single": 3,
+        "hard/multi": 3
+      },
+      "shortfall": 0,
+      "verdicts": {
+        "UID0041": "AVAILABLE",
+        "UID0070": "AVAILABLE",
+        "UID0001": "AVAILABLE",
+        "UID0109": "AVAILABLE",
+        "UID0052": "AVAILABLE",
+        "UID0072": "AVAILABLE",
+        "UID0027": "AVAILABLE",
+        "UID0154": "AVAILABLE",
+        "UID0142": "AVAILABLE",
+        "UID0091": "AVAILABLE",
+        "UID0086": "AVAILABLE",
+        "UID0161": "AVAILABLE"
+      }
+    },
+    "heldout": {
+      "split": "test",
+      "target": 24,
+      "count": 24,
+      "ids": [
+        "UID0006",
+        "UID0008",
+        "UID0003",
+        "UID0004",
+        "UID0011",
+        "UID0076",
+        "UID0009",
+        "UID0005",
+        "UID0016",
+        "UID0078",
+        "UID0010",
+        "UID0022",
+        "UID0020",
+        "UID0082",
+        "UID0012",
+        "UID0025",
+        "UID0021",
+        "UID0088",
+        "UID0013",
+        "UID0062",
+        "UID0023",
+        "UID0089",
+        "UID0015",
+        "UID0068"
+      ],
+      "per_stratum": {
+        "easy/single": 6,
+        "easy/multi": 6,
+        "hard/single": 6,
+        "hard/multi": 6
+      },
+      "shortfall": 0,
+      "verdicts": {
+        "UID0006": "AVAILABLE",
+        "UID0008": "AVAILABLE",
+        "UID0003": "AVAILABLE",
+        "UID0004": "AVAILABLE",
+        "UID0011": "AVAILABLE",
+        "UID0076": "AVAILABLE",
+        "UID0009": "AVAILABLE",
+        "UID0005": "AVAILABLE",
+        "UID0016": "AVAILABLE",
+        "UID0078": "AVAILABLE",
+        "UID0010": "AVAILABLE",
+        "UID0022": "AVAILABLE",
+        "UID0020": "AVAILABLE",
+        "UID0082": "AVAILABLE",
+        "UID0012": "AVAILABLE",
+        "UID0025": "AVAILABLE",
+        "UID0021": "AVAILABLE",
+        "UID0088": "AVAILABLE",
+        "UID0013": "AVAILABLE",
+        "UID0062": "AVAILABLE",
+        "UID0023": "AVAILABLE",
+        "UID0089": "AVAILABLE",
+        "UID0015": "AVAILABLE",
+        "UID0068": "AVAILABLE"
+      }
+    }
+  },
+  "substitutions": [
+    {
+      "set": "train",
+      "removed": "UID0046",
+      "stratum": "easy/single",
+      "reason": "the evidence test found no retrievable value for this question in the supplied page or anywhere in the parsed document",
+      "evidence": {
+        "page_chars": 158,
+        "page_candidate_values": 0,
+        "page_term_hits": [
+          "gross",
+          "federal",
+          "obligations",
+          "incurred"
+        ],
+        "doc_candidate_values": 26630,
+        "quoted_terms_absent_from_document": [
+          "service-related"
+        ],
+        "references_figure": true
+      },
+      "replacement": "UID0063",
+      "replacement_verdict": "AVAILABLE"
+    }
+  ],
+  "untested": [],
+  "digest": "fc02291540ef365e0846032bb3a8231e719befa9570c31b52938ce6baf33986b",
+  "disjoint": true
+}

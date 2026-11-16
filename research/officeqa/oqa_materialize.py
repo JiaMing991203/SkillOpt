@@ -158,9 +158,73 @@ def materialize(repo_root: str, csv_path: str, out_dir: str, which: str) -> dict
     return meta
 
 
-def verify_docs(repo_root: str, docs_root: str, which: str) -> dict:
-    """Check that every needed .txt and its parsed .json are present in a (possibly sparse) corpus."""
-    needed = needed_documents(repo_root, which)
+def materialize_frozen(repo_root: str, csv_path: str, out_dir: str, frozen_path: str) -> dict:
+    """Write train/, val/ and test/ from a frozen set record (rule OQA-SEL-2).
+
+    This is the three-split form of `materialize`. The training set is still OQA-SEL-1's selection with whatever
+    substitution the evidence test required; validation comes from the released `val` split and the held-out set
+    from the released `test` split, so `valid_seen` and `valid_unseen` in the trainer resolve to them (see
+    `skillopt/datasets/base.py` `_SPLIT_ALIAS`). The gate and the final test evaluation then need no special
+    wiring: they read the splits SkillOpt already reads.
+    """
+    with open(frozen_path, encoding="utf-8") as f:
+        frozen = json.load(f)
+    actual_bytes = os.path.getsize(csv_path)
+    if actual_bytes != PINNED_CSV_BYTES:
+        raise SystemExit(f"{csv_path} is {actual_bytes} bytes; the pinned revision {PINNED_REVISION[:7]} is "
+                         f"{PINNED_CSV_BYTES}")
+    with open(csv_path, encoding="utf-8-sig", newline="") as f:
+        rows = {str(row.get("uid") or row.get("id") or "").strip(): row for row in csv.DictReader(f)}
+
+    plan = {"train": ("train", "train"), "val": ("val", "val"), "heldout": ("test", "test")}
+    meta: dict = {"selection_rule": frozen.get("rule"), "frozen_digest": frozen.get("digest"),
+                  "frozen_record": os.path.abspath(frozen_path), "splits": {},
+                  "source_csv": os.path.abspath(csv_path), "source_csv_bytes": actual_bytes,
+                  "pinned_revision": PINNED_REVISION,
+                  "source_csv_sha256": hashlib.sha256(open(csv_path, "rb").read()).hexdigest(),
+                  "substitutions": frozen.get("substitutions", [])}
+    all_files: set[str] = set()
+    for set_name, (manifest_split, out_split) in plan.items():
+        ids = list(frozen["sets"][set_name]["ids"])
+        manifest = load_manifest(repo_root, manifest_split)
+        missing = [i for i in ids if i not in rows]
+        if missing:
+            raise SystemExit(f"these frozen {set_name} ids are absent from {csv_path}: {missing}")
+        split_dir = os.path.join(out_dir, out_split)
+        os.makedirs(split_dir, exist_ok=True)
+        out_path = os.path.join(split_dir, f"officeqa_{out_split}.csv")
+        with open(out_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+            writer.writeheader()
+            for item_id in ids:
+                src, man = rows[item_id], manifest[item_id]
+                question = str(src.get("question") or "").strip()
+                gold = str(src.get("ground_truth") or src.get("answer") or "").strip()
+                if not question or not gold:
+                    raise SystemExit(f"{item_id}: the CSV row has no question or no ground truth")
+                all_files.update(_lines(man.get("source_files")))
+                writer.writerow({
+                    "uid": item_id, "question": question, "ground_truth": gold,
+                    "category": man.get("category") or "officeqa",
+                    "source_files": "\n".join(_lines(man.get("source_files"))),
+                    "source_docs": "\n".join(_lines(man.get("source_docs"))),
+                    "split": out_split,
+                })
+        meta["splits"][out_split] = {
+            "set": set_name, "manifest_split": manifest_split, "count": len(ids), "ids": ids,
+            "per_stratum": frozen["sets"][set_name].get("per_stratum"),
+            "csv": os.path.abspath(out_path),
+            "csv_sha256": hashlib.sha256(open(out_path, "rb").read()).hexdigest(),
+        }
+    meta["split_dir"] = os.path.abspath(out_dir)
+    meta["documents_needed"] = sorted(all_files)
+    with open(os.path.join(out_dir, "materialize_frozen.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    return meta
+
+
+def verify_docs_for(docs_root: str, needed: list[str]) -> dict:
+    """Check that every named .txt and its parsed .json are present in a (possibly sparse) corpus."""
     transformed = os.path.join(docs_root, "transformed")
     jsons = os.path.join(docs_root, "jsons")
     report = {"docs_root": os.path.abspath(docs_root), "needed": len(needed),
@@ -181,6 +245,11 @@ def verify_docs(repo_root: str, docs_root: str, which: str) -> dict:
     return report
 
 
+def verify_docs(repo_root: str, docs_root: str, which: str) -> dict:
+    """Check that every needed .txt and its parsed .json are present in a (possibly sparse) corpus."""
+    return verify_docs_for(docs_root, needed_documents(repo_root, which))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo-root", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -189,6 +258,8 @@ def main() -> int:
     ap.add_argument("--out-dir", help="split directory to write (env.split_dir of the run config)")
     ap.add_argument("--print-docs", action="store_true", help="list the parsed documents the selection needs")
     ap.add_argument("--verify-docs", metavar="DOCS_ROOT", help="check a corpus for the needed txt and json files")
+    ap.add_argument("--frozen", metavar="FROZEN_JSON",
+                    help="write train/ val/ test/ from a frozen set record (rule OQA-SEL-2) instead of --which")
     args = ap.parse_args()
     repo_root = os.path.abspath(args.repo_root)
 
@@ -203,7 +274,24 @@ def main() -> int:
         return 0
 
     if args.verify_docs:
+        if args.frozen:
+            with open(args.frozen, encoding="utf-8") as f:
+                frozen = json.load(f)
+            needed: set[str] = set()
+            for set_name, manifest_split in (("train", "train"), ("val", "val"), ("heldout", "test")):
+                manifest = load_manifest(repo_root, manifest_split)
+                for item_id in frozen["sets"][set_name]["ids"]:
+                    needed.update(_lines(manifest[item_id].get("source_files")))
+            print(json.dumps(verify_docs_for(args.verify_docs, sorted(needed)), indent=2))
+            return 0
         print(json.dumps(verify_docs(repo_root, args.verify_docs, args.which), indent=2))
+        return 0
+
+    if args.frozen:
+        if not args.csv or not args.out_dir:
+            ap.error("--frozen also needs --csv and --out-dir")
+        meta = materialize_frozen(repo_root, args.csv, args.out_dir, args.frozen)
+        print(json.dumps({k: v for k, v in meta.items() if k != "documents_needed"}, indent=2))
         return 0
 
     if not args.csv or not args.out_dir:

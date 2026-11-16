@@ -36,6 +36,12 @@ sys.path.insert(0, REPO)
 EVALUATOR_ONLY_FIELDS = ("ground_truth", "gold_answer", "answers", "correct_label", "em", "f1")
 OLD_LEAK_PATTERN = re.compile(r"but expected\b", re.I)
 
+# The one finding that mattered on the first real traces: after `grep` returns its 20-line cap, an "it is not in
+# the document" conclusion is unsound. The question the user asked is whether the WRITTEN WARNING reaches arm A
+# or only arm B, which is a different question from whether the underlying evidence reaches both.
+GREP_CAP_WARNING = "which is the tool's cap"
+GREP_CAP_LINE_LIMIT = 20
+
 
 def _load_rows(out_root: str) -> list[dict]:
     rows = []
@@ -97,6 +103,50 @@ def audit_text(label: str, text: str, golds: dict) -> dict:
             "sha256": hashlib.sha256(text.encode()).hexdigest()}
 
 
+def grep_cap_audit(arm_a: str, arm_b: str, minibatch: list[dict], prediction_dir: str) -> dict:
+    """Where does the grep-cap warning appear, and where does the evidence behind it appear?
+
+    Three separate counts, because they answer three different questions:
+      traces_at_the_cap   how many of these trajectories actually ran a `grep` that returned its 20-line cap.
+                          Computed from the recorded trace, not from a report.
+      warning_in_arm_*    how often the written warning sentence appears in each arm's rendered prompt.
+      evidence_in_arm_*   how often the capped observation's own lines appear in each arm's prompt. Both arms
+                          read the same trace, so this is expected to be equal: the difference between the arms
+                          is the interpretation, not the information.
+    """
+    import oqa_trace as TR
+
+    at_cap = []
+    for row in minibatch:
+        item_id = str(row.get("id"))
+        try:
+            packet = TR.build_packet(prediction_dir, item_id, question=row.get("question", ""))
+        except Exception:  # noqa: BLE001
+            continue
+        for step in packet["steps"]:
+            if step.get("kind") != "tool" or step.get("tool") != "grep":
+                continue
+            lines = [ln for ln in (step.get("obs") or "").splitlines() if ln.strip()]
+            if len(lines) >= GREP_CAP_LINE_LIMIT:
+                at_cap.append({"id": item_id, "step": step["i"], "pattern": (step.get("args") or {}).get("pattern"),
+                               "returned_lines": len(lines), "first_line": lines[0][:120]})
+    evidence_a = sum(1 for e in at_cap if e["first_line"][:60] in arm_a)
+    evidence_b = sum(1 for e in at_cap if e["first_line"][:60] in arm_b)
+    return {
+        "warning_sentence": GREP_CAP_WARNING,
+        "traces_at_the_cap": len(at_cap),
+        "capped_calls": at_cap,
+        "warning_in_arm_a": arm_a.count(GREP_CAP_WARNING),
+        "warning_in_arm_b": arm_b.count(GREP_CAP_WARNING),
+        "evidence_in_arm_a": evidence_a,
+        "evidence_in_arm_b": evidence_b,
+        "reading": ("the written warning appears only in arm B, while the capped grep output it is derived from "
+                    "appears in both arms"
+                    if arm_b.count(GREP_CAP_WARNING) and not arm_a.count(GREP_CAP_WARNING) and evidence_a
+                    else "see the counts"),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out_root")
@@ -140,6 +190,7 @@ def main() -> int:
 
     report = {
         "out_root": os.path.abspath(args.out_root),
+        "grep_cap": grep_cap_audit(arm_a, arm_b, minibatch, prediction_dir),
         "rollout_items": len(rows),
         "failures": len(failures),
         "minibatch_items": [str(r.get("id")) for r in minibatch],
@@ -157,9 +208,11 @@ def main() -> int:
     }
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
-    print(json.dumps({k: v for k, v in report.items() if k != "arm_difference"} |
-                     {"arm_difference": {k: v for k, v in report["arm_difference"].items()
-                                         if k != "unexpected_diff_sample"}}, indent=2))
+    printable = {k: v for k, v in report.items() if k not in ("arm_difference", "grep_cap")}
+    printable["arm_difference"] = {k: v for k, v in report["arm_difference"].items()
+                                   if k != "unexpected_diff_sample"}
+    printable["grep_cap"] = {k: v for k, v in report["grep_cap"].items() if k != "capped_calls"}
+    print(json.dumps(printable, indent=2))
     return 0 if report["verdict"] == "PASS" else 1
 
 

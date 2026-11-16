@@ -1,0 +1,1416 @@
+{
+ "UID0001": {
+  "set": "val",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 4761,
+  "page_candidate_values": 333,
+  "page_term_hits": [
+   "expenditures",
+   "millions",
+   "dollars",
+   "national",
+   "defense",
+   "year"
+  ],
+  "doc_candidate_values": 17754,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0003": {
+  "set": "heldout",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 6760,
+  "page_candidate_values": 485,
+  "page_term_hits": [
+   "individual",
+   "these",
+   "expenditures"
+  ],
+  "doc_candidate_values": 27909,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0004": {
+  "set": "heldout",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "percent",
+  "page_chars": 11524,
+  "page_candidate_values": 818,
+  "page_term_hits": [
+   "individual"
+  ],
+  "doc_candidate_values": 45663,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0005": {
+  "set": "heldout",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 11524,
+  "page_candidate_values": 818,
+  "page_term_hits": [
+   "individual",
+   "these"
+  ],
+  "doc_candidate_values": 45663,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0006": {
+  "set": "heldout",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 3961,
+  "page_candidate_values": 351,
+  "page_term_hits": [
+   "claims",
+   "country",
+   "calendar",
+   "year",
+   "millions"
+  ],
+  "doc_candidate_values": 28533,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0008": {
+  "set": "heldout",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "percent",
+  "page_chars": 6318,
+  "page_candidate_values": 139,
+  "page_term_hits": [
+   "employment",
+   "general",
+   "retirement",
+   "budget",
+   "receipts",
+   "month"
+  ],
+  "doc_candidate_values": 32538,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0009": {
+  "set": "heldout",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 2100,
+  "page_candidate_values": 105,
+  "page_term_hits": [
+   "bureau",
+   "service"
+  ],
+  "doc_candidate_values": 22279,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0010": {
+  "set": "heldout",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": null,
+  "page_chars": 2636,
+  "page_candidate_values": 85,
+  "page_term_hits": [
+   "treasury",
+   "japanese",
+   "foreign",
+   "exchange",
+   "securities",
+   "investments"
+  ],
+  "doc_candidate_values": 10702,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0011": {
+  "set": "heldout",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 7284,
+  "page_candidate_values": 708,
+  "page_term_hits": [
+   "treasury",
+   "bulletin",
+   "july",
+   "series",
+   "saving",
+   "savings",
+   "bonds"
+  ],
+  "doc_candidate_values": 36083,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0012": {
+  "set": "heldout",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "millions",
+  "page_chars": 6461,
+  "page_candidate_values": 386,
+  "page_term_hits": [
+   "millions",
+   "dollars",
+   "federal",
+   "department",
+   "fiscal",
+   "year"
+  ],
+  "doc_candidate_values": 24432,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0013": {
+  "set": "heldout",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "billions",
+  "page_chars": 6430,
+  "page_candidate_values": 426,
+  "page_term_hits": [
+   "federal",
+   "individual",
+   "income",
+   "fiscal",
+   "years"
+  ],
+  "doc_candidate_values": 22379,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0014": {
+  "set": "train",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "billions",
+  "page_chars": 11226,
+  "page_candidate_values": 837,
+  "page_term_hits": [
+   "federal",
+   "individual",
+   "income",
+   "receipts",
+   "refunds",
+   "fiscal",
+   "years"
+  ],
+  "doc_candidate_values": 51313,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0015": {
+  "set": "heldout",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "billions",
+  "page_chars": 5526,
+  "page_candidate_values": 425,
+  "page_term_hits": [
+   "interest",
+   "outlays",
+   "federal",
+   "government",
+   "fiscal"
+  ],
+  "doc_candidate_values": 57795,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0016": {
+  "set": "heldout",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 5606,
+  "page_candidate_values": 428,
+  "page_term_hits": [
+   "federal",
+   "government",
+   "interest",
+   "budget",
+   "outlays",
+   "function",
+   "table"
+  ],
+  "doc_candidate_values": 69467,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0017": {
+  "set": "train",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "percent",
+  "page_chars": 9029,
+  "page_candidate_values": 153,
+  "page_term_hits": [
+   "dollar",
+   "bids",
+   "submitted",
+   "investors",
+   "year",
+   "treasury",
+   "notes",
+   "maturing",
+   "july",
+   "percent",
+   "these"
+  ],
+  "doc_candidate_values": 51253,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0020": {
+  "set": "heldout",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 4267,
+  "page_candidate_values": 237,
+  "page_term_hits": [
+   "percentage",
+   "increase",
+   "bank",
+   "deposits",
+   "individuals"
+  ],
+  "doc_candidate_values": 26014,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0021": {
+  "set": "heldout",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 5677,
+  "page_candidate_values": 344,
+  "page_term_hits": [
+   "dollar",
+   "interest",
+   "outlays",
+   "federal",
+   "government",
+   "year",
+   "ffo-"
+  ],
+  "doc_candidate_values": 67958,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0022": {
+  "set": "heldout",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 10307,
+  "page_candidate_values": 941,
+  "page_term_hits": [
+   "outlays",
+   "department",
+   "agriculture",
+   "using"
+  ],
+  "doc_candidate_values": 57751,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0023": {
+  "set": "heldout",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "billions",
+  "page_chars": 4216,
+  "page_candidate_values": 11,
+  "page_term_hits": [
+   "estimated",
+   "intergovernmental",
+   "transfers",
+   "year"
+  ],
+  "doc_candidate_values": 14690,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0024": {
+  "set": "heldout:spare",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": null,
+  "page_chars": 5615,
+  "page_candidate_values": 394,
+  "page_term_hits": [
+   "interest-bearing",
+   "public",
+   "debt",
+   "federal",
+   "outstanding"
+  ],
+  "doc_candidate_values": 29176,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0025": {
+  "set": "heldout",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 13266,
+  "page_candidate_values": 690,
+  "page_term_hits": [
+   "public",
+   "works",
+   "government",
+   "millions",
+   "dollars",
+   "revised"
+  ],
+  "doc_candidate_values": 57487,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0026": {
+  "set": "train",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "millions",
+  "page_chars": 10928,
+  "page_candidate_values": 565,
+  "page_term_hits": [
+   "year",
+   "treasury",
+   "notes",
+   "federal",
+   "paper",
+   "money",
+   "circulation"
+  ],
+  "doc_candidate_values": 80131,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0027": {
+  "set": "val",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 5984,
+  "page_candidate_values": 536,
+  "page_term_hits": [
+   "years",
+   "month",
+   "year",
+   "yield",
+   "corporate",
+   "bonds",
+   "treasury"
+  ],
+  "doc_candidate_values": 51817,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0028": {
+  "set": "train",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 12307,
+  "page_candidate_values": 919,
+  "page_term_hits": [
+   "years",
+   "month",
+   "year",
+   "yield",
+   "corporate",
+   "bonds",
+   "treasury"
+  ],
+  "doc_candidate_values": 106304,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0029": {
+  "set": "heldout:spare",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 5984,
+  "page_candidate_values": 537,
+  "page_term_hits": [
+   "june",
+   "average",
+   "yield",
+   "corporate",
+   "bonds",
+   "treasury"
+  ],
+  "doc_candidate_values": 54605,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0030": {
+  "set": "train",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE_VIA_TOOLS",
+  "answer_kind": "number",
+  "requested_scale": null,
+  "page_chars": 713,
+  "page_candidate_values": 12,
+  "page_term_hits": [],
+  "doc_candidate_values": 26388,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0031": {
+  "set": "train",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "date",
+  "requested_scale": null,
+  "page_chars": 2957,
+  "page_candidate_values": 17,
+  "page_term_hits": [
+   "according",
+   "year",
+   "highway",
+   "trust",
+   "fund",
+   "outlays",
+   "exceeding",
+   "receipts"
+  ],
+  "doc_candidate_values": 28334,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": true
+ },
+ "UID0032": {
+  "set": "heldout:spare",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 8514,
+  "page_candidate_values": 667,
+  "page_term_hits": [
+   "revenue",
+   "values",
+   "taxable",
+   "dutiable",
+   "imports",
+   "reported",
+   "tariff"
+  ],
+  "doc_candidate_values": 21457,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0033": {
+  "set": "train",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 4620,
+  "page_candidate_values": 54,
+  "page_term_hits": [
+   "march",
+   "issue",
+   "date",
+   "week",
+   "rates"
+  ],
+  "doc_candidate_values": 66318,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0034": {
+  "set": "train",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 1689,
+  "page_candidate_values": 18,
+  "page_term_hits": [
+   "paper",
+   "research",
+   "series",
+   "treasury",
+   "national"
+  ],
+  "doc_candidate_values": 28140,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0038": {
+  "set": "heldout:spare",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "millions",
+  "page_chars": 5104,
+  "page_candidate_values": 325,
+  "page_term_hits": [
+   "liabilities",
+   "mainland",
+   "china",
+   "taiwan",
+   "change",
+   "millions",
+   "dollars"
+  ],
+  "doc_candidate_values": 25511,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0041": {
+  "set": "val",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 6228,
+  "page_candidate_values": 277,
+  "page_term_hits": [
+   "treasury",
+   "holdings",
+   "securities",
+   "issued",
+   "rural",
+   "electrification",
+   "administration",
+   "fiscal",
+   "years"
+  ],
+  "doc_candidate_values": 49719,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0044": {
+  "set": "train:spare",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "thousands",
+  "page_chars": 7445,
+  "page_candidate_values": 643,
+  "page_term_hits": [
+   "capital",
+   "inflow",
+   "outflow",
+   "thousands",
+   "dollars",
+   "latin"
+  ],
+  "doc_candidate_values": 11436,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0046": {
+  "set": "train",
+  "stratum": "easy/single",
+  "verdict": "ABSENT",
+  "answer_kind": "unknown",
+  "requested_scale": "percent",
+  "page_chars": 158,
+  "page_candidate_values": 0,
+  "page_term_hits": [
+   "gross",
+   "federal",
+   "obligations",
+   "incurred"
+  ],
+  "doc_candidate_values": 26630,
+  "quoted_terms_absent_from_document": [
+   "service-related"
+  ],
+  "references_figure": true
+ },
+ "UID0049": {
+  "set": "train:spare",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 7479,
+  "page_candidate_values": 430,
+  "page_term_hits": [
+   "expenditure",
+   "expenditures",
+   "millions"
+  ],
+  "doc_candidate_values": 26137,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0052": {
+  "set": "val",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "percent",
+  "page_chars": 1841,
+  "page_candidate_values": 150,
+  "page_term_hits": [
+   "municipal",
+   "bond",
+   "yield",
+   "treasury"
+  ],
+  "doc_candidate_values": 28491,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0062": {
+  "set": "heldout",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "millions",
+  "page_chars": 9010,
+  "page_candidate_values": 491,
+  "page_term_hits": [
+   "department",
+   "army",
+   "expenditures",
+   "fiscal",
+   "year",
+   "millions",
+   "dollars"
+  ],
+  "doc_candidate_values": 51431,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0063": {
+  "set": "train:spare",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "thousands",
+  "page_chars": 3429,
+  "page_candidate_values": 94,
+  "page_term_hits": [
+   "exchange",
+   "stabilization",
+   "fund",
+   "holdings",
+   "balances",
+   "national"
+  ],
+  "doc_candidate_values": 26946,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0065": {
+  "set": "train",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 11711,
+  "page_candidate_values": 98,
+  "page_term_hits": [
+   "difference",
+   "growth",
+   "rate",
+   "non-farm",
+   "business",
+   "productivity",
+   "measured",
+   "output",
+   "hour",
+   "worked"
+  ],
+  "doc_candidate_values": 56511,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0068": {
+  "set": "heldout",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 6770,
+  "page_candidate_values": 482,
+  "page_term_hits": [
+   "rents",
+   "royalties",
+   "millions",
+   "dollars"
+  ],
+  "doc_candidate_values": 21380,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0070": {
+  "set": "val",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": null,
+  "page_chars": 57116,
+  "page_candidate_values": 3113,
+  "page_term_hits": [
+   "criminal",
+   "cases",
+   "district",
+   "internal",
+   "revenue",
+   "service",
+   "closed",
+   "november",
+   "october"
+  ],
+  "doc_candidate_values": 154410,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0072": {
+  "set": "val",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": null,
+  "page_chars": 14689,
+  "page_candidate_values": 1082,
+  "page_term_hits": [
+   "treasury",
+   "debt",
+   "held",
+   "federal",
+   "reserve",
+   "intragovernmental",
+   "holdings"
+  ],
+  "doc_candidate_values": 35357,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0076": {
+  "set": "heldout",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 7515,
+  "page_candidate_values": 154,
+  "page_term_hits": [
+   "percentage",
+   "point",
+   "budget",
+   "deficit",
+   "through",
+   "public",
+   "borrowing"
+  ],
+  "doc_candidate_values": 56656,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0078": {
+  "set": "heldout",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 10305,
+  "page_candidate_values": 610,
+  "page_term_hits": [
+   "internal",
+   "revenue",
+   "collections",
+   "york"
+  ],
+  "doc_candidate_values": 48459,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0079": {
+  "set": "train",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "percent",
+  "page_chars": 28492,
+  "page_candidate_values": 1818,
+  "page_term_hits": [
+   "using",
+   "federal",
+   "social",
+   "security",
+   "administration",
+   "budget"
+  ],
+  "doc_candidate_values": 81877,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0082": {
+  "set": "heldout",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": null,
+  "page_chars": 7671,
+  "page_candidate_values": 428,
+  "page_term_hits": [
+   "debt",
+   "held",
+   "federal",
+   "public"
+  ],
+  "doc_candidate_values": 35357,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0085": {
+  "set": "train",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "percent",
+  "page_chars": 6784,
+  "page_candidate_values": 402,
+  "page_term_hits": [
+   "internal",
+   "revenue",
+   "receipts",
+   "california"
+  ],
+  "doc_candidate_values": 23438,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0086": {
+  "set": "val",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 1900,
+  "page_candidate_values": 61,
+  "page_term_hits": [
+   "change",
+   "assets",
+   "treasury",
+   "june"
+  ],
+  "doc_candidate_values": 12228,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0087": {
+  "set": "train:spare",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "billions",
+  "page_chars": 3140,
+  "page_candidate_values": 69,
+  "page_term_hits": [
+   "individual",
+   "income",
+   "taxes",
+   "receipts",
+   "federal",
+   "government",
+   "billions",
+   "round"
+  ],
+  "doc_candidate_values": 24005,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0088": {
+  "set": "heldout",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "billions",
+  "page_chars": 6714,
+  "page_candidate_values": 492,
+  "page_term_hits": [
+   "on-budget",
+   "off-budget",
+   "outlay",
+   "dollars"
+  ],
+  "doc_candidate_values": 35163,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0089": {
+  "set": "heldout",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 17571,
+  "page_candidate_values": 1553,
+  "page_term_hits": [
+   "using",
+   "on-budget",
+   "off-budget",
+   "outlays",
+   "department"
+  ],
+  "doc_candidate_values": 35528,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0091": {
+  "set": "val",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 16489,
+  "page_candidate_values": 1299,
+  "page_term_hits": [
+   "taxable",
+   "dutiable",
+   "import",
+   "values",
+   "estimated",
+   "tariff",
+   "schedules"
+  ],
+  "doc_candidate_values": 39126,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0092": {
+  "set": "train:spare",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 6204,
+  "page_candidate_values": 217,
+  "page_term_hits": [
+   "treasury",
+   "assets",
+   "millions",
+   "dollars"
+  ],
+  "doc_candidate_values": 56059,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0094": {
+  "set": "heldout:spare",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 11199,
+  "page_candidate_values": 772,
+  "page_term_hits": [
+   "change",
+   "treasury",
+   "general",
+   "fund",
+   "working",
+   "balance",
+   "ratio"
+  ],
+  "doc_candidate_values": 31274,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0096": {
+  "set": "heldout:spare",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 16489,
+  "page_candidate_values": 1299,
+  "page_term_hits": [
+   "customs",
+   "duty"
+  ],
+  "doc_candidate_values": 39126,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0098": {
+  "set": "train:spare",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 11975,
+  "page_candidate_values": 864,
+  "page_term_hits": [
+   "mean",
+   "government",
+   "public",
+   "federal",
+   "securities"
+  ],
+  "doc_candidate_values": 25424,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0099": {
+  "set": "heldout:spare",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 11877,
+  "page_candidate_values": 1043,
+  "page_term_hits": [
+   "using",
+   "on-budget",
+   "off-budget",
+   "outlays",
+   "department",
+   "commerce"
+  ],
+  "doc_candidate_values": 25215,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0101": {
+  "set": "train:spare",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 11387,
+  "page_candidate_values": 735,
+  "page_term_hits": [
+   "department",
+   "labor",
+   "outlays",
+   "using"
+  ],
+  "doc_candidate_values": 35681,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0104": {
+  "set": "heldout:spare",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 10530,
+  "page_candidate_values": 374,
+  "page_term_hits": [
+   "treasury",
+   "convertible",
+   "foreign"
+  ],
+  "doc_candidate_values": 123337,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0109": {
+  "set": "val",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 11796,
+  "page_candidate_values": 1043,
+  "page_term_hits": [
+   "using",
+   "on-budget",
+   "off-budget",
+   "outlays",
+   "department",
+   "defense"
+  ],
+  "doc_candidate_values": 24484,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0110": {
+  "set": "train:spare",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 8602,
+  "page_candidate_values": 62,
+  "page_term_hits": [
+   "year",
+   "real",
+   "growth",
+   "quarterly",
+   "percent",
+   "change",
+   "annual",
+   "rate"
+  ],
+  "doc_candidate_values": 25127,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0142": {
+  "set": "val",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "thousands",
+  "page_chars": 6145,
+  "page_candidate_values": 398,
+  "page_term_hits": [
+   "account",
+   "internal",
+   "revenue",
+   "thousands",
+   "dollars",
+   "income"
+  ],
+  "doc_candidate_values": 27866,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0154": {
+  "set": "val",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "millions",
+  "page_chars": 12295,
+  "page_candidate_values": 1086,
+  "page_term_hits": [
+   "treasury",
+   "ownership",
+   "public",
+   "debt",
+   "securities"
+  ],
+  "doc_candidate_values": 143091,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0159": {
+  "set": "val:spare",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "percent",
+  "page_chars": 3221,
+  "page_candidate_values": 54,
+  "page_term_hits": [
+   "assets",
+   "foreign",
+   "exchange",
+   "securities"
+  ],
+  "doc_candidate_values": 25190,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0161": {
+  "set": "val",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 11900,
+  "page_candidate_values": 1024,
+  "page_term_hits": [
+   "treasury",
+   "average",
+   "yields",
+   "long-term",
+   "bonds"
+  ],
+  "doc_candidate_values": 113682,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0170": {
+  "set": "val:spare",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": null,
+  "page_chars": 3689,
+  "page_candidate_values": 185,
+  "page_term_hits": [
+   "york",
+   "city",
+   "banks",
+   "chicago",
+   "treasury",
+   "notes",
+   "issued",
+   "federal"
+  ],
+  "doc_candidate_values": 35157,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0190": {
+  "set": "val:spare",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 9771,
+  "page_candidate_values": 979,
+  "page_term_hits": [
+   "treasury",
+   "monthly",
+   "statements",
+   "receipts",
+   "millions",
+   "dollars",
+   "month"
+  ],
+  "doc_candidate_values": 27107,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0213": {
+  "set": "val:spare",
+  "stratum": "hard/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 10372,
+  "page_candidate_values": 685,
+  "page_term_hits": [
+   "department",
+   "treasury",
+   "balance",
+   "unemployment",
+   "trust",
+   "fund",
+   "december"
+  ],
+  "doc_candidate_values": 59750,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0217": {
+  "set": "val:spare",
+  "stratum": "easy/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 8322,
+  "page_candidate_values": 612,
+  "page_term_hits": [
+   "public",
+   "debt",
+   "outstanding",
+   "treasury",
+   "millions",
+   "dollars",
+   "calendar"
+  ],
+  "doc_candidate_values": 40324,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0220": {
+  "set": "val:spare",
+  "stratum": "hard/single",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 4596,
+  "page_candidate_values": 452,
+  "page_term_hits": [
+   "federal",
+   "expenditures",
+   "rounded",
+   "nearest"
+  ],
+  "doc_candidate_values": 11495,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0234": {
+  "set": "val:spare",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "unknown",
+  "requested_scale": "millions",
+  "page_chars": 9261,
+  "page_candidate_values": 466,
+  "page_term_hits": [
+   "treasury",
+   "operating",
+   "balance",
+   "available",
+   "funds",
+   "federal",
+   "reserve",
+   "banks",
+   "millions"
+  ],
+  "doc_candidate_values": 56055,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ },
+ "UID0235": {
+  "set": "val:spare",
+  "stratum": "easy/multi",
+  "verdict": "AVAILABLE",
+  "answer_kind": "number",
+  "requested_scale": "billions",
+  "page_chars": 7348,
+  "page_candidate_values": 160,
+  "page_term_hits": [
+   "treasury",
+   "statutory",
+   "debt",
+   "limitation",
+   "securities",
+   "outstanding",
+   "subject"
+  ],
+  "doc_candidate_values": 43988,
+  "quoted_terms_absent_from_document": [],
+  "references_figure": false
+ }
+}

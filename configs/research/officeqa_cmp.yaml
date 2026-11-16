@@ -1,0 +1,56 @@
+# The two-arm OfficeQA comparison: Original SkillOpt (arm A) vs Original SkillOpt + stage and action feedback
+# (arm B). BOTH ARMS USE THIS ONE FILE. The only difference between them is the environment variable
+# OFFICEQA_STAGE_REPORT_DIR, which the opt-in hook in skillopt/gradient/reflect.py reads; with it unset, arm A's
+# analyst prompt is byte-identical to upstream's. Keeping a single config is the strongest available guarantee
+# that optimizer calls, editing opportunities, edit budgets and the validation gate match across the arms.
+#
+# Inherited unchanged from configs/officeqa/default.yaml (listed here because they define the comparison, not
+# because they are overridden):
+#   train.batch_size 40, train.accumulation 1, train.seed 42  -> one step per epoch over all 12 training questions
+#   gradient.minibatch_size 8, gradient.merge_batch_size 8     -> the analyst's view and the merge fan-in
+#   optimizer.learning_rate 4, lr_control_mode fixed           -> the edit budget per step
+#   optimizer.skill_update_mode patch                          -> bounded edits, not a rewrite
+#   evaluation.use_gate true, gate on `hard`                   -> the native validation gate
+#   evaluation.sel_env_num 0, test_env_num 0, eval_test true   -> the WHOLE val and test splits
+#
+# The split directory supplies all three sets (rule OQA-SEL-2, digest fc02291540ef...):
+#   train/ 12 training questions   val/ 12 validation questions   test/ 24 held-out questions
+# The trainer's "valid_seen" resolves to val/ and "valid_unseen" to test/, so the gate and the final test
+# evaluation read the frozen sets with no special wiring, and the held-out set is touched only by that final
+# evaluation (which also scores the starting skill, giving all three held-out numbers the user asked for).
+_base_: officeqa_qwen35.yaml
+
+train:
+  num_epochs: 2
+
+gradient:
+  # At most two optimizer calls in flight. 16 (the upstream default) only matters with many minibatches; 12
+  # training questions give at most two, so this changes nothing but the concurrency.
+  analyst_workers: 2
+
+optimizer:
+  # DEVIATION, applied identically to both arms, and recorded as such.
+  #
+  # Upstream turns both of these on, and with num_epochs > 1 they fire at the end of epoch 2. The slow update
+  # injects a SECOND skill modification per epoch (a SLOW_UPDATE section consolidated from a longitudinal replay),
+  # which contradicts the instruction to give each arm ONE skill update per epoch; it also re-rolls the training
+  # questions twice more. The meta skill does not edit the skill, but when the slow update is off it runs that
+  # same double replay itself to build its comparison pairs. Together they would add ~24 rollouts and ~2 optimizer
+  # calls per arm, against a budget of 24 optimizer calls for the whole comparison.
+  #
+  # Both are symmetric, so neither affects which arm wins; what they would change is the number of skill updates
+  # per epoch and the cost. At epoch 1 upstream makes no optimizer call for either (the slow update injects an
+  # empty placeholder, the meta skill records skip_first_epoch), so for a single-epoch run this setting is a no-op.
+  use_slow_update: false
+  use_meta_skill: false
+
+env:
+  split_mode: split_dir
+  split_dir: ""               # supplied at submit time (OFFICEQA_SPLIT_DIR)
+  data_dirs: []               # supplied at submit time (OFFICEQA_DOCS_DIR)
+  search_mode: offline        # no outbound search; the supplied pages and the local document tools only
+  use_local_tools: true
+  workers: 4                  # upstream; four rollouts in flight against one A40
+  max_tool_turns: 24          # upstream. The earlier feasibility runs used 8, which capped two of three items.
+  max_completion_tokens: 16384  # upstream
+  limit: 0

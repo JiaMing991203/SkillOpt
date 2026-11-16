@@ -29,6 +29,45 @@ import oqa_check as CHK  # noqa: E402
 import oqa_trace as TR  # noqa: E402
 
 
+class AnswerKeyLeak(RuntimeError):
+    """The packet a report would be built from carries evaluator-only information. Never continue past this."""
+
+
+def build_one(pred_root: str, item_id: str, question: str, results_path: str,
+              condition: str = "C") -> tuple[str, dict]:
+    """Build one item's report text plus its record. Raises AnswerKeyLeak if the packet fails the audit.
+
+    Shared by this script's batch mode and by the opt-in hook in skillopt/gradient/reflect.py, so arm B's report
+    is produced by exactly one code path whether it is written ahead of a run or generated during one.
+    """
+    packet = TR.build_packet(pred_root, item_id, question=question)
+    if not packet.get("steps"):
+        # A packet with no conversation events cannot support a report. Raising here means the caller records the
+        # item as a problem instead of handing the optimizer an empty block and leaving no trace of why.
+        raise ValueError(f"{item_id}: no conversation events were recorded at {pred_root}")
+    audit = TR.audit_no_gold(packet, results_path)
+    if audit["verdict"] != "PASS":
+        raise AnswerKeyLeak(f"{item_id}: {audit.get('problems')}")
+    result = CHK.report(packet, condition)
+    base = CHK.report(packet, "P")
+    if condition in ("S", "C"):
+        # The containment invariant: a richer condition may never drop what the plain view already said.
+        CHK.structural_check(base, result, f"{item_id}: {condition} over P")
+    text = CHK.render(result, packet)
+    record = {
+        "id": item_id,
+        "report_chars": len(text),
+        "report_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "boundary_audit": audit["verdict"],
+        "boundary_problems": audit.get("problems", []),
+        "findings": [{"cat": f["cat"], "kind": f["kind"], "layer": f["layer"], "problem": f["problem"],
+                      "first_step": f["first"]} for f in result["findings"]],
+        "n_advice": sum(1 for f in result["findings"] if f["kind"] == "advice"),
+        "n_warning": sum(1 for f in result["findings"] if f["kind"] == "warning"),
+    }
+    return text, record
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out_root", help="rollout directory containing results.jsonl and predictions/")
@@ -60,31 +99,16 @@ def main() -> int:
         if not failed and not args.all_items:
             continue
         try:
-            packet = TR.build_packet(pred_root, item_id, question=row.get("question", ""))
-            audit = TR.audit_no_gold(packet, results_path)
-            result = CHK.report(packet, args.condition)
-            # Both arms must rest on the same trace: the containment invariant is checked so a report can never
-            # quietly drop what the plain view already said.
-            base = CHK.report(packet, "P")
-            if args.condition in ("S", "C"):
-                CHK.structural_check(base, result, f"{item_id}: {args.condition} over P")
-            text = CHK.render(result, packet)
+            text, record = build_one(pred_root, item_id, row.get("question", ""), results_path, args.condition)
             path = os.path.join(args.out, f"{item_id}.md")
             with open(path, "w", encoding="utf-8") as f:
                 f.write(text)
-            manifest["items"].append({
-                "id": item_id,
-                "scored_correct": not failed,
-                "report_file": os.path.basename(path),
-                "report_chars": len(text),
-                "report_sha256": hashlib.sha256(text.encode()).hexdigest(),
-                "boundary_audit": audit["verdict"],
-                "boundary_problems": audit.get("problems", []),
-                "findings": [{"cat": f["cat"], "kind": f["kind"], "layer": f["layer"], "problem": f["problem"],
-                              "first_step": f["first"]} for f in result["findings"]],
-                "n_advice": sum(1 for f in result["findings"] if f["kind"] == "advice"),
-                "n_warning": sum(1 for f in result["findings"] if f["kind"] == "warning"),
-            })
+            record["scored_correct"] = not failed
+            record["report_file"] = os.path.basename(path)
+            manifest["items"].append(record)
+        except AnswerKeyLeak as exc:
+            manifest["items"].append({"id": item_id, "boundary_audit": "FAIL", "boundary_problems": [str(exc)],
+                                      "report_chars": 0, "n_advice": 0, "n_warning": 0, "findings": []})
         except Exception as exc:  # noqa: BLE001
             manifest["problems"].append({"id": item_id, "error": f"{type(exc).__name__}: {exc}"})
 
