@@ -28,6 +28,9 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import oqa_fixture as FIX  # noqa: E402
 
 from skillopt.config import flatten_config, load_config  # noqa: E402
 from skillopt.envs.officeqa.rollout import _TOOL_SCHEMAS  # noqa: E402
@@ -136,6 +139,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-tokens", type=int, default=512)
+    ap.add_argument("--fixture-dir", default="",
+                    help="directory for the small allowed fixture the returned call is executed against; "
+                         "without it the probe reports structure only and cannot PASS")
     ap.add_argument("--config", default=DEFAULT_CONFIG,
                     help="config whose target_* settings wire the backend (default: officeqa_check3.yaml)")
     args = ap.parse_args()
@@ -210,8 +216,30 @@ def main() -> int:
         report["unparsable_arguments"] = bad_args
         report["missing_required_arguments"] = missing_required
         report["usable_tool_calls"] = usable
-        if usable and not unknown and not bad_args and not missing_required:
+        # Structure alone is not a pass. The criterion is that SkillOpt receives the structured call AND the
+        # adapter executes it against a small allowed fixture and returns the expected matching line.
+        report["execution"] = []
+        executed_ok = False
+        if usable and args.fixture_dir:
+            required_map = FIX.required_fields_from_adapter()
+            report["fixture"] = {"dir": os.path.abspath(args.fixture_dir), "file": FIX.FIXTURE_NAME,
+                                 "expected_substring": FIX.EXPECTED_MATCH_SUBSTRING,
+                                 "expected_absent": FIX.EXPECTED_ABSENT_SUBSTRING}
+            for call in report["tool_calls"]:
+                entry = FIX.execute_and_check(call["name"], call["arguments"], args.fixture_dir, required_map)
+                report["execution"].append(entry)
+                if entry.get("result") == FIX.PASS_RESULT:
+                    executed_ok = True
+        elif usable:
+            report["execution_skipped"] = ("no --fixture-dir given, so the returned call was not executed; "
+                                           "structure alone cannot PASS")
+
+        if usable and not unknown and not bad_args and not missing_required and executed_ok:
             report["verdict"] = "PASS"
+        elif usable and not executed_ok:
+            report["verdict"] = "PARTIAL"
+            report["diagnosis"] = ("a structured tool call with usable arguments was returned, but it did not "
+                                   "execute through the adapter and return the expected line; see execution")
         elif usable:
             report["verdict"] = "PARTIAL"
             report["diagnosis"] = ("at least one tool call is usable, but others are malformed; the loop would "

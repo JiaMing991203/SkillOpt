@@ -32,10 +32,15 @@
 STAGE="${STAGE:?set STAGE=tools|check3|pilot12}"
 case "$STAGE" in tools|check3|pilot12) ;; *) echo "unknown STAGE=$STAGE" >&2; exit 2 ;; esac
 
-# Qwen3 chat templates emit <tool_call>{...}</tool_call>, which vLLM's hermes parser reads. `qwen3_engine` is for
-# Qwen3-Coder structural tags (structural_tag_model = "qwen_3_coder") and is NOT the parser for Qwen3.5-4B chat.
-# STAGE=tools verifies this empirically instead of trusting the choice.
-OQA_TOOL_PARSER="${OQA_TOOL_PARSER:-hermes}"
+# Parser choice, corrected by measurement in job 66190733 (the earlier comment here claimed hermes, wrongly).
+# Qwen3.5-4B emits Qwen3-Coder XML, not JSON inside <tool_call>:
+#   <tool_call><function=grep><parameter=pattern>...</parameter><parameter=path>...</parameter></function></tool_call>
+# hermes expects JSON there, so it extracted nothing and vLLM returned the call as plain content with an empty
+# tool_calls list. In this build `qwen3_coder` and `qwen3_xml` both resolve to the same class
+# (vllm/tool_parsers/__init__.py -> Qwen3EngineToolParser), so they are one parser under two names. An offline
+# replay of that job's exact reply through qwen3_coder recovers the grep call with both arguments intact
+# (research/officeqa/oqa_parser_replay.py).
+OQA_TOOL_PARSER="${OQA_TOOL_PARSER:-qwen3_coder}"
 OQA_CONFIG_CHECK3="configs/research/officeqa_check3.yaml"
 OQA_CONFIG_PILOT12="configs/research/officeqa_pilot12.yaml"
 
@@ -125,8 +130,11 @@ status=0
 scrape_vllm_metrics before
 case "$STAGE" in
     tools)
+        # A pass requires more than a structured reply: the returned call must execute through the OfficeQA
+        # adapter against a small allowed fixture and come back with the expected matching line.
         "$CTL_ENV/bin/python" research/officeqa/oqa_tool_probe.py \
-            --out "$RUN_DIR/tool_probe.json" || status=$?
+            --out "$RUN_DIR/tool_probe.json" \
+            --fixture-dir "$RUN_DIR/tool_fixture" || status=$?
         ;;
     check3|pilot12)
         CFG="$OQA_CONFIG_CHECK3"; [ "$STAGE" = "pilot12" ] && CFG="$OQA_CONFIG_PILOT12"

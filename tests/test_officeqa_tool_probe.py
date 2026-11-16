@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.join(REPO, "research", "officeqa"))
 
 pytest.importorskip("skillopt.model", reason="needs the SkillOpt package importable (Python >= 3.10)")
 
+import oqa_fixture as FIX  # noqa: E402
 import oqa_tool_probe as PROBE  # noqa: E402
 
 CONFIG = os.path.join(REPO, "configs", "research", "officeqa_check3.yaml")
@@ -127,9 +128,11 @@ def mock_server(monkeypatch):
         server.server_close()
 
 
-def _run(tmp_path, argv_extra=()):
+def _run(tmp_path, argv_extra=(), with_fixture=True):
     out = tmp_path / "tool_probe.json"
     argv = ["oqa_tool_probe.py", "--out", str(out), "--config", CONFIG, *argv_extra]
+    if with_fixture:
+        argv += ["--fixture-dir", str(tmp_path / "fixture")]
     old = sys.argv
     sys.argv = argv
     try:
@@ -169,13 +172,43 @@ def test_probe_targets_the_job_local_qwen_server_and_sends_the_tools(mock_server
     # 4. The model is the one the config pins.
     assert body.get("model") == "Qwen/Qwen3.5-4B"
 
-    # 5. The verdict reflects a usable structured call.
+    # 5. The verdict reflects a usable structured call that ALSO executed against the fixture.
     assert report["verdict"] == "PASS", report
     assert report["usable_tool_calls"] == [
         {"tool": "grep", "arguments": {"pattern": "interest-bearing debt",
                                        "path": "treasury_bulletin_1977_04.txt"}}
     ]
+    assert len(report["execution"]) == 1
+    execution = report["execution"][0]
+    assert execution["result"] == FIX.PASS_RESULT, execution
+    assert FIX.EXPECTED_MATCH_SUBSTRING in execution["observation"]
+    assert FIX.EXPECTED_ABSENT_SUBSTRING not in execution["observation"]
     assert code == 0
+
+
+def test_structure_without_execution_is_not_a_pass(mock_server, tmp_path):
+    """The criterion is receive AND execute. A structured call alone must not score PASS."""
+    mock_server.reply = TOOL_CALL_REPLY
+    code, report = _run(tmp_path, with_fixture=False)
+    assert report["verdict"] == "PARTIAL"
+    assert "did not execute" in report["diagnosis"]
+    assert "execution_skipped" in report
+    assert code == 1
+
+
+def test_a_call_the_adapter_cannot_execute_is_not_a_pass(mock_server, tmp_path):
+    """A well-formed call whose pattern matches nothing in the fixture must not score PASS."""
+    mock_server.reply = {
+        "role": "assistant", "content": "",
+        "tool_calls": [{"id": "c", "type": "function", "function": {
+            "name": "grep",
+            "arguments": json.dumps({"pattern": "zzz-not-in-the-fixture",
+                                     "path": "treasury_bulletin_1977_04.txt"})}}],
+    }
+    code, report = _run(tmp_path)
+    assert report["verdict"] == "PARTIAL"
+    assert report["execution"][0]["result"] == "the adapter refused or found nothing"
+    assert code == 1
 
 
 def test_tool_syntax_in_content_is_reported_as_a_server_flag_problem(mock_server, tmp_path):

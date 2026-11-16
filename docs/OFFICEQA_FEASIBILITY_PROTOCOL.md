@@ -293,13 +293,37 @@ and reads `message.tool_calls`. With the current flags that list is always empty
 sitting in the message text. The run would "succeed" and produce traces with no tool use at all.
 
 **Fix, and how it is checked:** `STAGE=tools` starts vLLM with `--enable-auto-tool-choice --tool-call-parser
-hermes` and sends one OfficeQA-shaped request through SkillOpt's own backend
-(`research/officeqa/oqa_tool_probe.py`). It distinguishes the three outcomes — tool calls returned; tool syntax in
-the content (server flags wrong); neither (template or model) — and exits non-zero unless tool calls come back, so
-no question is spent on a broken loop. `hermes` is the choice because Qwen3 chat templates emit
-`<tool_call>{…}</tool_call>`; `qwen3_engine` is for Qwen3-Coder structural tags
-(`structural_tag_model = "qwen_3_coder"`). **Unknown** until the probe runs: whether Qwen3.5-4B's template renders
-the tools block at all, and whether a 4B model uses the tools competently.
+<parser>` and sends one OfficeQA-shaped request through SkillOpt's own backend
+(`research/officeqa/oqa_tool_probe.py`). It distinguishes the outcomes — a structured call that executes; tool
+syntax left in the content (parser or flags wrong); neither (template or model) — and exits non-zero unless the
+call comes back *and* executes, so no question is spent on a broken loop.
+
+**Which parser: corrected by measurement, 2026-11-15.** This section previously asserted that `hermes` was the
+right choice "because Qwen3 chat templates emit `<tool_call>{…}</tool_call>`", and that the `qwen3_*` parsers were
+only for Qwen3-Coder structural tags. **That was wrong for Qwen3.5-4B, and job 66190733 disproved it.** The model
+emits Qwen3-Coder XML, not JSON:
+
+```
+<tool_call>
+<function=grep>
+<parameter=pattern>interest-bearing debt</parameter>
+<parameter=path>treasury_bulletin_1977_04.txt</parameter>
+</function>
+</tool_call>
+```
+
+`hermes` expects JSON inside `<tool_call>`, so it extracted nothing, vLLM returned the text as content with an
+empty `tool_calls` list, and the OfficeQA loop would have stopped after one turn. Two further facts from that
+run's own artifacts: this build offers `hermes`, `qwen3_coder` and `qwen3_xml`, and the latter two resolve to the
+**same class** (`vllm/tool_parsers/__init__.py` → `Qwen3EngineToolParser`), so they are one parser under two names
+rather than two candidates. The default is now `qwen3_coder`.
+
+**Verified offline before re-running (no GPU):** `research/officeqa/oqa_parser_replay.py` replays that job's exact
+reply through `qwen3_coder` in the pinned vLLM environment and recovers `grep` with both original arguments, then
+executes it through the adapter's own `run_tool` against a small allowed fixture and checks the returned line.
+
+**Still unknown** after a passing tool check: whether a 4B model uses these tools *competently* across real
+questions. The check settles one easy prompt; only the three-question baseline begins to answer the rest.
 
 **Fallback if the probe fails:** `env.use_local_tools: false` runs the adapter's single-shot path, which still
 yields the supplied pages, the final answer and the native score — but no tool requests, so it cannot support the
