@@ -11,8 +11,12 @@ document should the user want it anyway.
 `docs/research/OFFICEQA_REPORT_VALUE_PROBE.md`: paired blind review of the same eight attempts, with and without
 the corrected report. **0 of 8 cases gained a valid diagnosis attributable to the report; 1 of 8 gained a
 misleading one.** See section C5.
+**A contract/check audit (offline) says what to change to make the report accurate** ->
+`docs/research/OFFICEQA_CONTRACT_AUDIT.md`. Rule set is FIXED and hand-written; no learner, **no Lean anywhere**.
+See section C6. Implementation changes deliberately NOT applied.
 **Still with the USER:** whether to restructure as one epoch of two steps so the optimizer sees its rejected
-edits (section C3). **The held-out outcome of job 66234927 remains deliberately UNREAD/SEALED.**
+edits (section C3), and whether to apply the C6 changes 1-4. **The held-out outcome of job 66234927 remains
+deliberately UNREAD/SEALED.**
 
 **This session owns** the OfficeQA track only. Write only `from: "officeqa"` records in
 `/Users/yaojiaming/dev/lean_skillopt/coordination/reservations.jsonl`. Standing authorization since
@@ -151,6 +155,43 @@ anonymised in randomised order.
 would propose different EDITS that survive merge, budget and the 6/12 gate. Reviewers answered a different
 question with a different output. The replay that would settle it is scoped in
 `OFFICEQA_EPOCH2_REPORT_AUDIT.md` section 6 (1 A40, 4 calls, ~25 min, inside the remaining caps).
+
+## C6. Contract/check audit: what to change in the report generator
+
+`docs/research/OFFICEQA_CONTRACT_AUDIT.md`. Offline, 0 GPU, 0 paid calls. Nothing implemented.
+
+**Provenance:** the rule set is **fixed, hand-written Python**. No learner ran, no rule was proposed/retained/
+revised, and **no Lean was involved** (the `lean` matches are the `lean_skillopt` path). Of 14 rules, 3 rest on
+documented tool behaviour, 1 on a self-labelled unverified empirical hypothesis (`table.scale.1`), the rest are
+manually written. **Only 6 of 14 fired** across 8 failures + 3 successes.
+
+**Reliability:** the two rules carrying the report's only distinctive content are its least reliable.
+`scale_conversion_missing`: **5 of a 10-case sample are demonstrable false positives**.
+`operand_provenance_missing`: fires on arithmetic intermediates, on the actor's own converted values, and on the
+answer-format example inside the question text; 1 of 18 sampled firings looked genuinely useful.
+
+**One structural cause:** the rules read a value's EVIDENCE provenance (`_match` over supplied pages + tool
+observations) and never `state["computed"]`, so a conversion the actor performed is invisible and the obligation is
+reported as outstanding. Verified: UID0014 converted `1,004,461 -> $1,004.461 billion` at **step 1**; the raw value
+is recorded as an operand at steps 9/19 and the report says "No conversion step appears".
+
+**UID0026 (wrong-period row, not wrong column):** the actor used the `1961-January` paper-money level (29,385)
+instead of `1960-December` (30,442) as the calendar-1961 baseline; the column was CORRECT (header cell 3 = "Total
+paper money"), which also settles a disagreement between the two probe reviewers (30,442 right, 32,869 wrong
+column). `operand_period_mismatch` could not fire because (a) the question states no period - it must be inferred -
+so the obligation is UNKNOWN, and (b) both values were classified `computed`, not operands. The ledger binds only
+the YEAR, never the month, so a year-level check would call both rows "1961" and consistent. The requested year is
+itself uncertain from the supplied text (the "Treasury notes of 1890" column goes `1` -> `*` = "less than
+$500,000", which is a rounding floor, not removal) - recorded as unresolved.
+
+**Prioritised changes (1-4 best supported), each with a fire/stay-quiet example in the doc:** consult
+`state["computed"]` before claiming a missing conversion; reword "No conversion step appears" to a claim the
+checker can support; exclude numbers occurring in the task prompt's own text from operand extraction; do not report
+provenance-missing for arithmetic results. Then: bind month + column; separate "no arithmetic cue" from "no
+arithmetic requested"; make period-rule inactivity explicit.
+
+**Skill-edit candidate:** only UID0034's `7069` read out of a FRASER URL generalises usefully - and arm A's
+analyst derived that rule from the raw trace with no report at all.
 
 ## C4. Earlier work (all verified)
 
