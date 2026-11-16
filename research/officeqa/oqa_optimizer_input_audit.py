@@ -1,0 +1,167 @@
+"""Build the ACTUAL optimizer input for both arms and audit it for answer-key leakage.
+
+What the user asked for: "Keep expected answers inside the scorer and verify the actual optimizer inputs in both
+arms." This does not inspect the code and reason about it - it calls SkillOpt's own
+`reflect.fmt_minibatch_trajectories` on the real rollout records, once with the arm-B hook off and once with it on,
+and then audits the two prompts that come out. Those are the bytes the optimizer would receive.
+
+Three questions, answered separately:
+
+  1. LEAKAGE. Does the prompt contain the answer key as evaluator-supplied information? The gold VALUE usually
+     appears somewhere in the supplied document pages - that is the evidence the question is asked about, and it
+     carries no information about which answer is correct. What must be absent is the evaluator's own statement of
+     the target: the old `fail_reason` form "predicted 'X' but expected 'GOLD'", or any evaluator-only field name.
+  2. ARM DIFFERENCE. Is arm A's prompt byte-identical to upstream's, and is arm B's prompt exactly arm A's plus
+     the stage-and-action reports? If arm B differed in any other way, the comparison would not isolate the report.
+  3. COST. How large is each prompt, in characters and in an estimated token count? This is what decides whether
+     the optimizer half of the comparison is affordable, and it is the number the budget is built from.
+
+usage: python3 oqa_optimizer_input_audit.py <rollout out_root> --report-dir <dir> --out audit.json
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import hashlib
+import importlib
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, REPO)
+
+EVALUATOR_ONLY_FIELDS = ("ground_truth", "gold_answer", "answers", "correct_label", "em", "f1")
+OLD_LEAK_PATTERN = re.compile(r"but expected\b", re.I)
+
+
+def _load_rows(out_root: str) -> list[dict]:
+    rows = []
+    with open(os.path.join(out_root, "results.jsonl"), encoding="utf-8") as f:
+        for line in f:
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return rows
+
+
+def _render(items: list[dict], prediction_dir: str, report_dir: str | None) -> str:
+    """Call SkillOpt's own formatter, with the arm-B hook set or unset."""
+    if report_dir:
+        os.environ["OFFICEQA_STAGE_REPORT_DIR"] = report_dir
+    else:
+        os.environ.pop("OFFICEQA_STAGE_REPORT_DIR", None)
+    reflect = importlib.import_module("skillopt.gradient.reflect")
+    importlib.reload(reflect)  # the hook is read per call, but reload keeps this robust to import caching
+    return reflect.fmt_minibatch_trajectories(items, prediction_dir)
+
+
+def _estimate_tokens(text: str) -> int:
+    """A deliberately rough upper-ish estimate: ~3.6 characters per token for English prose with tables.
+
+    Stated as an estimate because the real tokenizer is the optimizer provider's, which we do not run here. The
+    budget built from it should be treated as an order-of-magnitude figure, not a quote.
+    """
+    return int(len(text) / 3.6)
+
+
+def audit_text(label: str, text: str, golds: dict) -> dict:
+    """Leakage audit of one rendered prompt."""
+    problems, notes = [], []
+    if OLD_LEAK_PATTERN.search(text):
+        excerpt = text[max(0, OLD_LEAK_PATTERN.search(text).start() - 60):][:200]
+        problems.append(f"the old leaking fail_reason form is present: ...{excerpt!r}")
+    for field in EVALUATOR_ONLY_FIELDS:
+        if f'"{field}"' in text or f"'{field}'" in text:
+            problems.append(f"evaluator-only field name {field!r} appears in the prompt")
+
+    # Where does each gold value appear? Inside the supplied pages is expected; anywhere else is suspicious.
+    page_section = "\n".join(re.findall(r"(?s)#### Target User Prompt\n(.*?)(?=\n#### |\n### |\Z)", text))
+    for item_id, gold in golds.items():
+        gold = str(gold or "").strip()
+        if not gold:
+            continue
+        total = text.count(gold)
+        in_pages = page_section.count(gold)
+        if total and total == in_pages:
+            notes.append(f"{item_id}: gold value occurs {total}x, all inside the supplied document pages "
+                         f"(expected - that is the evidence)")
+        elif total:
+            problems.append(f"{item_id}: gold value occurs {total}x, of which {total - in_pages} OUTSIDE the "
+                            f"supplied pages - inspect those occurrences")
+    return {"label": label, "verdict": "FAIL" if problems else "PASS", "problems": problems, "notes": notes,
+            "chars": len(text), "estimated_tokens": _estimate_tokens(text),
+            "sha256": hashlib.sha256(text.encode()).hexdigest()}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out_root")
+    ap.add_argument("--report-dir", required=True, help="arm B's stage-report directory (from oqa_reports.py)")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--minibatch-size", type=int, default=8,
+                    help="failures per analyst call, to size one real prompt (config gradient.minibatch_size)")
+    args = ap.parse_args()
+
+    rows = _load_rows(args.out_root)
+    failures = [r for r in rows if not float(r.get("hard") or 0)]
+    golds = {str(r.get("id")): r.get("ground_truth") for r in rows}
+    prediction_dir = os.path.join(args.out_root, "predictions")
+
+    minibatch = failures[:args.minibatch_size]
+    arm_a = _render(minibatch, prediction_dir, None)
+    arm_b = _render(minibatch, prediction_dir, args.report_dir)
+
+    audit_a = audit_text("arm A (original SkillOpt)", arm_a, golds)
+    audit_b = audit_text("arm B (+ stage and action report)", arm_b, golds)
+
+    # Arm B must be arm A plus the reports and nothing else. The injected block is removed by its EXACT bytes,
+    # read back from the report files, rather than by a regex over the surrounding text: the block is followed by
+    # the trajectory lines, not by another heading, so a lookahead-based strip silently eats real content and
+    # would make this check meaningless.
+    added_blocks = re.findall(r"\n#### Stage and Action Report\n", arm_b)
+    stripped_b = arm_b
+    for row in minibatch:
+        report_path = os.path.join(args.report_dir, f"{row.get('id')}.md")
+        if not os.path.isfile(report_path):
+            continue
+        with open(report_path, encoding="utf-8") as f:
+            injected = f.read().strip()
+        if injected:
+            stripped_b = stripped_b.replace(f"\n#### Stage and Action Report\n{injected}\n", "", 1)
+    identical_after_strip = stripped_b == arm_a
+    diff_sample = []
+    if not identical_after_strip:
+        diff = list(difflib.unified_diff(arm_a.splitlines(), stripped_b.splitlines(), lineterm="", n=1))
+        diff_sample = diff[:40]
+
+    report = {
+        "out_root": os.path.abspath(args.out_root),
+        "rollout_items": len(rows),
+        "failures": len(failures),
+        "minibatch_items": [str(r.get("id")) for r in minibatch],
+        "arm_a": audit_a,
+        "arm_b": audit_b,
+        "arm_difference": {
+            "stage_reports_injected": len(added_blocks),
+            "arm_b_is_arm_a_plus_reports_only": identical_after_strip,
+            "added_chars": audit_b["chars"] - audit_a["chars"],
+            "added_estimated_tokens": audit_b["estimated_tokens"] - audit_a["estimated_tokens"],
+            "unexpected_diff_sample": diff_sample,
+        },
+        "verdict": "PASS" if (audit_a["verdict"] == "PASS" and audit_b["verdict"] == "PASS"
+                              and identical_after_strip) else "FAIL",
+    }
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(json.dumps({k: v for k, v in report.items() if k != "arm_difference"} |
+                     {"arm_difference": {k: v for k, v in report["arm_difference"].items()
+                                         if k != "unexpected_diff_sample"}}, indent=2))
+    return 0 if report["verdict"] == "PASS" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

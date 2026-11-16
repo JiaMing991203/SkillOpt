@@ -711,7 +711,16 @@ def process_one(
         "use_local_tools": bool(use_local_tools),
         "hard": int(eval_result["em"]),
         "soft": eval_result["f1"],
-        "fail_reason": fail_reason or ("" if eval_result["em"] else f"predicted '{eval_result['predicted_answer']}' but expected '{item.get('ground_truth', '')}'"),
+        # ANSWER-KEY ISOLATION (research change, user-approved 2026-11-16). Upstream wrote
+        #     f"predicted '{pred}' but expected '{gold}'"
+        # and skillopt/gradient/reflect.py copies `fail_reason` verbatim into the analyst prompt, so the optimizer
+        # was shown the answer key for every failed item. The expected answer now stays with the scorer: the
+        # record still says what was predicted and that the scorer rejected it, which is what a failure analysis
+        # needs, without handing over the target. `ground_truth` remains in the rollout record below because the
+        # scorer and the gate consume it, and reflect.py never reads that field (verified).
+        # The same upstream pattern exists in the searchqa, docvqa and livemathematicianbench adapters; they are
+        # left untouched, since they are not part of this experiment.
+        "fail_reason": fail_reason or ("" if eval_result["em"] else f"predicted '{eval_result['predicted_answer']}' but the scorer marked it incorrect"),
         "agent_ok": not fail_reason,
         "n_turns": len(conversation),
         "last_finish_reason": last_response_metadata.get("finish_reason", ""),

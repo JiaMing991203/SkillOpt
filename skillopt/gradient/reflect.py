@@ -222,6 +222,20 @@ def fmt_minibatch_trajectories(
                 if claude_steps:
                     header += f"\n#### Claude Trace Steps\n{claude_steps}\n"
 
+        # OfficeQA stage-and-action feedback (research arm B; opt-in, off unless the variable is set, so arm A's
+        # prompt is byte-identical to upstream). Follows the same pattern as the codex/claude trace hooks above:
+        # the report is generated OUTSIDE SkillOpt by research/officeqa/oqa_reports.py from the recorded trace, is
+        # deterministic, and is written to <dir>/<task id>.md. Nothing here derives it from the skill or the
+        # answer key. A missing file is silently skipped, so a partially generated set cannot fail a run.
+        stage_report_dir = os.environ.get("OFFICEQA_STAGE_REPORT_DIR", "").strip()
+        if stage_report_dir:
+            stage_report_path = os.path.join(stage_report_dir, f"{tid}.md")
+            if os.path.exists(stage_report_path):
+                with open(stage_report_path, encoding="utf-8") as f:
+                    stage_report = f.read().strip()
+                if stage_report:
+                    header += f"\n#### Stage and Action Report\n{stage_report}\n"
+
         preview = item.get("spreadsheet_preview", "")
         if not preview:
             preview_path = os.path.join(prediction_dir, tid, "spreadsheet_preview.txt")

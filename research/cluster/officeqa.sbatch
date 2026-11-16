@@ -9,6 +9,13 @@
 #   STAGE=check3   the three-question baseline check (selection OQA-SEL-1 / B3) through scripts/eval_only.py.
 #                  No optimizer, no DeepSeek call.
 #   STAGE=pilot12  the twelve-question development pilot (OQA-SEL-1 / P12). Same, with 12 questions.
+#   STAGE=epoch1   the SHARED epoch-1 rollout of the two-arm comparison: the frozen 12 questions with the
+#                  released starting skill, gated on the first three. It runs the first 3 questions, checks
+#                  document loading / tool execution / trace and score recording / answer-key isolation
+#                  (oqa_rollout_checkpoint.py), and only then completes the remaining 9 into the SAME output
+#                  directory, which run_batch resumes by skipping ids already in results.jsonl. Afterwards it
+#                  generates the arm-B stage reports and audits the real optimizer input for both arms. No
+#                  optimizer call is made: this stage is rollout plus offline analysis only.
 #
 # The P / S / C report comparison is NOT run here: it is offline, deterministic and CPU-only, and runs over the
 # fetched run directory (research/officeqa/oqa_check.py).
@@ -29,8 +36,8 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=%x-%j.out
 
-STAGE="${STAGE:?set STAGE=tools|check3|pilot12}"
-case "$STAGE" in tools|check3|pilot12) ;; *) echo "unknown STAGE=$STAGE" >&2; exit 2 ;; esac
+STAGE="${STAGE:?set STAGE=tools|check3|pilot12|epoch1}"
+case "$STAGE" in tools|check3|pilot12|epoch1) ;; *) echo "unknown STAGE=$STAGE" >&2; exit 2 ;; esac
 
 # Parser choice, corrected by measurement in job 66190733 (the earlier comment here claimed hermes, wrongly).
 # Qwen3.5-4B emits Qwen3-Coder XML, not JSON inside <tool_call>:
@@ -135,6 +142,48 @@ case "$STAGE" in
         "$CTL_ENV/bin/python" research/officeqa/oqa_tool_probe.py \
             --out "$RUN_DIR/tool_probe.json" \
             --fixture-dir "$RUN_DIR/tool_fixture" || status=$?
+        ;;
+    epoch1)
+        # One rollout, shared by both arms. Phase 1: the first three questions only.
+        OUT="$RUN_DIR/epoch1"
+        "$CTL_ENV/bin/python" scripts/eval_only.py \
+            --config "$OQA_CONFIG_PILOT12" \
+            --skill skillopt/envs/officeqa/skills/initial.md \
+            --split train --out_root "$OUT" \
+            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+                          "env.limit=3" || status=$?
+        if [ "$status" -ne 0 ]; then
+            log "phase 1 (first 3 questions) failed with status=$status; not continuing to the remaining 9"
+        else
+            "$CTL_ENV/bin/python" research/officeqa/oqa_rollout_checkpoint.py "$OUT" \
+                --expect 3 --out "$RUN_DIR/checkpoint_first3.json" || status=$?
+            if [ "$status" -ne 0 ]; then
+                log "CHECKPOINT FAILED on the first 3 questions; the remaining 9 are NOT run (see checkpoint_first3.json)"
+            else
+                log "checkpoint passed; completing the remaining questions (run_batch resumes by id)"
+                "$CTL_ENV/bin/python" scripts/eval_only.py \
+                    --config "$OQA_CONFIG_PILOT12" \
+                    --skill skillopt/envs/officeqa/skills/initial.md \
+                    --split train --out_root "$OUT" \
+                    --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+                    || status=$?
+                "$CTL_ENV/bin/python" research/officeqa/oqa_rollout_checkpoint.py "$OUT" \
+                    --expect 12 --out "$RUN_DIR/checkpoint_all12.json" || log "WARNING: all-12 checkpoint flagged problems"
+            fi
+        fi
+        # Offline, deterministic, no API call: the arm-B reports, then an audit of the ACTUAL optimizer input for
+        # both arms (leakage, arm difference, and the prompt sizes the budget is built from).
+        if [ -f "$OUT/results.jsonl" ]; then
+            "$CTL_ENV/bin/python" research/officeqa/oqa_inventory.py "$OUT" \
+                --out "$RUN_DIR/trace_inventory.json" || log "warning: oqa_inventory failed"
+            "$CTL_ENV/bin/python" research/officeqa/oqa_reports.py "$OUT" \
+                --out "$RUN_DIR/stage_reports_C" --condition C || log "WARNING: report generation flagged problems"
+            "$CTL_ENV/bin/python" research/officeqa/oqa_optimizer_input_audit.py "$OUT" \
+                --report-dir "$RUN_DIR/stage_reports_C" \
+                --out "$RUN_DIR/optimizer_input_audit.json" || log "WARNING: optimizer-input audit did not pass"
+            "$CTL_ENV/bin/python" research/render_reflection_input.py "$OUT" \
+                --out "$RUN_DIR/reflection_input_preview.txt" || log "warning: render_reflection_input failed"
+        fi
         ;;
     check3|pilot12)
         CFG="$OQA_CONFIG_CHECK3"; [ "$STAGE" = "pilot12" ] && CFG="$OQA_CONFIG_PILOT12"
