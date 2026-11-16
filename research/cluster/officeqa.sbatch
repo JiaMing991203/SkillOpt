@@ -144,6 +144,13 @@ export TARGET_QWEN_CHAT_MODEL="$TARGET_MODEL_ID"
 export PYTHONPATH="$SNAPSHOT_DIR"
 export PYTHONUNBUFFERED=1
 # The adapter also honours this; set so a misconfigured env.data_dirs cannot silently fall back to another corpus.
+#
+# Both paths matter, because --cfg-options casts values with skillopt.config._cast_value, which knows int, float,
+# bool and str and NOT list: `env.data_dirs=[/path]` becomes the literal string "[/path]", which is not a
+# directory, so resolve_docs_roots skips it and falls through to its built-in candidates
+# (data/officeqa_docs_official, ~/officeqa-sparse/..). The plain form `env.data_dirs=/path` is split on the path
+# separator and on commas and does resolve, so that is what the stages below pass. Until 2026-11-16 they passed
+# the bracket form and the corpus came from this variable alone.
 [ "$STAGE" != "tools" ] && export OFFICEQA_DOCS_DIR
 
 nvidia-smi --query-gpu=timestamp,memory.used,memory.total,utilization.gpu \
@@ -198,7 +205,7 @@ case "$STAGE" in
             --config "$OQA_CONFIG_PILOT12" \
             --skill skillopt/envs/officeqa/skills/initial.md \
             --split train --out_root "$OUT" \
-            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" \
                           "env.limit=3" || status=$?
         if [ "$status" -ne 0 ]; then
             log "phase 1 (first 3 questions) failed with status=$status; not continuing to the remaining 9"
@@ -213,7 +220,7 @@ case "$STAGE" in
                     --config "$OQA_CONFIG_PILOT12" \
                     --skill skillopt/envs/officeqa/skills/initial.md \
                     --split train --out_root "$OUT" \
-                    --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+                    --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" \
                     || status=$?
                 "$CTL_ENV/bin/python" research/officeqa/oqa_rollout_checkpoint.py "$OUT" \
                     --expect 12 --out "$RUN_DIR/checkpoint_all12.json" || log "WARNING: all-12 checkpoint flagged problems"
@@ -239,7 +246,7 @@ case "$STAGE" in
         "$CTL_ENV/bin/python" scripts/eval_only.py \
             --config "$OQA_CONFIG_CMP" --skill "$OQA_INITIAL_SKILL" \
             --split train --out_root "$OUT" \
-            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" \
                           "env.limit=3" || status=$?
         if [ "$status" -ne 0 ]; then
             log "phase 1 (first 3 questions) failed with status=$status; not continuing"
@@ -255,7 +262,7 @@ case "$STAGE" in
                 "$CTL_ENV/bin/python" scripts/eval_only.py \
                     --config "$OQA_CONFIG_CMP" --skill "$OQA_INITIAL_SKILL" \
                     --split train --out_root "$OUT" \
-                    --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+                    --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" \
                     || status=$?
                 "$CTL_ENV/bin/python" research/officeqa/oqa_rollout_checkpoint.py "$OUT" \
                     --expect 12 --max-tool-turns 24 \
@@ -267,7 +274,7 @@ case "$STAGE" in
                 "$CTL_ENV/bin/python" scripts/eval_only.py \
                     --config "$OQA_CONFIG_CMP" --skill "$OQA_INITIAL_SKILL" \
                     --split valid_seen --out_root "$RUN_DIR/val_baseline" \
-                    --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+                    --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" \
                     || log "WARNING: the shared validation baseline failed; an arm would measure its own"
             fi
         fi
@@ -333,7 +340,7 @@ case "$STAGE" in
             --config "$OQA_CONFIG_CMP" \
             --optimizer_model "$OPTIMIZER_MODEL" \
             --out_root "$OUT" \
-            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" \
+            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" \
                           "evaluation.eval_test=false" || status=$?
         # What the run actually spent, from the per-attempt log (never the key).
         if [ -f "$RUN_DIR/optimizer_calls.jsonl" ]; then
@@ -359,7 +366,7 @@ case "$STAGE" in
         "$CTL_ENV/bin/python" scripts/eval_only.py \
             --config "$OQA_CONFIG_CMP" --skill "$OQA_SKILL" \
             --split valid_unseen --out_root "$OUT" \
-            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" || status=$?
+            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" || status=$?
         if [ -f "$OUT/results.jsonl" ]; then
             "$CTL_ENV/bin/python" research/officeqa/oqa_inventory.py "$OUT" \
                 --out "$RUN_DIR/trace_inventory.json" || log "warning: oqa_inventory failed"
@@ -371,7 +378,7 @@ case "$STAGE" in
             --config "$CFG" \
             --skill skillopt/envs/officeqa/skills/initial.md \
             --split train --out_root "$OUT" \
-            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=[$OFFICEQA_DOCS_DIR]" || status=$?
+            --cfg-options "env.split_dir=$OFFICEQA_SPLIT_DIR" "env.data_dirs=$OFFICEQA_DOCS_DIR" || status=$?
         # What SkillOpt's reflection step would show the optimizer for this rollout (upstream
         # fmt_minibatch_trajectories; no API call). For OfficeQA this is also the measurement of how large an
         # analyst prompt would be, which decides whether an optimizer comparison is affordable at all.

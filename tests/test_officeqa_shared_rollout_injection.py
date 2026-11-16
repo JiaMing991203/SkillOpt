@@ -115,3 +115,39 @@ def test_the_injected_results_are_what_the_analyst_would_read(tmp_path, no_targe
     for row in failures:
         assert f"id={row['id']}" in prompt
     assert len(rows) == 3
+
+
+# ── the corpus override must actually point at the corpus ──────────────────────
+
+def test_the_data_dirs_override_form_the_job_script_uses_resolves(tmp_path, monkeypatch):
+    """--cfg-options has no list syntax, so `env.data_dirs=[/path]` is a string that resolves to nothing.
+
+    The job script passed that bracket form until 2026-11-16, which meant the corpus came from the exported
+    OFFICEQA_DOCS_DIR alone and a wrong value there would have fallen through to a built-in candidate
+    (data/officeqa_docs_official, ~/officeqa-sparse/...) instead of failing.
+    """
+    from skillopt.config import apply_overrides
+    from skillopt.envs.officeqa.tool_runtime import resolve_docs_roots
+
+    docs = tmp_path / "corpus"
+    (docs / "transformed").mkdir(parents=True)
+    (docs / "jsons").mkdir()
+    monkeypatch.delenv("OFFICEQA_DOCS_DIR", raising=False)
+
+    cfg = {"env": {"data_dirs": []}}
+    apply_overrides(cfg, [f"env.data_dirs={docs}"])
+    assert resolve_docs_roots(cfg["env"]["data_dirs"]) == [str((docs / "transformed").resolve())]
+
+    bracketed = {"env": {"data_dirs": []}}
+    apply_overrides(bracketed, [f"env.data_dirs=[{docs}]"])
+    assert bracketed["env"]["data_dirs"] == f"[{docs}]", "the value is cast to a string, not a list"
+    with pytest.raises(FileNotFoundError):
+        resolve_docs_roots(bracketed["env"]["data_dirs"])
+
+
+def test_the_job_script_passes_the_resolving_form():
+    """Pin it in the script itself, so the bracket form cannot come back unnoticed."""
+    script = open(os.path.join(REPO, "research", "cluster", "officeqa.sbatch"), encoding="utf-8").read()
+    code = "\n".join(l for l in script.splitlines() if not l.lstrip().startswith("#"))
+    assert '"env.data_dirs=$OFFICEQA_DOCS_DIR"' in code
+    assert "env.data_dirs=[$OFFICEQA_DOCS_DIR]" not in code
