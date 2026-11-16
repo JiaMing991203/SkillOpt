@@ -312,3 +312,42 @@ def test_a_question_the_actor_was_given_cannot_leak_the_answer(rollout, tmp_path
     leaking = dict(rollout["row"], fail_reason="predicted '' but the correct year was 1990")
     prompt3 = _render([leaking], rollout["prediction_dir"])
     assert AUDIT.audit_text("arm A", prompt3, {"UID0033": "1990"})["verdict"] == "FAIL"
+
+
+def test_reports_generate_correctly_under_the_analyst_thread_pool(rollout, tmp_path):
+    """The analyst minibatches run in a ThreadPoolExecutor, so the hook is called from several threads at once.
+
+    Each thread must get its item's report, and the provenance log must hold one whole JSON line per item
+    rather than interleaved fragments.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    reports = tmp_path / "concurrent_reports"
+    reports.mkdir()
+    ids = [f"UID{i:04d}" for i in range(40, 52)]
+    for item_id in ids:
+        pred = tmp_path / "predictions" / item_id
+        pred.mkdir(parents=True)
+        (pred / "conversation.json").write_text(json.dumps(CONVERSATION), encoding="utf-8")
+        (pred / "target_user_prompt.txt").write_text(USER_PROMPT, encoding="utf-8")
+        (pred / "target_system_prompt.txt").write_text("sys", encoding="utf-8")
+    (tmp_path / "results.jsonl").write_text(
+        "\n".join(json.dumps({"id": i, "hard": 0}) for i in ids) + "\n", encoding="utf-8")
+
+    reflect = importlib.import_module("skillopt.gradient.reflect")
+    os.environ["OFFICEQA_STAGE_REPORT_DIR"] = str(reports)
+    try:
+        def one(item_id):
+            return reflect._officeqa_stage_report(str(reports), str(tmp_path / "predictions"), item_id,
+                                                 {"question": "What was the debt in April 1977?"})
+
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            texts = list(ex.map(one, ids))
+    finally:
+        os.environ.pop("OFFICEQA_STAGE_REPORT_DIR", None)
+
+    assert all(t for t in texts), "every thread must get a report"
+    assert sorted(p.stem for p in reports.glob("*.md")) == sorted(ids)
+    lines = [l for l in (reports / "GENERATED.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == len(ids)
+    assert sorted(json.loads(l)["id"] for l in lines) == sorted(ids), "no interleaved or truncated lines"

@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -110,10 +111,20 @@ def fmt_trajectory(
 
 
 _OFFICEQA_REPORTS_MODULE = None
+# The analyst minibatches run in a ThreadPoolExecutor (gradient.analyst_workers), so two threads can be writing
+# the provenance records at the same time. One lock around the module load and the appends keeps the import
+# single-shot and the JSONL lines whole.
+_OFFICEQA_REPORT_LOCK = threading.Lock()
 
 
 def _officeqa_report_builder():
     """Load research/officeqa/oqa_reports.py by path (it is research instrumentation, not a package)."""
+    global _OFFICEQA_REPORTS_MODULE
+    with _OFFICEQA_REPORT_LOCK:
+        return _officeqa_report_builder_locked()
+
+
+def _officeqa_report_builder_locked():
     global _OFFICEQA_REPORTS_MODULE
     if _OFFICEQA_REPORTS_MODULE is None:
         import importlib.util
@@ -146,15 +157,17 @@ def _officeqa_stage_report(report_dir: str, prediction_dir: str, tid: str, item:
         raise
     except Exception as exc:  # noqa: BLE001 - one unparsable trace must not end a run
         os.makedirs(report_dir, exist_ok=True)
-        with open(os.path.join(report_dir, "GENERATION_PROBLEMS.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps({"id": tid, "error": f"{type(exc).__name__}: {exc}"}) + "\n")
+        with _OFFICEQA_REPORT_LOCK:
+            with open(os.path.join(report_dir, "GENERATION_PROBLEMS.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps({"id": tid, "error": f"{type(exc).__name__}: {exc}"}) + "\n")
         print(f"      [officeqa arm B] WARNING: no stage report for {tid}: {type(exc).__name__}: {exc}")
         return ""
     os.makedirs(report_dir, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
-    with open(os.path.join(report_dir, "GENERATED.jsonl"), "a", encoding="utf-8") as f:
-        f.write(json.dumps(record) + "\n")
+    with _OFFICEQA_REPORT_LOCK:
+        with open(os.path.join(report_dir, "GENERATED.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
     return text.strip()
 
 
