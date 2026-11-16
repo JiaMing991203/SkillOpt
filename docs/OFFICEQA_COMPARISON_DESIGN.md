@@ -87,6 +87,20 @@ generates nothing.
 Also restored to upstream after the feasibility runs: `env.max_tool_turns: 24` (the earlier 8 ended two of three
 first-epoch items mid-search), `env.max_completion_tokens: 16384`, `env.workers: 4`.
 
+### 3a. Both arms run the same deployed commit
+
+Arm A was submitted from snapshot `3e9cd146c31c`. A later commit (`9447f7db9a18`) puts a lock around arm B's
+report generation, because the analyst minibatches run in a thread pool and two appends to the provenance log
+could interleave. **Arm B is deliberately submitted from `3e9cd146c31c` anyway**, so that both arms run
+byte-identical code and the claim "the only difference between the arms is one environment variable" needs no
+qualification.
+
+The risk this accepts is small and does not touch the comparison: report generation within one minibatch is
+sequential (`fmt_minibatch_trajectories` loops over its items), so at most two generations overlap, each for a
+different item; each report is written with one `open(path, "w")` to its own file, and it is those files that the
+audit reads. Only the append-only `GENERATED.jsonl` index could interleave, and nothing in the run consumes it.
+The lock stays on the branch for later runs.
+
 ## 4. The frozen question sets (rule OQA-SEL-2)
 
 Frozen **before any of them was run**, on 2026-11-16. Digest
