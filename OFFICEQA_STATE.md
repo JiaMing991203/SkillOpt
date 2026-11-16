@@ -1,0 +1,195 @@
+# OfficeQA: state note (resume from here)
+
+**Last update: 2026-11-16 17:14 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+
+**Nothing is running or queued. 0 GPUs held.** Both arms and the held-out evaluation are COMPLETE.
+**Two decisions are with the USER** (see section C2): whether to re-run arm B's epoch 2 with the report-cache
+fix, and whether to restructure as one epoch of two steps so the optimizer sees its rejected edits.
+**The held-out outcome of job 66234927 is deliberately UNREAD**, on the user's instruction.
+
+**This session owns** the OfficeQA track only. Write only `from: "officeqa"` records in
+`/Users/yaojiaming/dev/lean_skillopt/coordination/reservations.jsonl`. Standing authorization since
+2026-11-15 ~23:00 replaced per-job ACKs; a peer's ACK coordinates capacity, never authorizes work.
+
+---
+
+## A. The authorized task
+
+The two-epoch comparison **Arm A = Original SkillOpt** vs **Arm B = + stage and action feedback**, inside
+**8 additional A40-hours** and **24 DeepSeek calls / $1**. Surface any integrity failure or budget overrun
+*before* proceeding past it. Full design, including everything the user specified, is in
+**`docs/OFFICEQA_COMPARISON_DESIGN.md`** — read that, not a paraphrase.
+
+Final deliverable: one copy-pasteable report with frozen set counts, the prompt audit, per-epoch gate results,
+held-out scores, examples of report findings that became skill edits, and actual time and spend.
+
+## B. DONE: the shared rollout and all three pre-paid-call gates (job 66209754)
+
+COMPLETED 2026-11-16 11:10:47, elapsed 00:21:23 after a 48-minute queue wait. Charged **0.36 A40-h (~$0.039)**,
+zero paid calls. Local copy: `~/dev/lean_skillopt/runs/20261116-104926_officeqa_shared_66209754` (3.1 MB).
+Cluster run dir (= `OQA_SHARED_DIR`):
+`/nfs/turbo/umms-csriram/yaojm/lean_skillopt/runs/20261116-104926_officeqa_shared_66209754`.
+
+| | Result |
+|---|---|
+| training rollout (12, starting skill, 24 turns) | **5/12 hard = 0.4167**, 128 tool calls, 0 tool errors |
+| validation baseline (12, starting skill) | **5/12 hard = 0.4167** -> the gate needs **>= 6/12** to accept |
+| first-3 gate | PASS (2/3 correct, 17 tool calls, 0 errors) |
+| all-12 gate | PASS, answer-key isolation 12/12 |
+| prompt audit | PASS both arms; arm A 472,711 chars / ~131,308 est tokens, arm B 488,838 / ~135,788; **arm B == arm A + reports only** |
+| grep-cap warning | **0x in arm A, 4x in arm B**; the capped grep output it is drawn from appears **4x in BOTH** |
+
+Rollout outcomes (none fatal, per the user's rule): 5 correct; 2 wrong answers (UID0034 `1987` vs `August 1986`,
+UID0079 `11.45` vs `11.73%`); 3 reached the 24-turn cap with no answer (UID0031, UID0026, UID0028); 2 requested no
+tool and produced no answer (UID0014, UID0030).
+
+Arm B's reports over the 7 failures flag **10 distinct problems** in 5 categories: `grep_cap_reached` 4,
+`operand_provenance_missing` 3, `ungrounded_answer_value` 1, `asked_period_absent` 1, `scale_conversion_missing` 1.
+
+**CORRECTION recorded in the design doc section 1a.** An earlier claim that arm B's grep-cap finding "is a P-layer
+finding both arms receive" was wrong for THIS comparison: P was a control *report* in the earlier learned-contract
+studies, whereas here **arm A receives no report at all**, so arm B's delta is the whole report. A win for arm B
+would show that a deterministic report helps, NOT that stages and action contracts specifically help.
+
+## C. RESULT: both arms retained the starting skill
+
+| | arm A (job 66224637) | arm B (job 66228142) |
+|---|---|---|
+| epoch-1 candidate on validation | 0.3333 (4/12) -> **REJECT** | 0.4167 (5/12, tie) -> **REJECT** |
+| epoch-2 candidate on validation | 0.4167 (5/12, tie) -> **REJECT** | 0.2500 (3/12) -> **REJECT** |
+| final skill | starting skill, byte-identical `9d377d1c2906...` | the same |
+| optimizer attempts | 8 (4 analyst, 2 merge, 2 ranking), all ok | 8, all ok |
+| cost | $0.0721 | $0.0815 |
+| elapsed | 00:32:57 | 00:32:27 |
+
+The native gate needs STRICT improvement over 0.4167, so a tie is a reject. Baseline 0.4167 throughout.
+
+**Why arm A's edits were rejected (verified, and independent of the arm comparison):** its epoch-1 edits were
+well-targeted - "never end a turn without an `<answer>`", and "a paper coded 8703 is NOT thereby published in
+1987", which is exactly UID0034's error. The edit did what it was designed to do: empty answers on validation fell
+from 5 to 2. But under `hard` (exact match) a blank and a wrong answer score the same, so converting one into the
+other gains nothing, and the added text flipped UID0070 and UID0091 from correct to wrong. Net -1.
+
+Held-out: job **66234927** COMPLETED (19:27). Because all three final skills are the same bytes, that ONE run is
+all three evaluations the user asked for. Jobs 66234928 / 66234929 were cancelled as exact duplicates, both
+charged 0. **Its outcome has not been read.**
+
+## C2. INTEGRITY FAILURE: arm B's epoch-2 reports were stale (recorded in the ledger)
+
+**All 8** of arm B's epoch-2 failures received stage reports describing their **epoch-1** traces; epoch 2
+generated nothing. The hook caches at `<report dir>/<id>.md` and reuses that file whenever it exists, so the key
+is the ITEM ID, not the (item, trace) pair. Evidence: 7 of 8 report files are byte-identical to the shared
+epoch-1 reports with mtime 16:14:08 (the `cp` at job start); UID0017's was written at 16:14:12 during epoch 1's
+*success* minibatch; and for 5 of 8 the tool-call count the report states matches the epoch-1 trace and differs
+from the epoch-2 one (UID0026: report says 24, epoch-2 trace made 1). The stale reports did reach DeepSeek - arm
+B's epoch-2 failure prompt embedded 8 report blocks.
+
+My earlier claim of "5 reports generated during epoch 2" was wrong: those 5 are exactly epoch 1's five successes.
+
+**Consequence:** arm B's epoch 1 is valid (its reports came from the shared epoch-1 rollout, which is the trace in
+the prompt). Arm B's **epoch 2 is invalid as a test of the intervention**. Arm A is unaffected throughout.
+
+**Test gap:** `test_a_report_is_generated_when_none_is_cached` asserted determinism by re-rendering from cache,
+which locked the stale-cache behaviour in. No test rendered one item against a second, different trace.
+
+**Fix proposed, NOT applied:** key the cache on the trace (`<id>.<sha256(conversation.json)[:12]>.md`) or point
+`OFFICEQA_STAGE_REPORT_DIR` at a per-step subdirectory, plus a test that renders one item from two traces.
+
+## C3. Second audit finding: no cross-epoch memory in either arm
+
+Neither arm's epoch-2 prompt contained the rejected epoch-1 edits, their scores, or a meta-skill summary - verified
+against the logged prompts in `optimizer_calls.jsonl`, not reconstructed. `step_buffer` is declared INSIDE the
+epoch loop (`trainer.py:1187`) so it resets each epoch, and with `steps_per_epoch = 1` it is always empty, so
+`_format_step_buffer`'s "Rejected edits (score X -> Y)" block never appears. `active_meta_skill` is "" because
+`use_meta_skill` is off by my deviation. So "two epochs" here is two independent attempts, not cumulative learning.
+
+## C4. Earlier work (all verified)
+
+1. **Question sets frozen** (rule OQA-SEL-2, digest `fc02291540ef...`): 12 train / 12 val / 24 held-out, each
+   balanced 3-3-3-3 or 6-6-6-6 across easy|hard x single|multi, disjoint, **no shortfall**. Record:
+   `docs/research/OFFICEQA_FROZEN_SETS.json`; per-item evidence verdicts:
+   `docs/research/OFFICEQA_EVIDENCE_CHECK.json`.
+2. **The evidence test is key-free** and excluded exactly one item: **UID0046 -> UID0063** (same easy/single
+   stratum). Its pie-chart legend term `service-related` occurs 0 times in the whole 448 KB bulletin and its
+   supplied page carries no figure at all. 70 of 72 assessed items AVAILABLE, 1 AVAILABLE_VIA_TOOLS (UID0030).
+3. **Corpus**: 68 of 68 needed bulletins present (`--verify-docs` PASS), 50 MB,
+   `$PROJECT_ROOT/officeqa_data/treasury_bulletins_parsed`.
+4. **Split materialized**: `$PROJECT_ROOT/officeqa_data/split_cmp` loads **train=12 val=12 test=24**; the
+   trainer's `valid_seen`/`valid_unseen` resolve to val/ and test/.
+5. **24 tool turns restored** plus upstream `max_completion_tokens: 16384` and `workers: 4`.
+6. **Checkpoint fixed**: wrong answers, a missing `<answer>` and reaching the turn cap are **outcomes**, not
+   fatal. Verified against the preserved job 66196051: the same traces that FAILED before now PASS, and with
+   `--evidence` it refuses a run containing an excluded item.
+7. **Prompt audit works, previewed on real traces**: arm B = arm A + the report bytes only (TRUE), both arms
+   PASS the leakage audit, and the grep-cap warning sentence appears **0x in arm A, 1x in arm B** while the
+   capped `grep` output it is derived from appears in **both**. To be re-run on the 24-turn traces as the
+   official gate before the first paid call.
+8. **70 local tests pass** in the python3.12 venv (see section E).
+
+## D. Spend (final for this comparison unless a re-run is authorized)
+
+| | Used | Cap |
+|---|---|---|
+| A40-hours (this comparison) | **1.77** (0.36 shared + 0.55 arm A + 0.54 arm B + 0.32 held-out) | 8 |
+| A40-hours (all OfficeQA to date) | 3.77 | - |
+| DeepSeek calls | **16** (8 per arm), all `ok`, no 429, no 5xx | 24 within $1 |
+| DeepSeek USD | **$0.1536** | $1 |
+
+Cancelled without charge: 66219432 (90-min arm A, PENDING 2h03m), 66234928, 66234929.
+
+`deepseek-flash` has a **1M-token** context, so the 131k-token analyst prompt is within limits (checked against
+api-docs.deepseek.com, not assumed). Off-peak rates now: $0.15/M cache-miss input, $0.60/M output, so ~$0.021 per
+analyst call and ~$0.15-0.25 for the whole comparison. The $1 cap is not the binding constraint; the 24-call cap is.
+
+A step needs 5 or 6 optimizer calls (5 + the ranking call when the merged pool exceeds the budget of 4), so four
+steps need 20-24. **That is why the arms run sequentially**: arm A's actual count decides whether arm B fits.
+`oqa_optimizer_precheck.py` estimates it from the rollout and refuses to start if the estimate exceeds the cap.
+
+## E. Next actions
+
+**Blocked on the USER's decision** (both raised in the final report):
+1. Re-run arm B's epoch 2 with the report-cache fix? One A40, ~8 more calls; the budget covers it
+   (8 of 24 calls and 6.2 of 8 A40-h remain).
+2. Restructure as one epoch of two steps, so `step_buffer` actually carries the rejected edits forward?
+
+If neither is taken, the comparison is finished and the only remaining act is to read job 66234927's held-out
+score (currently unread by instruction) and state it for all three skills at once.
+
+### The exact arm submit command (paths resolved)
+```
+D=/nfs/turbo/umms-csriram/yaojm/lean_skillopt/officeqa_data
+SHARED=/nfs/turbo/umms-csriram/yaojm/lean_skillopt/runs/20261116-104926_officeqa_shared_66209754
+ARM=B OQA_SHARED_DIR="$SHARED" OFFICEQA_SPLIT_DIR="$D/split_cmp" \
+  OFFICEQA_DOCS_DIR="$D/treasury_bulletins_parsed" OQA_SELECTION_RULE=OQA-SEL-2 \
+  OQA_CALL_BUDGET=24 OQA_CALL_STEPS=4 STAGE=arm \
+  research/submit.sh officeqa <deployed commit> -- --time=01:30:00
+```
+
+## F. Where things are
+
+| | |
+|---|---|
+| Local HEAD | pushed to `origin/officeqa-contracts`; deployed snapshot `6939c29a72ea` |
+| Split / docs / frozen record | `$PROJECT_ROOT/officeqa_data/{split_cmp,treasury_bulletins_parsed,oqa_frozen_sets.json,oqa_evidence.json}` |
+| Config (BOTH arms) | `configs/research/officeqa_cmp.yaml` - the only difference between arms is `OFFICEQA_STAGE_REPORT_DIR` |
+| Job script | `research/cluster/officeqa.sbatch`, `STAGE=tools|check3|pilot12|epoch1|shared|arm|heldout` |
+| Local test venv | `/private/tmp/claude-501/-Users-yaojiaming-dev-lean-skillopt-SkillOpt-officeqa/82390561-79e4-43e9-b247-03526392e651/scratchpad/venv312` (workstation python is 3.9 and cannot import SkillOpt) |
+| Tests | `tests/test_officeqa_{contracts,tool_probe,answer_key_isolation,freeze_sets,optimizer_precheck}.py` - 70 pass |
+
+### Settled facts (do not re-derive)
+- Tool calling needs `--enable-auto-tool-choice --tool-call-parser qwen3_coder`; `hermes` is wrong for Qwen3.5-4B.
+  `--max-model-len 65536` fits one A40 (peak 38.7 of 46.1 GB).
+- The actor is handed the gold parsed pages and its tools are restricted to the gold files.
+- The answer-key leak is fixed (`c07fefb`) and audited both ways.
+- The arm-B hook now **generates** a missing report instead of skipping it; skipping would have turned arm B back
+  into arm A from epoch 2 onward, since epoch 2's traces do not exist until the run makes them.
+- `use_slow_update` / `use_meta_skill` are off for both arms: at epoch 2 they would add a second skill update per
+  epoch, ~24 rollouts and ~2 calls per arm. Symmetric, documented in the config and the design doc.
+- **Negative so far:** after the false-positive fix (`f819011`) arm B produced zero advice on the two real
+  failures, and its one useful finding is a P-layer finding both arms receive.
+
+## G. Standing rules
+Never tune on held-out. Never derive contracts from the skill. Keep the scorer, gate, analyst prompts and
+skill-update rules unchanged apart from the approved answer-key fix. No secrets, cluster paths or run dirs in
+tracked files. Record every submission in `docs/research/jobs.tsv` and SUBMITTED/SETTLE lines in the coordination
+ledger. Timestamps come from `date`.
