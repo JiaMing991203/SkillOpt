@@ -191,6 +191,14 @@ and the report comparison runs on whatever those are.
 
 ---
 
+## 4b. Superseded by rule OQA-SEL-2 for the comparison
+
+The two-arm comparison authorized on 2026-11-16 needs three sets, not one. Rule **OQA-SEL-2** keeps this
+training selection (with one substitution that an evidence test required) and adds 12 validation and 24 held-out
+questions from the released `val` and `test` splits. The rule, the ids, the evidence test and the one
+substitution are in `docs/OFFICEQA_COMPARISON_DESIGN.md` section 4, with the machine-readable record in
+`docs/research/OFFICEQA_FROZEN_SETS.json`.
+
 ## 5. The two runs
 
 ### 5a. Three-question baseline check (mechanics)
