@@ -8,9 +8,13 @@ and then audits the two prompts that come out. Those are the bytes the optimizer
 Three questions, answered separately:
 
   1. LEAKAGE. Does the prompt contain the answer key as evaluator-supplied information? The gold VALUE usually
-     appears somewhere in the supplied document pages - that is the evidence the question is asked about, and it
-     carries no information about which answer is correct. What must be absent is the evaluator's own statement of
-     the target: the old `fail_reason` form "predicted 'X' but expected 'GOLD'", or any evaluator-only field name.
+     appears in the supplied document pages and in the `grep` output the actor read - that is the evidence the
+     question is asked about, and it carries no information about which answer is correct. What must be absent is
+     the evaluator's own statement of the target, so the check is confined to the EVALUATOR-WRITTEN part of the
+     prompt (the task line, the failure reason, the step count, the hidden reference) and matches whole values,
+     not substrings. Both halves of that matter: OfficeQA golds are often two to four characters, so a substring
+     test over the whole prompt reports hundreds of accidental hits, and a test confined to the supplied pages
+     would miss a header leak whenever the same value also appears in the pages.
   2. ARM DIFFERENCE. Is arm A's prompt byte-identical to upstream's, and is arm B's prompt exactly arm A's plus
      the stage-and-action reports? If arm B differed in any other way, the comparison would not isolate the report.
   3. COST. How large is each prompt, in characters and in an estimated token count? This is what decides whether
@@ -74,6 +78,54 @@ def _estimate_tokens(text: str) -> int:
     return int(len(text) / 3.6)
 
 
+_VALUE_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?%?")
+
+
+def _normalize_value(token: str) -> str:
+    return token.replace(",", "").replace("$", "").strip().rstrip("%").rstrip(".")
+
+
+def gold_hits(text: str, gold: str) -> list[re.Match]:
+    """Occurrences of a gold value as a WHOLE value, not as a substring.
+
+    A gold like "18" or "1.8" occurs by accident hundreds of times in 450 KB of Treasury tables, so a plain
+    substring test says nothing: the first real 24-turn rollout produced 710 "occurrences" of "18" that way.
+    A numeric gold is therefore compared against whole numeric tokens, with separators and a trailing percent
+    sign or full stop removed on both sides, so "18" does not match inside "1,218" and "646,379" still matches
+    at the end of a sentence. A textual gold ("August 1986", "997.3 billion") uses word boundaries.
+    """
+    gold = gold.strip()
+    if re.fullmatch(r"[\d.,%$ ]+", gold):
+        want = _normalize_value(gold)
+        return [m for m in _VALUE_TOKEN.finditer(text) if _normalize_value(m.group(0)) == want]
+    return list(re.finditer(r"\b" + re.escape(gold) + r"\b", text, re.I))
+
+
+def evaluator_written_surface(text: str) -> str:
+    """The part of the prompt the EVALUATOR writes, which is the only place a gold value would be a leak.
+
+    One trajectory is rendered as:
+
+        ### Trajectory N (id=..)      <- evaluator: task text, task type, fail_reason, step count
+        Task: ... / Task type: ... / Failure reason: ... / Steps: ...
+        #### Hidden Reference         <- evaluator: `reference_text`, empty for OfficeQA
+        #### Target System Prompt     <- what the actor was given
+        #### Target User Prompt       <- the question and the supplied document pages
+        #### Stage and Action Report  <- arm B only, derived from the trace
+        [user] / [assistant] / tool observations   <- what the actor saw and produced
+
+    Everything from `#### Target System Prompt` onward is document evidence or the actor's own output: the gold
+    value appears there legitimately, in the supplied pages and in `grep` output read from the allowed file.
+    The header and the Hidden Reference are the evaluator's own statements, and the old leaking `fail_reason`
+    lived in exactly that header. Checking the whole prompt instead flags every short numeric gold; checking
+    only the supplied-pages section, as this script did until 2026-11-16, would MISS a header leak whenever the
+    same value also occurs in the pages - which for OfficeQA is the normal case.
+    """
+    parts = re.findall(r"(?s)### Trajectory \d+ \(id=[^)]*\)\n(.*?)(?=\n#### Target System Prompt|"
+                       r"\n#### Target User Prompt|\n#### Stage and Action Report|\n### Trajectory|\Z)", text)
+    return "\n".join(parts)
+
+
 def audit_text(label: str, text: str, golds: dict) -> dict:
     """Leakage audit of one rendered prompt."""
     problems, notes = [], []
@@ -84,21 +136,26 @@ def audit_text(label: str, text: str, golds: dict) -> dict:
         if f'"{field}"' in text or f"'{field}'" in text:
             problems.append(f"evaluator-only field name {field!r} appears in the prompt")
 
-    # Where does each gold value appear? Inside the supplied pages is expected; anywhere else is suspicious.
-    page_section = "\n".join(re.findall(r"(?s)#### Target User Prompt\n(.*?)(?=\n#### |\n### |\Z)", text))
-    for item_id, gold in golds.items():
+    surface = evaluator_written_surface(text)
+    for item_id, gold in sorted(golds.items()):
         gold = str(gold or "").strip()
         if not gold:
             continue
-        total = text.count(gold)
-        in_pages = page_section.count(gold)
-        if total and total == in_pages:
-            notes.append(f"{item_id}: gold value occurs {total}x, all inside the supplied document pages "
-                         f"(expected - that is the evidence)")
+        surface_hits = gold_hits(surface, gold)
+        in_surface = len(surface_hits)
+        total = len(gold_hits(text, gold))
+        if in_surface:
+            match = surface_hits[0]
+            excerpt = surface[max(0, match.start() - 80):match.end() + 40]
+            problems.append(f"{item_id}: the gold value {gold!r} appears {in_surface}x in the EVALUATOR-WRITTEN "
+                            f"part of the prompt (task line, failure reason or hidden reference): ...{excerpt!r}")
         elif total:
-            problems.append(f"{item_id}: gold value occurs {total}x, of which {total - in_pages} OUTSIDE the "
-                            f"supplied pages - inspect those occurrences")
+            notes.append(f"{item_id}: gold {gold!r} occurs {total}x, none of them in the evaluator-written part "
+                         f"(expected: it is in the supplied pages and in the tool output the actor read)")
+        else:
+            notes.append(f"{item_id}: gold {gold!r} does not occur in this prompt at all")
     return {"label": label, "verdict": "FAIL" if problems else "PASS", "problems": problems, "notes": notes,
+            "evaluator_written_chars": len(surface),
             "chars": len(text), "estimated_tokens": _estimate_tokens(text),
             "sha256": hashlib.sha256(text.encode()).hexdigest()}
 

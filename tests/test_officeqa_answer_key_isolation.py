@@ -213,3 +213,65 @@ def test_the_report_itself_is_audited_for_the_key(rollout, tmp_path):
     assert clean["info"]["gold_present_in_supplied_pages"] is True
     packet["ground_truth"] = GOLD
     assert TR.audit_no_gold(packet, os.path.join(rollout["root"], "results.jsonl"))["verdict"] == "FAIL"
+
+
+# ── the audit must find a real leak and not invent one ─────────────────────────
+
+def test_the_audit_ignores_a_short_gold_that_occurs_in_document_text(rollout):
+    """A gold like "18" occurs by accident hundreds of times in Treasury tables; that is not a leak.
+
+    The first real 24-turn rollout produced four such reports (gold "18" matched 710 times in one prompt),
+    all of them substring noise inside the supplied pages and the grep output the actor read.
+    """
+    import oqa_optimizer_input_audit as AUDIT
+
+    prompt = _render([rollout["row"]], rollout["prediction_dir"])
+
+    # The real gold is in the supplied page AND in the grep output the actor read. Both are legitimate.
+    report = AUDIT.audit_text("arm A", prompt, {"UID0033": GOLD})
+    assert report["verdict"] == "PASS", report["problems"]
+    assert any("none of them in the evaluator-written part" in n for n in report["notes"]), report["notes"]
+    assert len(AUDIT.gold_hits(prompt, GOLD)) >= 2
+
+    # A short gold must not match inside a longer number: "338" is not an occurrence of the prediction
+    # "2,602,338", and "18" is not one of "1,218".
+    assert AUDIT.gold_hits("the figure 2,602,338 appears", "338") == []
+    assert AUDIT.gold_hits("the figure 1,218 appears", "18") == []
+    assert len(AUDIT.gold_hits("the figure is 646,379.", "646,379")) == 1, "a trailing full stop must not hide it"
+    assert len(AUDIT.gold_hits("yield was 11.73% that year", "11.73%")) == 1
+    assert AUDIT.audit_text("arm A", prompt, {"UID0033": "338"})["verdict"] == "PASS"
+
+
+def test_the_audit_catches_a_gold_stated_in_the_failure_reason(rollout):
+    """The channel the fix closed: the evaluator's own statement of the target, inside the trajectory header."""
+    import oqa_optimizer_input_audit as AUDIT
+
+    leaking = dict(rollout["row"], fail_reason=f"predicted '{PREDICTION}' but expected '{GOLD}'")
+    prompt = _render([leaking], rollout["prediction_dir"])
+    report = AUDIT.audit_text("arm A", prompt, {"UID0033": GOLD})
+    assert report["verdict"] == "FAIL"
+    assert any("old leaking fail_reason form" in p for p in report["problems"])
+    assert any("EVALUATOR-WRITTEN" in p for p in report["problems"]), report["problems"]
+
+
+def test_the_audit_catches_a_gold_in_the_hidden_reference(rollout):
+    """`reference_text` is evaluator-supplied, so a gold there is a leak even in the fixed fail_reason form."""
+    import oqa_optimizer_input_audit as AUDIT
+
+    leaking = dict(rollout["row"], reference_text=f"The correct figure is {GOLD}.")
+    prompt = _render([leaking], rollout["prediction_dir"])
+    assert "Hidden Reference" in prompt
+    report = AUDIT.audit_text("arm A", prompt, {"UID0033": GOLD})
+    assert report["verdict"] == "FAIL"
+    assert any("EVALUATOR-WRITTEN" in p for p in report["problems"]), report["problems"]
+
+
+def test_a_gold_in_the_supplied_pages_alone_would_not_hide_a_header_leak(rollout):
+    """The old rule ("every occurrence is inside the supplied pages") could not see this case."""
+    import oqa_optimizer_input_audit as AUDIT
+
+    leaking = dict(rollout["row"], fail_reason=f"the target value was {GOLD}")
+    prompt = _render([leaking], rollout["prediction_dir"])
+    assert prompt.count(GOLD) > 1, "the gold is also in the supplied pages, as it normally is"
+    report = AUDIT.audit_text("arm A", prompt, {"UID0033": GOLD})
+    assert report["verdict"] == "FAIL", "a header leak must be caught even when the pages contain the value too"
