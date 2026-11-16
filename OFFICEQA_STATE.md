@@ -7,6 +7,10 @@
 `docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`. Correcting the eight stale reports changes the diagnosis for
 5 of 8 items but NOT the advice, so **no replay was run**; its exact cost is scoped in section 6 of that
 document should the user want it anyway.
+**A further offline probe (0 GPU, 0 paid calls) answers the research question directly** ->
+`docs/research/OFFICEQA_REPORT_VALUE_PROBE.md`: paired blind review of the same eight attempts, with and without
+the corrected report. **0 of 8 cases gained a valid diagnosis attributable to the report; 1 of 8 gained a
+misleading one.** See section C5.
 **Still with the USER:** whether to restructure as one epoch of two steps so the optimizer sees its rejected
 edits (section C3). **The held-out outcome of job 66234927 remains deliberately UNREAD/SEALED.**
 
@@ -118,6 +122,35 @@ against the logged prompts in `optimizer_calls.jsonl`, not reconstructed. `step_
 epoch loop (`trainer.py:1187`) so it resets each epoch, and with `steps_per_epoch = 1` it is always empty, so
 `_format_step_buffer`'s "Rejected edits (score X -> Y)" block never appears. `active_meta_skill` is "" because
 `use_meta_skill` is off by my deviation. So "two epochs" here is two independent attempts, not cumulative learning.
+
+## C5. Does the report surface diagnoses a trace-only review would miss? NO
+
+`docs/research/OFFICEQA_REPORT_VALUE_PROBE.md`. Eight attempts, two views each in separate contexts (trace only vs
+trace + corrected report), identical instructions, then one blind adjudicator per case with the two reviews
+anonymised in randomised order.
+
+- The two views agree on the **primary failure in 7 of 8** cases.
+- The blind adjudicator judged the report-guided review **more precise in 7 of 8** and its instruction better in
+  5 of 8 - **but the attribution test kills that credit**: of the 12 issues it credited only to the report-guided
+  reviews, **not one appears in the corresponding report**. The praised specifics (`30,442`, the lost year
+  headers, column mis-mapping, glob counts) are absent from the reports, which say only `ungrounded_answer_value`,
+  `grep_cap_reached` x2 and `asked_period_absent` respectively. With one draw per cell, "the report prompts closer
+  reading", "reviewer variance" and "the adjudicator prefers specifics" cannot be separated.
+- **Misleading claims: 5 of 8 cases on each side** - the report does not make reviews cleaner.
+- **The one report-attributable effect is a false claim.** UID0014's report asserts `scale_conversion_missing` for
+  1004461.0 ("No conversion step appears"), but the trace contains `1,004,461 (in millions) = $1,004.461 billion`.
+  The report-guided reviewer quoted it as evidence; the blind adjudicator caught it. The finding fires 29x for
+  that item and is demonstrably wrong at least once. Signal source: a stage requirement combined with an action
+  check - the operand ledger saw the raw figure at step 9 and the stage rule fired before the conversion line.
+- In 5 of 8 cases the **trace-only** review caught real issues the report-guided one missed (no stopping rule,
+  the Exhibit 3 contradiction, table-of-contents reads, duplicated spans).
+- A methodological note: I first "verified" the UID0014 claim by searching for the report's literal `1004461.0`,
+  found no conversion, and was wrong - the trace writes `1,004,461`. The adjudicator was right.
+
+**Still not established:** whether DeepSeek, over a real eight-trajectory minibatch under the real analyst prompt,
+would propose different EDITS that survive merge, budget and the 6/12 gate. Reviewers answered a different
+question with a different output. The replay that would settle it is scoped in
+`OFFICEQA_EPOCH2_REPORT_AUDIT.md` section 6 (1 A40, 4 calls, ~25 min, inside the remaining caps).
 
 ## C4. Earlier work (all verified)
 
