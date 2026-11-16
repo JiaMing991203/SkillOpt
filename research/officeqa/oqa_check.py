@@ -173,6 +173,42 @@ def _tool_arg_numbers(packet: dict) -> set[float]:
     return vals
 
 
+_LOCATION_WORD = re.compile(r"\b(line|lines|page|pages|row|rows|column|columns|col|section)\b\s*(?:no\.?|number|#)?\s*$", re.I)
+
+
+def looks_like_location_reference(num: dict, body: str) -> bool:
+    """Is this number a navigation reference - a line, page, row or column - rather than a figure?
+
+    The number must follow the location word IMMEDIATELY ("line 976", "pages 860"), or be the right-hand side of
+    a range whose left side is one ("line 976-980"). An earlier, looser version of this test looked anywhere in
+    the preceding 24 characters and swallowed real figures: in "The June 1970 page gives 81,243" it threw away
+    81,243 because "page" appeared earlier in the sentence.
+    """
+    idx = body.find(num["raw"])
+    if idx < 0:
+        return False
+    before = body[:idx]
+    if _LOCATION_WORD.search(before):
+        return True
+    m = re.search(r"(\d[\d,]*)\s*[-\u2013]\s*$", before)
+    return bool(m and _LOCATION_WORD.search(before[:m.start()]))
+
+
+def looks_like_figure(num: dict) -> bool:
+    """Could this number be a Treasury bulletin figure at all?
+
+    This is the positive filter that does the real work, and it replaced a list of negative contexts that was
+    never going to be complete. Figures in these tables are comma-grouped ("646,379"), decimal ("5.2"), or large.
+    Bare small integers in prose are overwhelmingly line numbers, page numbers, table numbers and counts - the
+    class that produced arm B's false finding in job 66196051.
+
+    It errs towards dropping: a genuine small figure written without a comma is a check not made (silent) rather
+    than a warning invented (loud).
+    """
+    raw = num["raw"]
+    return ("," in raw) or ("." in raw) or abs(num["value"]) >= 1000
+
+
 def looks_like_year(num: dict) -> bool:
     """A bare four-digit integer in 1800-2100 is a period label in this corpus, not a figure.
 
@@ -231,7 +267,8 @@ def stage_state(packet: dict, facts: list[dict], obligations: dict) -> dict:
         text = step.get("text") or ""
         body = re.sub(r"(?is)<answer>.*?</answer>", " ", text)
         mentions = [n for n in numbers_in(body)
-                    if n["value"] not in arg_nums and abs(n["value"]) >= 1 and not looks_like_year(n)]
+                    if n["value"] not in arg_nums and looks_like_figure(n) and not looks_like_year(n)
+                    and not looks_like_location_reference(n, body)]
         for num in mentions:
             role, rule = _number_role(num, mentions, body)
             if role == "computed":

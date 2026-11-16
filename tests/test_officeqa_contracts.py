@@ -71,6 +71,27 @@ def test_error_observations_contribute_no_facts():
         "a '[read error: ...]' observation must not become numeric evidence"
 
 
+def test_navigation_references_are_not_operands():
+    """Regression from job 66196051: "read around line 976-980" must not become an ungrounded operand."""
+    body = "I see the table FO-2 is on pages 860 and 917, but I need the chart on page 21. Let me read around line 976-980 again."
+    mentions = CHK.numbers_in(body)
+    kept = [n["raw"] for n in mentions if not CHK.looks_like_location_reference(n, body)
+            and not CHK.looks_like_year(n)]
+    kept = [n["raw"] for n in mentions if CHK.looks_like_figure(n) and not CHK.looks_like_year(n)
+            and not CHK.looks_like_location_reference(n, body)]
+    for raw in ("860", "917", "976", "980", "21"):
+        assert raw not in kept, f"{raw} is a navigation reference, not an operand (kept={kept})"
+
+
+def test_a_real_figure_after_a_location_word_is_still_kept():
+    """The exclusion must not swallow figures: only the number right after the location word is a reference."""
+    body = "On line 412 the table gives 646,379 for April 1977."
+    mentions = CHK.numbers_in(body)
+    kept = [n["raw"] for n in mentions if CHK.looks_like_figure(n) and not CHK.looks_like_year(n)
+            and not CHK.looks_like_location_reference(n, body)]
+    assert "646,379" in kept and "412" not in kept, kept
+
+
 def test_file_period_from_name():
     assert CHK.file_period("treasury_bulletin_1944_01.txt") == {"year": 1944, "month": 1}
     assert CHK.file_period("not_a_bulletin.txt") is None
