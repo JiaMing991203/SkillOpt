@@ -320,9 +320,11 @@ case "$STAGE" in
             # exact bytes the optimizer saw stay on disk.
             export OFFICEQA_STAGE_REPORT_DIR="$RUN_DIR/stage_reports_C"
             mkdir -p "$OFFICEQA_STAGE_REPORT_DIR"
-            cp "$OQA_SHARED_DIR"/stage_reports_C/*.md "$OFFICEQA_STAGE_REPORT_DIR"/ 2>/dev/null \
-                || log "note: no pre-generated reports to copy; the hook will generate them"
-            log "arm B: stage reports at $OFFICEQA_STAGE_REPORT_DIR ($(ls -1 "$OFFICEQA_STAGE_REPORT_DIR"/*.md 2>/dev/null | wc -l) pre-generated)"
+            # Deliberately NOT pre-seeded from the shared run. Reports are cached as <id>.<trace key>.md and the
+            # hook generates the one for the trace in front of it, deterministically, so copying files in buys
+            # nothing and the earlier copy of plainly-named <id>.md files is exactly what let epoch 2 reuse
+            # epoch 1's reports. The shared run's audited reports remain available for byte comparison.
+            log "arm B: stage reports at $OFFICEQA_STAGE_REPORT_DIR (generated per trace, not pre-seeded)"
         else
             unset OFFICEQA_STAGE_REPORT_DIR
             log "arm A: OFFICEQA_STAGE_REPORT_DIR unset, so the analyst prompt is upstream's"

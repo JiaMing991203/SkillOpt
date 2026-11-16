@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -124,17 +125,22 @@ def test_arm_a_is_unchanged_when_the_hook_is_unset(rollout):
 
 
 def test_arm_b_is_arm_a_plus_the_report(rollout, tmp_path):
+    """Arm B's prompt is arm A's plus the report block and nothing else.
+
+    The report is whatever the hook generates for this trace; a hand-written file under the id-only name is no
+    longer honoured, because that naming is what let a later epoch reuse an earlier trace's report.
+    """
     report_dir = tmp_path / "reports"
     report_dir.mkdir()
-    report_text = "# OfficeQA C report\n\n## Findings\n- [ADVICE] operand_period_binding: read the 1964 page."
-    (report_dir / "UID0033.md").write_text(report_text, encoding="utf-8")
 
     arm_a = _render([rollout["row"]], rollout["prediction_dir"])
     arm_b = _render([rollout["row"]], rollout["prediction_dir"], str(report_dir))
 
     assert "Stage and Action Report" in arm_b
+    cached = list(report_dir.glob("UID0033.*.md"))
+    assert len(cached) == 1, f"one cached report, keyed on the trace: {cached}"
+    report_text = cached[0].read_text(encoding="utf-8").strip()
     assert report_text in arm_b
-    # Arm B is arm A plus exactly that block: removing it must restore arm A.
     restored = arm_b.replace(f"\n#### Stage and Action Report\n{report_text}\n", "")
     assert restored == arm_a, "arm B differs from arm A by more than the injected report"
 
@@ -150,8 +156,10 @@ def test_a_report_is_generated_when_none_is_cached(rollout, tmp_path):
     arm_a = _render([rollout["row"]], rollout["prediction_dir"])
     arm_b = _render([rollout["row"]], rollout["prediction_dir"], str(empty))
     assert "Stage and Action Report" in arm_b
-    assert (empty / "UID0033.md").is_file(), "the generated report must be cached for the audit to read"
-    cached = (empty / "UID0033.md").read_text(encoding="utf-8").strip()
+    keyed = list(empty.glob("UID0033.*.md"))
+    assert len(keyed) == 1, f"the generated report must be cached under its trace key: {keyed}"
+    assert not (empty / "UID0033.md").exists(), "the id-only name is what caused the stale reuse"
+    cached = keyed[0].read_text(encoding="utf-8").strip()
     assert cached and cached in arm_b
     assert arm_b.replace(f"\n#### Stage and Action Report\n{cached}\n", "") == arm_a
     # Deterministic: a second render reuses the cache and produces the same bytes.
@@ -347,7 +355,95 @@ def test_reports_generate_correctly_under_the_analyst_thread_pool(rollout, tmp_p
         os.environ.pop("OFFICEQA_STAGE_REPORT_DIR", None)
 
     assert all(t for t in texts), "every thread must get a report"
-    assert sorted(p.stem for p in reports.glob("*.md")) == sorted(ids)
+    assert sorted(p.name.split(".")[0] for p in reports.glob("*.md")) == sorted(ids)
     lines = [l for l in (reports / "GENERATED.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
     assert len(lines) == len(ids)
     assert sorted(json.loads(l)["id"] for l in lines) == sorted(ids), "no interleaved or truncated lines"
+
+
+# ── the report must describe the trace in front of it, not an earlier one ──────
+
+TRACE_A = [
+    {"role": "user", "content": USER_PROMPT},
+    {"type": "tool_call", "cmd": "grep(pattern='interest-bearing debt', path='treasury_bulletin_1977_04.txt')",
+     "obs": "\n".join(f"{i}: Interest-bearing debt line {i}" for i in range(1, 21))},   # 20 lines = the cap
+    {"type": "message", "content": "Nothing more is available. <answer>2,602,338</answer>"},
+]
+TRACE_B = [
+    {"role": "user", "content": USER_PROMPT},
+    {"type": "message", "content": "The figure is 999,111. <answer>999,111</answer>"},   # no tool call at all
+]
+
+
+def _write_trace(root, item_id, conversation):
+    pred = os.path.join(root, "predictions", item_id)
+    os.makedirs(pred, exist_ok=True)
+    with open(os.path.join(pred, "conversation.json"), "w", encoding="utf-8") as f:
+        json.dump(conversation, f)
+    for name in ("target_system_prompt.txt", "target_user_prompt.txt"):
+        with open(os.path.join(pred, name), "w", encoding="utf-8") as f:
+            f.write(USER_PROMPT if name.endswith("user_prompt.txt") else "You are an expert OfficeQA agent.")
+    with open(os.path.join(root, "results.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"id": item_id, "question": "What was the interest-bearing debt in April 1977?",
+                            "hard": 0, "soft": 0.0}) + "\n")
+    return os.path.join(root, "predictions")
+
+
+def test_two_traces_of_one_question_get_their_own_reports(tmp_path):
+    """The epoch-2 defect, pinned: the same item seen twice must not reuse the first trace's report.
+
+    Arm B's epoch 2 was handed eight reports describing its epoch-1 trajectories because the cache key was the
+    item id. The key now covers the conversation, the user prompt, the question and the condition.
+    """
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    row = {"id": "UID0033", "question": "What was the interest-bearing debt in April 1977?",
+           "task_description": "What was the interest-bearing debt in April 1977?", "task_type": "easy",
+           "predicted_answer": "2,602,338", "hard": 0, "soft": 0.0, "n_turns": 3,
+           "fail_reason": "predicted '2,602,338' but the scorer marked it incorrect"}
+
+    pred_a = _write_trace(str(tmp_path / "epoch1"), "UID0033", TRACE_A)
+    prompt_a = _render([row], pred_a, str(reports))
+    pred_b = _write_trace(str(tmp_path / "epoch2"), "UID0033", TRACE_B)
+    prompt_b = _render([dict(row, predicted_answer="999,111"), ], pred_b, str(reports))
+
+    # Two distinct cached reports, one per trace, not one shared file.
+    cached = sorted(p.name for p in reports.glob("UID0033.*.md"))
+    assert len(cached) == 2, f"expected one cached report per trace, got {cached}"
+    assert not (reports / "UID0033.md").exists(), "the id-only name is what caused the stale reuse"
+
+    def block(prompt):
+        m = re.search(r"(?s)#### Stage and Action Report\n(.*?)(?=\n\[user\]|\n\[assistant\]|\n### |\Z)", prompt)
+        assert m, "every rendered request must carry a report"
+        return m.group(1)
+
+    rep_a, rep_b = block(prompt_a), block(prompt_b)
+    assert rep_a != rep_b, "the two traces must not receive the same report"
+
+    # Each rendered request carries the report for ITS OWN trace: trace A made one capped grep, trace B none.
+    assert "1 tool call(s)" in rep_a and "0 tool call(s)" in rep_b
+    assert "which is the tool's cap" in rep_a, "trace A hit the 20-line grep cap"
+    assert "which is the tool's cap" not in rep_b, "trace B made no tool call, so no cap warning is possible"
+
+    # And rendering trace A again reuses ITS cache rather than trace B's newer file.
+    assert block(_render([row], pred_a, str(reports))) == rep_a
+    assert sorted(p.name for p in reports.glob("UID0033.*.md")) == cached, "no third file was written"
+
+
+def test_the_cache_key_covers_every_input_that_changes_the_report():
+    """A changed conversation, user prompt, question or condition must all change the key."""
+    import tempfile
+
+    reflect = importlib.import_module("skillopt.gradient.reflect")
+    with tempfile.TemporaryDirectory() as root:
+        pred = _write_trace(root, "UID0033", TRACE_A)
+        base = reflect._officeqa_report_cache_key(pred, "UID0033", "q?", "C")
+        assert base == reflect._officeqa_report_cache_key(pred, "UID0033", "q?", "C"), "must be stable"
+        assert base != reflect._officeqa_report_cache_key(pred, "UID0033", "q?", "S"), "condition"
+        assert base != reflect._officeqa_report_cache_key(pred, "UID0033", "other?", "C"), "question"
+        with open(os.path.join(pred, "UID0033", "conversation.json"), "w") as f:
+            json.dump(TRACE_B, f)
+        assert base != reflect._officeqa_report_cache_key(pred, "UID0033", "q?", "C"), "conversation"
+        with open(os.path.join(pred, "UID0033", "target_user_prompt.txt"), "w") as f:
+            f.write(USER_PROMPT + "\nan extra supplied page")
+        assert base != reflect._officeqa_report_cache_key(pred, "UID0033", "q?", "C"), "user prompt"

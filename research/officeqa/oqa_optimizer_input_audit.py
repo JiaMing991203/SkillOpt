@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import glob
 import hashlib
 import importlib
 import json
@@ -173,6 +174,20 @@ def audit_text(label: str, text: str, golds: dict) -> dict:
             "sha256": hashlib.sha256(text.encode()).hexdigest()}
 
 
+def find_report(report_dir: str, item_id: str) -> str | None:
+    """The report file for one item, under either naming scheme.
+
+    Reports are cached as `<id>.<trace key>.md` so that a cached file can never describe a different trace
+    (see `_officeqa_report_cache_key` in skillopt/gradient/reflect.py). Runs made before that fix used a plain
+    `<id>.md`, and those artifacts are preserved, so both are accepted here.
+    """
+    keyed = sorted(glob.glob(os.path.join(report_dir, f"{item_id}.*.md")))
+    if keyed:
+        return keyed[-1]
+    plain = os.path.join(report_dir, f"{item_id}.md")
+    return plain if os.path.isfile(plain) else None
+
+
 def grep_cap_audit(arm_a: str, arm_b: str, minibatch: list[dict], prediction_dir: str) -> dict:
     """Where does the grep-cap warning appear, and where does the evidence behind it appear?
 
@@ -245,8 +260,8 @@ def main() -> int:
     added_blocks = re.findall(r"\n#### Stage and Action Report\n", arm_b)
     stripped_b = arm_b
     for row in minibatch:
-        report_path = os.path.join(args.report_dir, f"{row.get('id')}.md")
-        if not os.path.isfile(report_path):
+        report_path = find_report(args.report_dir, str(row.get("id")))
+        if not report_path:
             continue
         with open(report_path, encoding="utf-8") as f:
             injected = f.read().strip()

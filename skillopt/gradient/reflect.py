@@ -21,6 +21,7 @@ Public API
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
@@ -141,30 +142,58 @@ def _officeqa_report_builder_locked():
     return _OFFICEQA_REPORTS_MODULE
 
 
+def _officeqa_report_cache_key(prediction_dir: str, tid: str, question: str, condition: str) -> str:
+    """A digest of everything that can change the report, so a cached file can never describe another trace.
+
+    The first version of this hook cached at <report dir>/<id>.md and reused that file whenever it existed. The
+    key was the ITEM ID, so in a second epoch all eight of arm B's failures were handed reports describing their
+    EPOCH-1 trajectories - in one case a report stating 24 tool calls beside a trace that made one. Everything
+    the report is derived from therefore goes into the key: the recorded conversation, the user prompt the actor
+    was given (question plus supplied pages), the question string passed in, and the report condition.
+    """
+    h = hashlib.sha256()
+    h.update(condition.encode())
+    h.update(b"\x00")
+    h.update(question.encode())
+    for name in ("conversation.json", "target_user_prompt.txt"):
+        path = os.path.join(prediction_dir, tid, name)
+        h.update(b"\x00" + name.encode() + b"\x00")
+        try:
+            with open(path, "rb") as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b"<missing>")
+    return h.hexdigest()[:12]
+
+
 def _officeqa_stage_report(report_dir: str, prediction_dir: str, tid: str, item: dict) -> str:
-    """Arm B's report for one item: the cached file if present, otherwise generated from the recorded trace."""
-    path = os.path.join(report_dir, f"{tid}.md")
+    """Arm B's report for one item: the cached file for THIS trace, or one generated from it."""
+    reports = _officeqa_report_builder()
+    condition = os.environ.get("OFFICEQA_STAGE_REPORT_CONDITION", "C")
+    question = str(item.get("question") or item.get("task_description") or "")
+    key = _officeqa_report_cache_key(prediction_dir, tid, question, condition)
+    path = os.path.join(report_dir, f"{tid}.{key}.md")
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             return f.read().strip()
-    reports = _officeqa_report_builder()
     results_path = os.path.join(os.path.dirname(os.path.abspath(prediction_dir)), "results.jsonl")
-    question = str(item.get("question") or item.get("task_description") or "")
     try:
-        text, record = reports.build_one(prediction_dir, tid, question, results_path,
-                                         os.environ.get("OFFICEQA_STAGE_REPORT_CONDITION", "C"))
+        text, record = reports.build_one(prediction_dir, tid, question, results_path, condition)
     except reports.AnswerKeyLeak:
         raise
     except Exception as exc:  # noqa: BLE001 - one unparsable trace must not end a run
         os.makedirs(report_dir, exist_ok=True)
         with _OFFICEQA_REPORT_LOCK:
             with open(os.path.join(report_dir, "GENERATION_PROBLEMS.jsonl"), "a", encoding="utf-8") as f:
-                f.write(json.dumps({"id": tid, "error": f"{type(exc).__name__}: {exc}"}) + "\n")
+                f.write(json.dumps({"id": tid, "trace_key": key,
+                                    "error": f"{type(exc).__name__}: {exc}"}) + "\n")
         print(f"      [officeqa arm B] WARNING: no stage report for {tid}: {type(exc).__name__}: {exc}")
         return ""
     os.makedirs(report_dir, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
+    record["trace_key"] = key
+    record["prediction_dir"] = os.path.abspath(prediction_dir)
     with _OFFICEQA_REPORT_LOCK:
         with open(os.path.join(report_dir, "GENERATED.jsonl"), "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
