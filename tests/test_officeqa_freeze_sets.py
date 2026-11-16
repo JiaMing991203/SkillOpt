@@ -166,3 +166,29 @@ def test_an_uncertain_item_is_kept():
     frozen = FS.finalize(candidates, evidence)
     assert frozen["sets"]["train"]["ids"] == candidates["train"]["ids"]
     assert frozen["substitutions"] == []
+
+
+# ── the wrapper the harness prints around a page is not evidence ───────────────
+
+RENDERED = """The following content is pre-parsed from the oracle OfficeQA source page(s). Treat it as primary evidence.
+
+### treasury_bulletin_1988_09.txt page 37
+Source URL: https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-1988-7054?page=37
+
+21
+
+FEDERAL OBLIGATIONS
+
+As of Mar. 31, 1988
+"""
+
+
+def test_the_block_header_and_source_url_are_not_document_evidence():
+    """A file stem's year, a FRASER title id and the ?page= index are harness metadata, not retrieved values."""
+    body = FS.page_body(RENDERED)
+    assert "Source URL" not in body and "###" not in body and "pre-parsed" not in body
+    assert "FEDERAL OBLIGATIONS" in body
+    assert FS.candidate_values(body, QUESTION) == [], FS.candidate_values(body, QUESTION)
+    # Without the strip, the URL alone supplies three numbers and the item would look answerable.
+    assert len(FS.candidate_values(RENDERED, QUESTION)) >= 3
+    assert FS.assess(QUESTION, body, body)["verdict"] == "ABSENT"

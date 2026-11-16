@@ -310,10 +310,31 @@ def load_questions(csv_path: str, ids: set[str]) -> dict:
     return out
 
 
+_BLOCK_HEADER = re.compile(r"^### .+ page \d+\s*$")
+_SOURCE_URL = re.compile(r"^Source URL:\s*\S+\s*$")
+_PREAMBLE = "The following content is pre-parsed from the oracle"
+
+
+def page_body(rendered: str) -> str:
+    """The parsed page text only, with the wrapper the harness prints around it removed.
+
+    The rendered block carries a preamble sentence, a `### <file> page <n>` heading and a `Source URL:` line.
+    Those are harness metadata, and their numbers (a file stem's year, a FRASER title id, the `?page=` index) are
+    not document evidence. Leaving them in made a chart-only page look as though it held five retrievable values.
+    """
+    kept = []
+    for line in rendered.splitlines():
+        if _BLOCK_HEADER.match(line) or _SOURCE_URL.match(line) or line.startswith(_PREAMBLE):
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
 def supplied_text(row: dict, docs_roots: list[str]) -> str:
     """The oracle parsed pages exactly as the actor is given them, via SkillOpt's own builder."""
     from skillopt.envs.officeqa.tool_runtime import build_oracle_parsed_pages_context
-    return build_oracle_parsed_pages_context(row.get("source_files"), row.get("source_docs"), docs_roots)
+    rendered = build_oracle_parsed_pages_context(row.get("source_files"), row.get("source_docs"), docs_roots)
+    return page_body(rendered)
 
 
 def document_text(row: dict, docs_roots: list[str]) -> str:
