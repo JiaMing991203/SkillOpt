@@ -14,11 +14,33 @@ $1 cap**. This document records the design and the frozen inputs. Measured resul
 Does a deterministic report about *stages and action contracts*, added to the analyst's prompt, lead the optimizer
 to better skill edits than the analyst's ordinary view of the same trajectory?
 
-The honest prior from the feasibility work is **no**, or at least not measurably: on the two real failures
-available before this run, arm B's reports carried **zero advice** once a false positive was removed, and the one
-useful finding — that an "it is absent" conclusion drawn after `grep` hit its 20-line cap is unsound — is a
-**P-layer** finding, which means both arms' reports would contain it. This comparison is therefore set up to be
-able to show no effect, and it is worth running mainly because two failures is too little evidence either way.
+### 1a. What this comparison does and does not isolate — a correction
+
+An earlier version of this document, and an earlier message to the user, said the prior was "no effect" because
+arm B's reports carried **zero advice** on the two failures available before the real run, and because the one
+useful finding (that an "it is absent" conclusion drawn after `grep` hit its 20-line cap is unsound) is a
+**P-layer** finding "which both arms receive". The second half of that was wrong, and it understated what this
+comparison tests.
+
+The P/S/C layers come from the earlier learned-contract studies, where **P was a control report**: condition P
+was a plain progress report, and S and C added ordered stages and action contracts on top of it. "Both arms
+receive a P-layer finding" was true *there*.
+
+Here, **arm A receives no report at all** — the user's instruction is that arm A gets the ordinary SkillOpt
+analyst input and arm B gets "exactly that input plus the stage + action report". So arm B's delta is the WHOLE
+report, every layer of it. On the real 12-question rollout that delta is not empty: across the 7 failures the
+reports flag **10 distinct problems** in 5 categories — `grep_cap_reached` (4), `operand_provenance_missing` (3),
+`ungrounded_answer_value` (1), `asked_period_absent` (1) and `scale_conversion_missing` (1).
+
+Two consequences for reading the result:
+
+1. A difference in favour of arm B would show that *a deterministic report helps*, NOT that stages and action
+   contracts specifically help. The finer question — whether the S and C layers add anything over a plain
+   progress report — was answered negatively by the earlier pilot and by the ALFWorld stage studies, and this
+   comparison does not re-test it.
+2. The prior is therefore weaker than "no effect", but it is still not "effect": the reports mostly restate what
+   is visible in the trace (that `grep` returned 20 lines, that a value is not in the evidence). Whether the
+   optimizer uses a stated diagnosis better than the raw trace it is also given is exactly what is unknown.
 
 ## 2. What is held identical
 
