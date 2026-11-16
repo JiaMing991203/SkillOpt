@@ -541,6 +541,47 @@ def _finalise(bag, obligations, state, facts, condition, p_keys, s_keys=None) ->
 _KIND_TAG = {"advice": "ADVICE", "warning": "WARNING", "note": "NOTE", "event": "EVENT", "positive": "POSITIVE"}
 
 
+# One problem is reported once. A question over a long table can trigger the same diagnosis for dozens of values:
+# UID0014 of the frozen training set produced 21 ADVICE lines that all said "the question asks for billions and
+# these values sit under a thousands/millions heading, with no conversion step", one per value, and one report of
+# 14,213 characters. `compare()` has always scored per PROBLEM, so the repetition was only ever a rendering
+# artefact -- and a flood of near-identical advice is worse for the analyst than one line. The scope is kept: the
+# surviving line carries the number of further occurrences and a few of the values, so nothing is hidden.
+_MAX_OPERANDS_LISTED = 24
+_MAX_EXAMPLES_LISTED = 5
+
+
+def _group_findings(findings: list[dict]) -> list[tuple[dict, str]]:
+    """One line per (kind, category, problem), earliest first, with the repeat count appended."""
+    groups: dict[tuple, list[dict]] = {}
+    order: list[tuple] = []
+    for f in findings:
+        key = (f["kind"], f["cat"], f["problem"])
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(f)
+    out = []
+    for key in order:
+        members = sorted(groups[key], key=lambda f: f["first"])
+        head = members[0]
+        if len(members) == 1:
+            out.append((head, ""))
+            continue
+        steps = sorted({m["first"] for m in members})
+        examples = [str(m.get("operand") or m.get("value") or m.get("raw") or "").strip()
+                    for m in members[1:]]
+        examples = [e for e in examples if e][:_MAX_EXAMPLES_LISTED]
+        extra = f"  [same finding for {len(members) - 1} further value(s)"
+        if examples:
+            extra += ": " + ", ".join(examples)
+        if len(steps) > 1:
+            extra += f"; steps {steps[0]}-{steps[-1]}"
+        extra += "]"
+        out.append((head, extra))
+    return out
+
+
 def render(result: dict, packet: dict) -> str:
     lines = [f"# OfficeQA {result['condition']} report - item {packet.get('id', '?')}",
              "", "## Task obligations (from the question text only)"]
@@ -550,16 +591,22 @@ def render(result: dict, packet: dict) -> str:
                   f"{sum(1 for s in packet.get('steps') or [] if s.get('kind') == 'tool')} tool call(s))"]
     if result["operands"]:
         lines.append("## Operands written down by the agent")
+        shown = result["operands"][:_MAX_OPERANDS_LISTED]
         lines += [f"- step {o['step']}: {o['raw']} "
                   f"({'grounded in returned evidence' if o['grounded'] else 'NOT found in returned evidence'})"
-                  for o in result["operands"]]
+                  for o in shown]
+        if len(result["operands"]) > len(shown):
+            hidden = result["operands"][len(shown):]
+            ungrounded = sum(1 for o in hidden if not o["grounded"])
+            lines.append(f"- ... and {len(hidden)} more operand(s), {ungrounded} of them not found in the "
+                         f"returned evidence")
     lines += ["", "## Findings"]
     if not result["findings"]:
         lines.append("- none: every check this condition can make either passed or is UNKNOWN.")
-    for f in result["findings"]:
+    for f, extra in _group_findings(result["findings"]):
         tier = "" if f["tier"] == "primary" else f" [{f['tier']}]"
         lines.append(f"- [{_KIND_TAG[f['kind']]}{tier}] ({f['layer']}, first at step {f['first']}) "
-                     f"{f['cat']}: {f['text']}")
+                     f"{f['cat']}: {f['text']}{extra}")
     return "\n".join(lines)
 
 

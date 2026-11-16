@@ -269,3 +269,52 @@ def test_information_boundary_unknown_when_item_absent(recorded_run):
     packet = TR.build_packet(pred_dir, "UID0046")
     packet["id"] = "UID9999"
     assert TR.audit_no_gold(packet, results)["verdict"] == "UNKNOWN"
+
+
+# ── one problem is reported once ───────────────────────────────────────────────
+
+def test_a_repeated_diagnosis_is_rendered_as_one_line_with_its_scope():
+    """UID0014 of the frozen set produced 21 ADVICE lines that were all the same diagnosis, one per value.
+
+    compare() has always scored per PROBLEM, so the repetition was a rendering artefact; a flood of
+    near-identical advice is also worse for the analyst than one line. The scope must survive: the surviving
+    line states how many further values are affected and names a few.
+    """
+    findings = [
+        {"kind": "advice", "cat": "scale_conversion_missing", "problem": "scale", "layer": "C", "first": 1,
+         "tier": "primary", "text": "step 1: the value 0.25 sits under a 'thousands' heading", "operand": "0.25"},
+        {"kind": "advice", "cat": "scale_conversion_missing", "problem": "scale", "layer": "C", "first": 1,
+         "tier": "primary", "text": "step 1: the value 1,056,757 ...", "operand": "1,056,757"},
+        {"kind": "advice", "cat": "scale_conversion_missing", "problem": "scale", "layer": "C", "first": 3,
+         "tier": "primary", "text": "step 3: the value 1,427,445 ...", "operand": "1,427,445"},
+        {"kind": "warning", "cat": "ungrounded_answer_value", "problem": "answer", "layer": "P", "first": 2,
+         "tier": "primary", "text": "step 2: the answer is not in the returned evidence"},
+    ]
+    grouped = CHK._group_findings(findings)
+    assert len(grouped) == 2, "three instances of one problem collapse to one line; the other problem stays"
+    head, extra = grouped[0]
+    assert head["operand"] == "0.25", "the earliest instance is kept"
+    assert "same finding for 2 further value(s)" in extra
+    assert "1,056,757" in extra and "1,427,445" in extra, "the scope is named, not hidden"
+    assert "steps 1-3" in extra
+    assert grouped[1][1] == "", "a single-instance finding gets no suffix"
+
+
+def test_grouping_keeps_distinct_problems_apart():
+    findings = [
+        {"kind": "warning", "cat": "grep_cap_reached", "problem": "grep_cap:4", "layer": "P", "first": 4,
+         "tier": "primary", "text": "step 4: grep returned 20 lines"},
+        {"kind": "warning", "cat": "grep_cap_reached", "problem": "grep_cap:9", "layer": "P", "first": 9,
+         "tier": "primary", "text": "step 9: grep returned 20 lines"},
+    ]
+    assert len(CHK._group_findings(findings)) == 2, "two different capped calls are two problems"
+
+
+def test_a_long_operand_list_is_truncated_but_its_ungrounded_count_is_kept():
+    operands = ([{"step": 1, "raw": f"{i},000", "grounded": True} for i in range(1, 30)]
+                + [{"step": 1, "raw": "99,999", "grounded": False}])
+    result = {"condition": "C", "obligation_lines": ["period(s) asked: UNKNOWN"], "n_facts": 905,
+              "operands": operands, "findings": []}
+    text = CHK.render(result, {"id": "UID0014", "oracle_pages": [], "steps": []})
+    assert text.count("- step 1:") == CHK._MAX_OPERANDS_LISTED
+    assert "and 6 more operand(s), 1 of them not found in the returned evidence" in text
