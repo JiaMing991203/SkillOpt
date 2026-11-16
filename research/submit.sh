@@ -33,7 +33,10 @@ SCRIPT="research/cluster/${JOB}.sbatch"
 case "$JOB" in smoke|officeqa) PARTITION="$GPU_PARTITION" ;; *) PARTITION="$CPU_PARTITION" ;; esac
 
 EXPORTS="ALL"
-for v in STAGE ROLLOUT_EPISODES ROLLOUT_SPLIT ROLLOUT_CFG_OPTIONS ROLLOUT_TASKS_FILE TASKS_FILE SOURCE_RUN ANALYSIS TRAIN_CONFIG TESTS OPTIMIZER_MODEL; do
+# OFFICEQA_* and OQA_* are forwarded for the officeqa job: its split and document roots are machine paths
+# chosen per run, and OQA_TOOL_PARSER lets the parser be overridden without a commit. Without this the
+# variables never reach the job, which then exits at its own guard (job 66195992).
+for v in STAGE ROLLOUT_EPISODES ROLLOUT_SPLIT ROLLOUT_CFG_OPTIONS ROLLOUT_TASKS_FILE TASKS_FILE SOURCE_RUN ANALYSIS TRAIN_CONFIG TESTS OPTIMIZER_MODEL OFFICEQA_SPLIT_DIR OFFICEQA_DOCS_DIR OQA_TOOL_PARSER; do
     [ -n "${!v:-}" ] && EXPORTS="$EXPORTS,$v=${!v}"
 done
 
