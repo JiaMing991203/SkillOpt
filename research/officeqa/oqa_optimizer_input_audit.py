@@ -101,29 +101,39 @@ def gold_hits(text: str, gold: str) -> list[re.Match]:
     return list(re.finditer(r"\b" + re.escape(gold) + r"\b", text, re.I))
 
 
-def evaluator_written_surface(text: str) -> str:
-    """The part of the prompt the EVALUATOR writes, which is the only place a gold value would be a leak.
+def evaluator_written_surface(text: str) -> dict[str, str]:
+    """Per trajectory, the part of the prompt the ANALYST gets and the ACTOR did not.
 
     One trajectory is rendered as:
 
-        ### Trajectory N (id=..)      <- evaluator: task text, task type, fail_reason, step count
-        Task: ... / Task type: ... / Failure reason: ... / Steps: ...
-        #### Hidden Reference         <- evaluator: `reference_text`, empty for OfficeQA
-        #### Target System Prompt     <- what the actor was given
-        #### Target User Prompt       <- the question and the supplied document pages
-        #### Stage and Action Report  <- arm B only, derived from the trace
+        ### Trajectory N (id=..)
+        Task: <the question>            <- the actor received this too, verbatim, in its user prompt
+        Task type: <category>           <- evaluator-supplied
+        Failure reason: <fail_reason>   <- evaluator-supplied; this is where the old leak lived
+        Steps: <n_turns>                <- evaluator-supplied
+        #### Hidden Reference           <- evaluator-supplied (`reference_text`); empty for OfficeQA
+        #### Target System Prompt       <- what the actor was given
+        #### Target User Prompt         <- the question and the supplied document pages
+        #### Stage and Action Report    <- arm B only, derived from the trace
         [user] / [assistant] / tool observations   <- what the actor saw and produced
 
-    Everything from `#### Target System Prompt` onward is document evidence or the actor's own output: the gold
-    value appears there legitimately, in the supplied pages and in `grep` output read from the allowed file.
-    The header and the Hidden Reference are the evaluator's own statements, and the old leaking `fail_reason`
-    lived in exactly that header. Checking the whole prompt instead flags every short numeric gold; checking
-    only the supplied-pages section, as this script did until 2026-11-16, would MISS a header leak whenever the
-    same value also occurs in the pages - which for OfficeQA is the normal case.
+    The leak surface is therefore the header WITHOUT its `Task:` line, plus the hidden reference. Three earlier
+    versions of this check were wrong in three different ways, all found on real traces:
+      * the whole prompt, by substring: 710 hits for the gold "18" in 450 KB of Treasury tables;
+      * only the supplied-pages section: cannot see a header leak when the pages hold the same value, which for
+        OfficeQA is the normal case;
+      * all headers concatenated, including the `Task:` lines: UID0031's gold "1990" was "found" in UID0030's
+        question, "the September 1990 US Treasury Monthly Bulletin". A question the actor was given cannot leak
+        an answer to the analyst, and one item's question says nothing about another item's answer.
     """
-    parts = re.findall(r"(?s)### Trajectory \d+ \(id=[^)]*\)\n(.*?)(?=\n#### Target System Prompt|"
-                       r"\n#### Target User Prompt|\n#### Stage and Action Report|\n### Trajectory|\Z)", text)
-    return "\n".join(parts)
+    out: dict[str, str] = {}
+    pattern = (r"(?s)### Trajectory \d+ \(id=([^)]*)\)\n(.*?)"
+               r"(?=\n#### Target System Prompt|\n#### Target User Prompt|"
+               r"\n#### Stage and Action Report|\n### Trajectory|\Z)")
+    for item_id, block in re.findall(pattern, text):
+        kept = [line for line in block.splitlines() if not line.startswith("Task: ")]
+        out[str(item_id)] = "\n".join(kept)
+    return out
 
 
 def audit_text(label: str, text: str, golds: dict) -> dict:
@@ -136,26 +146,29 @@ def audit_text(label: str, text: str, golds: dict) -> dict:
         if f'"{field}"' in text or f"'{field}'" in text:
             problems.append(f"evaluator-only field name {field!r} appears in the prompt")
 
-    surface = evaluator_written_surface(text)
+    surfaces = evaluator_written_surface(text)
     for item_id, gold in sorted(golds.items()):
         gold = str(gold or "").strip()
-        if not gold:
-            continue
+        surface = surfaces.get(str(item_id))
+        if not gold or surface is None:
+            continue  # an item not in this minibatch has no trajectory here to leak through
         surface_hits = gold_hits(surface, gold)
-        in_surface = len(surface_hits)
         total = len(gold_hits(text, gold))
-        if in_surface:
+        if surface_hits:
             match = surface_hits[0]
             excerpt = surface[max(0, match.start() - 80):match.end() + 40]
-            problems.append(f"{item_id}: the gold value {gold!r} appears {in_surface}x in the EVALUATOR-WRITTEN "
-                            f"part of the prompt (task line, failure reason or hidden reference): ...{excerpt!r}")
+            problems.append(f"{item_id}: the gold value {gold!r} appears {len(surface_hits)}x in the text the "
+                            f"ANALYST is given and the ACTOR was not (task type, failure reason, step count or "
+                            f"hidden reference): ...{excerpt!r}")
         elif total:
-            notes.append(f"{item_id}: gold {gold!r} occurs {total}x, none of them in the evaluator-written part "
-                         f"(expected: it is in the supplied pages and in the tool output the actor read)")
+            notes.append(f"{item_id}: gold {gold!r} occurs {total}x in the prompt, none of them in the "
+                         f"evaluator-written part (expected: it is in the supplied pages, in the question the "
+                         f"actor was given, and in the tool output the actor read)")
         else:
             notes.append(f"{item_id}: gold {gold!r} does not occur in this prompt at all")
     return {"label": label, "verdict": "FAIL" if problems else "PASS", "problems": problems, "notes": notes,
-            "evaluator_written_chars": len(surface),
+            "trajectories_audited": sorted(surfaces),
+            "evaluator_written_chars": sum(len(v) for v in surfaces.values()),
             "chars": len(text), "estimated_tokens": _estimate_tokens(text),
             "sha256": hashlib.sha256(text.encode()).hexdigest()}
 

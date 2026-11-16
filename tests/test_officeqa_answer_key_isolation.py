@@ -251,7 +251,7 @@ def test_the_audit_catches_a_gold_stated_in_the_failure_reason(rollout):
     report = AUDIT.audit_text("arm A", prompt, {"UID0033": GOLD})
     assert report["verdict"] == "FAIL"
     assert any("old leaking fail_reason form" in p for p in report["problems"])
-    assert any("EVALUATOR-WRITTEN" in p for p in report["problems"]), report["problems"]
+    assert any("the ACTOR was not" in p for p in report["problems"]), report["problems"]
 
 
 def test_the_audit_catches_a_gold_in_the_hidden_reference(rollout):
@@ -263,7 +263,7 @@ def test_the_audit_catches_a_gold_in_the_hidden_reference(rollout):
     assert "Hidden Reference" in prompt
     report = AUDIT.audit_text("arm A", prompt, {"UID0033": GOLD})
     assert report["verdict"] == "FAIL"
-    assert any("EVALUATOR-WRITTEN" in p for p in report["problems"]), report["problems"]
+    assert any("the ACTOR was not" in p for p in report["problems"]), report["problems"]
 
 
 def test_a_gold_in_the_supplied_pages_alone_would_not_hide_a_header_leak(rollout):
@@ -275,3 +275,40 @@ def test_a_gold_in_the_supplied_pages_alone_would_not_hide_a_header_leak(rollout
     assert prompt.count(GOLD) > 1, "the gold is also in the supplied pages, as it normally is"
     report = AUDIT.audit_text("arm A", prompt, {"UID0033": GOLD})
     assert report["verdict"] == "FAIL", "a header leak must be caught even when the pages contain the value too"
+
+
+def test_a_question_the_actor_was_given_cannot_leak_the_answer(rollout, tmp_path):
+    """Two false positives from the real run, both now excluded by construction.
+
+    UID0031's gold was "1990" and the audit "found" it in UID0030's question, "the September 1990 US Treasury
+    Monthly Bulletin". One item's question says nothing about another item's answer, and a question the actor
+    received verbatim cannot disclose anything to the analyst that the actor did not already have.
+    """
+    import oqa_optimizer_input_audit as AUDIT
+
+    other = dict(rollout["row"], id="UID0030", task_description="On page 5 of the September 1990 bulletin, how "
+                 "many local maxima are there?", fail_reason="predicted '' but the scorer marked it incorrect")
+    pred = tmp_path / "predictions" / "UID0030"
+    pred.mkdir(parents=True)
+    (pred / "conversation.json").write_text(json.dumps(CONVERSATION), encoding="utf-8")
+    (pred / "target_user_prompt.txt").write_text(USER_PROMPT, encoding="utf-8")
+    (pred / "target_system_prompt.txt").write_text("sys", encoding="utf-8")
+    for name in ("conversation.json", "target_user_prompt.txt", "target_system_prompt.txt"):
+        src = os.path.join(rollout["prediction_dir"], "UID0033", name)
+        dst_dir = tmp_path / "predictions" / "UID0033"
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        (dst_dir / name).write_text(open(src, encoding="utf-8").read(), encoding="utf-8")
+
+    prompt = _render([dict(rollout["row"]), other], str(tmp_path / "predictions"))
+    report = AUDIT.audit_text("arm A", prompt, {"UID0031": "1990", "UID0033": GOLD})
+    assert report["verdict"] == "PASS", report["problems"]
+
+    # The gold IS in its own question: still not a leak, because the actor had that question.
+    own = dict(rollout["row"], task_description="What happened in 1990?")
+    prompt2 = _render([own], rollout["prediction_dir"])
+    assert AUDIT.audit_text("arm A", prompt2, {"UID0033": "1990"})["verdict"] == "PASS"
+
+    # But the same value in the failure reason is a leak.
+    leaking = dict(rollout["row"], fail_reason="predicted '' but the correct year was 1990")
+    prompt3 = _render([leaking], rollout["prediction_dir"])
+    assert AUDIT.audit_text("arm A", prompt3, {"UID0033": "1990"})["verdict"] == "FAIL"
