@@ -3,9 +3,12 @@
 **Last update: 2026-11-16 17:14 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
 **Nothing is running or queued. 0 GPUs held.** Both arms and the held-out evaluation are COMPLETE.
-**Two decisions are with the USER** (see section C2): whether to re-run arm B's epoch 2 with the report-cache
-fix, and whether to restructure as one epoch of two steps so the optimizer sees its rejected edits.
-**The held-out outcome of job 66234927 is deliberately UNREAD**, on the user's instruction.
+**The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
+`docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`. Correcting the eight stale reports changes the diagnosis for
+5 of 8 items but NOT the advice, so **no replay was run**; its exact cost is scoped in section 6 of that
+document should the user want it anyway.
+**Still with the USER:** whether to restructure as one epoch of two steps so the optimizer sees its rejected
+edits (section C3). **The held-out outcome of job 66234927 remains deliberately UNREAD/SEALED.**
 
 **This session owns** the OfficeQA track only. Write only `from: "officeqa"` records in
 `/Users/yaojiaming/dev/lean_skillopt/coordination/reservations.jsonl`. Standing authorization since
@@ -92,8 +95,21 @@ the prompt). Arm B's **epoch 2 is invalid as a test of the intervention**. Arm A
 **Test gap:** `test_a_report_is_generated_when_none_is_cached` asserted determinism by re-rendering from cache,
 which locked the stale-cache behaviour in. No test rendered one item against a second, different trace.
 
-**Fix proposed, NOT applied:** key the cache on the trace (`<id>.<sha256(conversation.json)[:12]>.md`) or point
-`OFFICEQA_STAGE_REPORT_DIR` at a per-step subdirectory, plus a test that renders one item from two traces.
+**FIXED in `c353b99`.** The cache key now covers the conversation, the user prompt the actor was given, the
+question string and the condition, as `<id>.<12-hex>.md`; the arm stage no longer pre-seeds reports (that copy of
+plainly-named files is what enabled the reuse); `oqa_optimizer_input_audit.find_report` accepts both namings so
+preserved artifacts still read. Two regression tests, including one that renders the same question from two
+different traces and asserts each rendered optimizer request carries its own trace's report. Verified on the real
+data: pointed at the 8 stale reports, the fixed hook ignores them and regenerates 8 keyed reports matching the
+independently-corrected ones byte-for-byte.
+
+**Follow-up audit (offline, 0 GPU, 0 paid calls) -> `docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`:** all 8 sent
+reports reproduce byte-identically from the epoch-1 traces, confirming provenance. Correcting them changes the
+diagnosis for 5 of 8 items (UID0017, 0026, 0030, 0034, 0079), but the set carries the same five categories in the
+same counts (grep_cap 4<->4, operand_provenance 3<->3, ungrounded_answer 1<->1, scale_conversion 1<->1,
+asked_period 1<->1), the payload differs by +1.0%, and BOTH applied edits rest on unchanged categories. The saved
+optimizer output contains ZERO references to report content, so every report->edit link is plausible only.
+**Decision: no replay.**
 
 ## C3. Second audit finding: no cross-epoch memory in either arm
 
