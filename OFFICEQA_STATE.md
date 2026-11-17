@@ -1,6 +1,6 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-16 21:14 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-16 22:05 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
 **Nothing is running or queued. 0 GPUs held.** Both arms and the held-out evaluation are COMPLETE.
 **The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
@@ -12,11 +12,15 @@ document should the user want it anyway.
 the corrected report. **0 of 8 cases gained a valid diagnosis attributable to the report; 1 of 8 gained a
 misleading one.** See section C5.
 **A contract/check audit (offline) says what to change to make the report accurate** ->
-`docs/research/OFFICEQA_CONTRACT_AUDIT.md`. Rule set is FIXED and hand-written; no learner, **no Lean anywhere**.
-See section C6. Implementation changes deliberately NOT applied.
-**Still with the USER:** whether to restructure as one epoch of two steps so the optimizer sees its rejected
-edits (section C3), and whether to apply the C6 changes 1-4. **The held-out outcome of job 66234927 remains
-deliberately UNREAD/SEALED.**
+`docs/research/OFFICEQA_CONTRACT_AUDIT.md`. The TWO-ARM RUN's rule set is FIXED and hand-written; no learner ran
+in it and no Lean was involved anywhere in it. See section C6. Those implementation changes are deliberately NOT
+applied to `oqa_check.py`.
+**The learned-contract port is DONE (offline, 0 GPU, 0 paid calls)** -> section **A0** and
+`docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md`. It adds a separate, opt-in module set with a learner, a frozen
+model, prefix replay, obligation resolution and a GENERATED (not compiled) Lean file.
+**Still with the USER:** the three items in section A0, plus whether to restructure as one epoch of two steps so
+the optimizer sees its rejected edits (section C3) and whether to apply the C6 changes 1-4. **The held-out outcome
+of job 66234927 remains deliberately UNREAD/SEALED.**
 
 **This session owns** the OfficeQA track only. Write only `from: "officeqa"` records in
 `/Users/yaojiaming/dev/lean_skillopt/coordination/reservations.jsonl`. Standing authorization since
@@ -24,42 +28,65 @@ deliberately UNREAD/SEALED.**
 
 ---
 
-## A0. NEXT TASK (user, 2026-11-16 21:14): import design from the ALFWorld branch
+## A0. DONE: the learned-contract port (user, 2026-11-16) -> `docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md`
 
-The user will give the instruction after this compaction. **Do not start importing before they do.** What the
-next session needs to know:
+**The full loop ran, offline, 0 GPU jobs and 0 paid calls.** Learn -> freeze by digest -> commit a prediction ->
+reveal -> real counterexample -> repair -> recheck -> independent confirmation -> generated Lean -> report -> a
+proposed skill edit. Read the port note, not this summary. Output preserved at
+`~/dev/lean_skillopt/runs/20261116-offline-lc-port/` (420 KB: LOOP.json, 12 frozen models, 23 prediction logs,
+`lean/OqaContracts.lean`, `report_UID0014.md`).
 
-**Where the sources are** (sibling worktrees of the same repo, both at `4a9914a` on their own branches):
-| Path | Branch | Holds |
-|---|---|---|
-| `~/dev/lean_skillopt/SkillOpt-learned-contract` | `contract/learned-contract` | the learned-contract line: `docs/LEARNED_CONTRACT_DESIGN.md` + amendments **A1-A4**, `LEARNED_CONTRACT_PILOT_REPORT.md`, `LEARNED_CONTRACT_INFO_STUDY_REPORT.md`, and its own `docs/research/STATE.md` |
-| `~/dev/lean_skillopt/SkillOpt` | `research/alfworld-baseline` | the ALFWorld baseline line |
-| `~/dev/lean_skillopt/SkillOpt-officeqa` | `officeqa-contracts` | **this** worktree |
+**Reference design** = `docs/LEARNED_CONTRACT_DESIGN.md` **v0.1 + amendments A1-A4** in
+`~/dev/lean_skillopt/SkillOpt-learned-contract` @ `4a9914a`. **No document labelled v0.2 exists**; v0.1 as amended
+is the current agreed design. The five digests are in the port note's header table.
 
-**What was already imported** (2026-11-15), into `research/officeqa/transferred/` (tracked, reference only - NOT
-imported by the report path): `fu_budget.py`, `ir.py`, `lc_llm.py`, `plain_v4.py`, `score_v4.py`,
-`stage_contracts.py`. Provenance is in `OFFICEQA_TRANSFER_MANIFEST.json` (untracked).
+**New code (all additive and opt-in; `oqa_check.py` and `oqa_obligations.py` were NOT touched, so arm A stays
+byte-identical to upstream and the two-arm run's P/S/C semantics are unchanged):**
+`research/officeqa/oqa_lc_{vocab,ir,cells,chain,learn,replay,lean,report,demo}.py`, `tests/test_officeqa_lc.py`
+(38 pass; the existing 87 OfficeQA tests still pass unchanged).
 
-**PROVENANCE GAP to fix on the next import:** that manifest records `source_branch` and `created` but its
-`source_commit` and per-file `source` paths are **null**. Do not invent them retroactively. Any new transfer must
-record the source branch, the exact source commit, the source path and a digest per file, and
-`research/officeqa/transfer.py` is the script that does it - check it writes those fields before relying on it.
+**VERIFIED results:**
+1. **Counterexample found in the data, not invented.** `index_alignment` (merge a supplied page's two-row table
+   header by cell index) was adopted at round 0 with nothing contradicting it and refuted at round 6 by UID0026's
+   own read of the flattened header of the same table, in 12 places; refuted again by UID0014 in the later
+   collection, in 10 places. The repair drops the assumption; affected column bindings become UNKNOWN, never
+   violations.
+2. **Regression case fixed and improved.** On UID0014's epoch-2 trace the old C report fires
+   `scale_conversion_missing` **29x** ("No conversion step appears"). The obligation form **DISCHARGES 13** of them
+   (the actor converted correctly at step 1) and reports **23 VIOLATED** for a verifiable new reason: thousands ->
+   billions applied with factor 1e-3 where 1e-6 is required, so 14 regression inputs are 1,000x too large. The
+   plain report P says only `no_matches`. Skill-edit candidate in port note section 6.3.
+3. **Column + period + unit binding now exists** (`oqa_lc_cells.py`), which `oqa_check` lacked. It settles the
+   probe's UID0026 disagreement deterministically: `30,442` = `Paper money 2/ > Total paper money`, December 1960;
+   `32,869` = `Total money in circulation 1/`, same row. Paper money was asked, so 30,442.
+4. **Three false-positive classes fixed**, each with a regression test: arithmetic intermediates, a year inside an
+   asked span, over-permissive scaled matching.
 
-**What an import should be aimed at.** This session's audits found the report's problem is NOT the rules'
-content but the bookkeeping around them (section C6): the checker collects the fact that discharges an obligation
-(`state["computed"]`, a row's month) and never consults it when deciding whether to complain. So when reading the
-ALFWorld design, the questions worth answering are:
-1. Does the learned-contract design have an **obligation-resolution** notion (discharged / outstanding / unknown)
-   that OfficeQA's `oqa_check.py` lacks? That is defect #1 and #5 in section C6.
-2. How does it keep **assumption bookkeeping** (`score_v4.py`, `plain_v4.py` are already transferred and carry the
-   P-vs-C scoring and the containment invariant)?
-3. Is the **learner** (`lc_llm.py`, `ir.py`) worth wiring in at all? OfficeQA's rule set is currently fixed and
-   hand-written, and section C6 shows 8 of 14 rules never fire while 2 produce most of the false positives.
-4. `fu_budget.py` - the follow-up budget notion, relevant because the OfficeQA actor's dominant failure is
-   non-termination (5 of 7 epoch-1 failures produced no `<answer>`).
+**HONEST LIMITS (do not drop these when summarising):** adjudicating evidence is very sparse (5 table pairs over 3
+tool steps in 24 attempts; 126 of 128 development tool steps leave the column atom UNKNOWN); the learned model is 3
+contracts; **one of those 3 acquires a counterexample on the confirmation collection** (`read.effect.1 =
+width_uniform` at UID0028@42); and nothing here shows any of it changes a skill edit that survives merge, budget
+and the 6/12 gate.
 
-**Hard constraints that carry over:** keep any import additive and opt-in; never derive contracts from the skill;
-arm A must stay byte-identical to upstream; no secrets or cluster paths in tracked files; the fork is public.
+**Lean: GENERATED, NOT COMPILED.** `lean/OqaContracts.lean`, Lean 4 core only, 64 statements (25 general by
+exhaustion + 39 over exported evidence), no `sorry`/`native_decide`/axioms. The Python mirror agrees on every row
+(0 mismatches) - that is a cross-implementation check, NOT a Lean proof. `lean`/`lake`/`elan` are absent on the
+workstation AND on the Great Lakes login node (checked).
+
+**CORRECTION to the old A0:** it claimed `OFFICEQA_TRANSFER_MANIFEST.json` was untracked and that its
+`source_commit` and per-file `source` paths were null. All three claims were wrong - the manifest is tracked and
+the fields exist as `source_head` and `path`, populated, with `source_status` recording that the sources are
+untracked in their own worktree. There was no provenance gap. Nine further files were transferred for this port
+(manifest entry 2), bringing `research/officeqa/transferred/` to 15 reference files, none on an execution path.
+
+### STILL WITH THE USER after this port
+1. **Compile the Lean file?** Needs **1 Slurm CPU job: 1 core, 2 GB, 15 min, 0 GPU, no key, no paid call**, plus
+   the `LEAN_BIN` path from the learned-contract worktree's private `lc_site.env`. **The OQA-5 authorization does
+   NOT cover it** - it is expressed in A40-hours and DeepSeek calls and names no CPU job-hours. Port note 5.3.
+2. **Approve the guarded-`effect` extension?** Documented with two worked examples and the smallest change in port
+   note 3.3; deliberately NOT implemented, because it changes contract semantics.
+3. **Spend 1-2 of the 8 remaining DeepSeek calls on one learner round**, to test whether a paid learner proposes
+   hypotheses the deterministic template proposer does not? Priced in port note section 7.
 
 ## A. The authorized task
 
@@ -274,10 +301,12 @@ steps need 20-24. **That is why the arms run sequentially**: arm A's actual coun
 
 ## E. Next actions
 
-**Blocked on the USER's decision** (both raised in the final report):
+**Blocked on the USER's decision.** The three items from the port are in section A0. From the earlier comparison:
 1. Re-run arm B's epoch 2 with the report-cache fix? One A40, ~8 more calls; the budget covers it
    (8 of 24 calls and 6.2 of 8 A40-h remain).
 2. Restructure as one epoch of two steps, so `step_buffer` actually carries the rejected edits forward?
+3. Apply the `OFFICEQA_CONTRACT_AUDIT.md` changes 1-4 to `oqa_check.py` itself? The port implements the same
+   semantics in a separate, opt-in module and leaves `oqa_check.py` alone, so this is still open.
 
 If neither is taken, the comparison is finished and the only remaining act is to read job 66234927's held-out
 score (currently unread by instruction) and state it for all three skills at once.
@@ -302,7 +331,8 @@ ARM=B OQA_SHARED_DIR="$SHARED" OFFICEQA_SPLIT_DIR="$D/split_cmp" \
 | Job script | `research/cluster/officeqa.sbatch`, `STAGE=tools|check3|pilot12|epoch1|shared|arm|heldout` |
 | This session's audit evidence | `~/dev/lean_skillopt/runs/20261116-160952_officeqa_arm_66228142/audit_evidence/` - 44 files, 208 KB: the 16 paired reviews, the 8 blind adjudications + the de-anonymisation key, the corrected epoch-2 reports, the 3 success reports, the success-selection rule, the old-vs-corrected classification and the rule-firing tally. Copied out of the session scratchpad, which is cleared on reboot |
 | Local test venv | `/private/tmp/claude-501/-Users-yaojiaming-dev-lean-skillopt-SkillOpt-officeqa/82390561-79e4-43e9-b247-03526392e651/scratchpad/venv312` (workstation python is 3.9 and cannot import SkillOpt) |
-| Tests | `tests/test_officeqa_{contracts,tool_probe,answer_key_isolation,freeze_sets,optimizer_precheck}.py` - 70 pass |
+| Tests | `tests/test_officeqa_{contracts,tool_probe,answer_key_isolation,freeze_sets,optimizer_precheck,shared_rollout_injection}.py` - 87 pass; `test_officeqa_lc.py` - 38 pass |
+| Learned-contract port | `research/officeqa/oqa_lc_*.py` (9 modules), docs in `docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md`, output in `~/dev/lean_skillopt/runs/20261116-offline-lc-port/` |
 
 ### Settled facts (do not re-derive)
 - Tool calling needs `--enable-auto-tool-choice --tool-call-parser qwen3_coder`; `hermes` is wrong for Qwen3.5-4B.

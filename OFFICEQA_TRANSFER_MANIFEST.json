@@ -88,6 +88,131 @@
     }
    ],
    "problems": []
+  },
+  {
+   "schema": "officeqa.transfer_manifest.v1",
+   "created": "2026-11-16T21:26:41-05:00",
+   "source_tree": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract",
+   "source_branch": "contract/learned-contract",
+   "source_head": "4a9914a9005a80423175c344632e1deaeb56c2e2",
+   "dest_worktree": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-officeqa",
+   "dest_branch": "officeqa-contracts",
+   "tool": {
+    "path": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-officeqa/research/officeqa/transfer.py",
+    "sha256": "e0ed921176b84992ad9bb4e771ee584b5d61547d133259a80d41d0cf515e87a0"
+   },
+   "rule": "copy only the listed files byte-for-byte; never modify or delete source files; refuse overwrites. Transferred files stay ALFWorld-domain references and are not edited here.",
+   "files": [
+    {
+     "path": "research/learned_contracts/learn.py",
+     "dest": "research/officeqa/transferred/learn.py",
+     "role": "reference: learner gate and repair",
+     "why": "apply_proposal (assumption_ops + contract_ops), the gate (zero determinate counterexamples over ALL evidence, >=1 supporting attempt), auto-refutation, and the deterministic mech_induce/mech_repair proposer that the OfficeQA induction copies",
+     "source_status": "?? research/learned_contracts/learn.py",
+     "source_sha256": "dce247e991b35fa5c8d4661638e14a7ac1cd4eaf9422057cb68562965ce1c4f4",
+     "bytes": 15333,
+     "source_mtime": "2026-11-10T01:23:54",
+     "action": "copied",
+     "dest_sha256": "dce247e991b35fa5c8d4661638e14a7ac1cd4eaf9422057cb68562965ce1c4f4"
+    },
+    {
+     "path": "research/learned_contracts/replay.py",
+     "dest": "research/officeqa/transferred/replay.py",
+     "role": "reference: prefix replay and scoring",
+     "why": "Revealer (commit-before-reveal with a hash chain), predict/classify, Evidence and score_contract - the semantics oqa_lc_replay re-implements over document tools",
+     "source_status": "?? research/learned_contracts/replay.py",
+     "source_sha256": "b0cf8398130dbb1cd1534c67e5e222fddb2d1720a34cf82db7f77929d68bbf51",
+     "bytes": 14393,
+     "source_mtime": "2026-11-10T01:13:34",
+     "action": "copied",
+     "dest_sha256": "b0cf8398130dbb1cd1534c67e5e222fddb2d1720a34cf82db7f77929d68bbf51"
+    },
+    {
+     "path": "research/learned_contracts/vocab.py",
+     "dest": "research/officeqa/transferred/vocab.py",
+     "role": "reference: frozen vocabulary shape",
+     "why": "the shape of a frozen domain vocabulary (VERBS/ATOMS/ASSUMPTIONS + vocab_digest) that oqa_lc_vocab mirrors for OfficeQA; the ALFWorld content itself does not transfer",
+     "source_status": "?? research/learned_contracts/vocab.py",
+     "source_sha256": "e857150a39a166bddbac56545648538aa7a7614d26b50559da87d33d54957827",
+     "bytes": 10725,
+     "source_mtime": "2026-11-10T12:26:26",
+     "action": "copied",
+     "dest_sha256": "e857150a39a166bddbac56545648538aa7a7614d26b50559da87d33d54957827"
+    },
+    {
+     "path": "research/learned_contracts/state.py",
+     "dest": "research/officeqa/transferred/state.py",
+     "role": "reference: state estimate",
+     "why": "fact(v, basis, steps, assumptions) and the prefix-only Estimator whose UNKNOWN discipline the OfficeQA ledger keeps",
+     "source_status": "?? research/learned_contracts/state.py",
+     "source_sha256": "250fc1b73785fa167088f5ef5c468e2afe1be1c9294e53696f80e06b714bfb39",
+     "bytes": 8628,
+     "source_mtime": "2026-11-10T01:23:54",
+     "action": "copied",
+     "dest_sha256": "250fc1b73785fa167088f5ef5c468e2afe1be1c9294e53696f80e06b714bfb39"
+    },
+    {
+     "path": "research/learned_contracts/fact_ledger.py",
+     "dest": "research/officeqa/transferred/fact_ledger.py",
+     "role": "reference: A4 fact ledger",
+     "why": "amendment A4 3.1: fact kinds OBSERVED/INFERRED/FORECAST, statuses ACTIVE/WITHDRAWN/CONTRADICTED/SUPERSEDED, and the rule that a contradiction reopens every obligation discharged with that fact",
+     "source_status": "?? research/learned_contracts/fact_ledger.py",
+     "source_sha256": "c805634fc0e019bab9cdb40670e7deb9e5c80c5d0c6d647e97829404834be605",
+     "bytes": 12613,
+     "source_mtime": "2026-11-11T02:23:34",
+     "action": "copied",
+     "dest_sha256": "c805634fc0e019bab9cdb40670e7deb9e5c80c5d0c6d647e97829404834be605"
+    },
+    {
+     "path": "research/learned_contracts/stage_tracker.py",
+     "dest": "research/officeqa/transferred/stage_tracker.py",
+     "role": "reference: stage obligations",
+     "why": "how a stage requirement is discharged, withdrawn and recovered - the bookkeeping oqa_check.py lacks",
+     "source_status": "?? research/learned_contracts/stage_tracker.py",
+     "source_sha256": "bec91eda08dcf9c054ee08385e9ddb4960e040467f70b13b0ae0504b1e520922",
+     "bytes": 13404,
+     "source_mtime": "2026-11-10T21:01:24",
+     "action": "copied",
+     "dest_sha256": "bec91eda08dcf9c054ee08385e9ddb4960e040467f70b13b0ae0504b1e520922"
+    },
+    {
+     "path": "research/learned_contracts/lean_gen.py",
+     "dest": "research/officeqa/transferred/lean_gen.py",
+     "role": "reference: Lean bundle",
+     "why": "theorem-per-row bundle, axiom check (propext/Classical.choice/Quot.sound only), run_lean and parse_results",
+     "source_status": "?? research/learned_contracts/lean_gen.py",
+     "source_sha256": "f8a312c83424bbc3870ab1afc77eeccec92e32a46bf6edca3e0bdd4d036007d0",
+     "bytes": 9881,
+     "source_mtime": "2026-11-10T12:19:43",
+     "action": "copied",
+     "dest_sha256": "f8a312c83424bbc3870ab1afc77eeccec92e32a46bf6edca3e0bdd4d036007d0"
+    },
+    {
+     "path": "research/learned_contracts/a4_lean.py",
+     "dest": "research/officeqa/transferred/a4_lean.py",
+     "role": "reference: connected-layer Lean + mirror",
+     "why": "amendment A4 8: Lean 4 core-only generation for the connected stage-action layer and the Python mirror that must agree with it",
+     "source_status": "?? research/learned_contracts/a4_lean.py",
+     "source_sha256": "bd0eaba1aa466fa176628757682b1727fda5f805ef3ed00b0ae34e1ccd2976a1",
+     "bytes": 11516,
+     "source_mtime": "2026-11-11T14:00:58",
+     "action": "copied",
+     "dest_sha256": "bd0eaba1aa466fa176628757682b1727fda5f805ef3ed00b0ae34e1ccd2976a1"
+    },
+    {
+     "path": "research/learned_contracts/lean/LearnedContracts.lean",
+     "dest": "research/officeqa/transferred/LearnedContracts.lean",
+     "role": "reference: Lean library",
+     "why": "the Kleene-logic Lean library (litVal/kOr/kAnd/evalCNF) the OfficeQA Lean file re-declares",
+     "source_status": "?? research/learned_contracts/lean/LearnedContracts.lean",
+     "source_sha256": "b1bc868f3524f1b6dc531cfc4b70683cdd86bddb48e1e11588f45ddbfc5b4aac",
+     "bytes": 5588,
+     "source_mtime": "2026-11-10T01:19:01",
+     "action": "copied",
+     "dest_sha256": "b1bc868f3524f1b6dc531cfc4b70683cdd86bddb48e1e11588f45ddbfc5b4aac"
+    }
+   ],
+   "problems": []
   }
  ]
 }

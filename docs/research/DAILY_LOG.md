@@ -530,3 +530,71 @@ contracts (Option B). Planning only; no jobs, no API calls.
 User review of the roadmap; on approval, L0 design note and L1–L2 (replay,
 evidence, goal extraction, oracle tests on 48 episodes).
 
+
+## 2026-11-16 (OfficeQA worktree, branch `officeqa-contracts`)
+
+### Ported the learned-contract implementation to OfficeQA (offline; 0 GPU jobs, 0 paid calls)
+Full record: `docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md`. Output preserved at
+`~/dev/lean_skillopt/runs/20261116-offline-lc-port/`.
+
+Reference design: `LEARNED_CONTRACT_DESIGN.md` **v0.1 + amendments A1-A4** in the sibling worktree
+`SkillOpt-learned-contract` @ `4a9914a`. There is no document labelled v0.2; v0.1 as amended is the agreed design,
+and the five digests are recorded in the port note so a later session can tell whether the reference moved.
+
+New, additive, opt-in: `research/officeqa/oqa_lc_{vocab,ir,cells,chain,learn,replay,lean,report,demo}.py` and
+`tests/test_officeqa_lc.py`. `oqa_check.py` and `oqa_obligations.py` were deliberately not modified, so arm A
+stays byte-identical to upstream and the two-arm run's P/S/C semantics are unchanged; the existing 87 OfficeQA
+tests still pass, which is the check on that.
+
+**The loop ran end to end** on the 12 shared epoch-1 training attempts, in the order the run recorded them, with
+each model frozen by digest before the next attempt was replayed and each prediction committed (hash-chained)
+before its observation was released. `index_alignment` was adopted at round 0 with nothing contradicting it and
+refuted at round 6 by UID0026's own read of the flattened header of a table it had been handed in split form, in
+12 places; the repair drops the assumption and reopens the affected bindings to UNKNOWN. Arm B's epoch-2 rollout
+of the same items served as independent confirmation: 82 forecasts confirmed, 1 violated, and the dropped
+assumption contradicted 10 more times in UID0014.
+
+### Decisions and reasons
+- **Decision:** the repair is an **assumption drop**, not a contract revision. Reason: the contract's claim was
+  never wrong; the licence for evaluating it was. I looked for a feature of the split header form that separates
+  the cases where index merging works from those where it does not, and there is none - whether the renderer kept
+  the leading blank depends on information visible only in the flattened form.
+- **Decision:** `TEMPLATES` + `MIN_ITEMS = 2` instead of exhaustive enumeration over the vocabulary. Reason: the
+  first version enumerated three verbs x ten atoms x two polarities and the gate accepted
+  `grep.effect = not has_table` and `read.effect = not cap_reached` (true by construction). That is the
+  "8 of 14 rules never fire" disease of `OFFICEQA_CONTRACT_AUDIT.md`.
+- **Addition to the ported design (recorded as a deviation):** `assumption_recheck`. `apply_proposal` tests
+  `direct_contradictions` only at adoption time, which sufficed in the ALFWorld line because the LLM learner saw
+  the previous epoch's refutations. With a deterministic proposer nothing re-tested it, and in the first run
+  `index_alignment` stayed in force while the records contradicted it in 16 places.
+- **Correction:** `mech_repair` must target **refuted** contracts, not active ones. `apply_proposal` auto-refutes
+  every active contract that acquires a counterexample, so a proposer looking at `active(model)` never fires at
+  all - the first run's did not.
+- **Correction to an earlier conclusion of mine.** `OFFICEQA_STATE.md` section A0 claimed
+  `OFFICEQA_TRANSFER_MANIFEST.json` was untracked and that its `source_commit` and per-file `source` paths were
+  null. All three were wrong: the manifest is tracked, and the fields exist as `source_head` and `path`, populated,
+  with `source_status` recording that the sources are untracked in their own worktree. There was no provenance gap.
+- **Verified result, regression case:** on UID0014's epoch-2 trace the old C report fires
+  `scale_conversion_missing` 29x ("No conversion step appears"). The obligation form discharges 13 of those - the
+  actor converted `1,004,461 (in millions)` to `$1,004.461 billion` correctly at step 1 - and reports 23 as
+  VIOLATED for a different, checkable reason: thousands to billions applied with factor 1e-3 where 1e-6 is
+  required, so 14 regression inputs are 1,000x too large. The plain report P reports only `no_matches`.
+- **Negative results kept:** adjudicating evidence is very sparse (5 table pairs over 3 tool steps in 24 attempts;
+  126 of 128 development tool steps leave the column atom UNKNOWN); the learned model is 3 contracts; and one of
+  those 3 acquires a counterexample on the confirmation collection (`read.effect.1 = width_uniform` at
+  UID0028@42), so the final model is not fully confirmed on later data.
+- **Lean: generated, NOT compiled.** 64 core-only statements, every one closed by `by decide` or `rfl`; the general
+  results are stated over the finite Kleene domain acceptability factors through, so they are closed by exhaustion
+  rather than by a tactic script. The Python mirror agrees with the file on every row (0 mismatches), which is a
+  cross-implementation check and not a Lean proof. `lean`/`lake`/`elan` are absent on the workstation and on the
+  Great Lakes login node (checked, not assumed), and the OQA-5 authorization is expressed in A40-hours and
+  DeepSeek calls and names no CPU job-hours, so compiling it was left as a request: 1 CPU, 2 GB, 15 min, 0 GPU,
+  no key, no paid call.
+- **Proposal, not implemented:** a `guard` field on `effect` contracts, with "guard false or unknown -> neutral".
+  It changes contract semantics, so it waits for approval. Two worked examples of where the current format bites
+  are in port note section 3.3.
+
+### Next actions
+User decisions: compile the Lean file (needs the CPU job above); approve the guarded-`effect` extension; spend
+1-2 of the 8 remaining DeepSeek calls on one learner round to test whether a paid learner proposes anything the
+deterministic proposer does not.
