@@ -41,29 +41,49 @@ import datetime
 import hashlib
 import json
 import os
-import re
 import sys
 
 RULE = "OQA-FREEZE-1"
 ARMS = ("A", "B", "C")
-# Marker blocks the trainer injects into a skill. Two skills that differ ONLY inside these carry the same
-# advice to the actor, which is why "distinct by digest" and "distinct by advice" are different counts.
-_MARKERS = re.compile(
-    r"\n*<!--\s*(SLOW_UPDATE|META_SKILL|APPENDIX)\s*-->.*?<!--\s*/\1\s*-->\n*",
-    re.DOTALL,
-)
-_HEAD = re.compile(r"\n*##+\s*(SLOW_UPDATE|META_SKILL|APPENDIX)\s*\n.*?(?=\n##\s|\Z)", re.DOTALL)
 
 
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _heldout_module():
+    """Load `oqa_heldout.py` by path, for its ONE definition of what a skill's advice is.
+
+    I first wrote a second copy of the marker-stripping here, with the markers guessed as
+    `<!-- SLOW_UPDATE -->...<!-- /SLOW_UPDATE -->`. The real ones are
+    `<!-- SLOW_UPDATE_START -->...<!-- SLOW_UPDATE_END -->`, so the copy stripped nothing and this tool
+    reported three skills distinct by advice where there are two. One definition, loaded, is the fix; a
+    failure to load is raised rather than silently fallen back on, because a wrong answer here overstates how
+    far the arms diverged.
+
+    `python3 -I` removes the script's own directory from sys.path, so a plain import would not find a sibling
+    script. This is the same explicit load `oqa_reports.py` uses for the learned-contract modules.
+    """
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "oqa_heldout.py")
+    spec = importlib.util.spec_from_file_location("oqa_heldout_for_freeze", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}, which defines what a skill's advice is")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for name in ("_substantive", "_MARKER_PAIRS"):
+        if not hasattr(mod, name):
+            raise RuntimeError(f"{path} no longer defines {name}; the advice comparison cannot be trusted")
+    return mod
+
+
+_HELDOUT = _heldout_module()
+MARKER_PAIRS = _HELDOUT._MARKER_PAIRS
+
+
 def substantive(text: str) -> str:
     """The skill with the injected marker blocks stripped: what the actor is actually advised to do."""
-    out = _MARKERS.sub("\n", text)
-    out = _HEAD.sub("\n", out)
-    return "\n".join(line.rstrip() for line in out.strip().splitlines() if line.strip())
+    return _HELDOUT._substantive(text)
 
 
 def last_skill(arm_root: str) -> str | None:

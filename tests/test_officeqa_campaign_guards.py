@@ -1630,6 +1630,25 @@ def _skill_tree(root: str, *, s0: str, selected: dict, last: dict) -> str:
     return init
 
 
+def test_the_advice_stripper_uses_the_markers_the_trainer_actually_writes(tmp_path):
+    """The placeholder a rejected step leaves behind must count as the SAME advice as the skill it annotates.
+
+    This is the check that would have caught my guessed marker format: with the wrong markers the stripper is
+    a no-op and every rejected step's snapshot looks like a new skill.
+    """
+    F = _freezer()
+    assert ("<!-- SLOW_UPDATE_START -->", "<!-- SLOW_UPDATE_END -->") in F.MARKER_PAIRS
+    base = "Advice line one.\nAdvice line two."
+    placeholder = base + "\n\n<!-- SLOW_UPDATE_START -->\n<!-- SLOW_UPDATE_END -->\n"
+    filled = base + "\n\n<!-- SLOW_UPDATE_START -->\nreal guidance\n<!-- SLOW_UPDATE_END -->\n"
+    assert F.substantive(placeholder) == F.substantive(base), \
+        "an EMPTY placeholder does not change the advice"
+    assert F.substantive(filled) == F.substantive(base), \
+        "guidance inside a marker block is not part of the base advice either"
+    assert F.substantive(base + "\nAdvice line three.") != F.substantive(base), \
+        "but real text outside the markers IS"
+
+
 def test_the_freeze_counts_distinct_by_digest_and_by_advice(tmp_path):
     """Two skills that differ only inside an injected marker block carry the SAME advice to the actor.
 
@@ -1639,7 +1658,10 @@ def test_the_freeze_counts_distinct_by_digest_and_by_advice(tmp_path):
     F = _freezer()
     root = str(tmp_path)
     s0 = "Read the oracle page and answer."
-    with_marker = s0 + "\n\n<!-- SLOW_UPDATE -->\nsome guidance\n<!-- /SLOW_UPDATE -->\n"
+    # The REAL marker pair the trainer injects. I first wrote this test with
+    # `<!-- SLOW_UPDATE -->...<!-- /SLOW_UPDATE -->`, which exists nowhere in this repo, so the test passed
+    # against a stripper that stripped nothing.
+    with_marker = s0 + "\n\n<!-- SLOW_UPDATE_START -->\nsome guidance\n<!-- SLOW_UPDATE_END -->\n"
     init = _skill_tree(root, s0=s0,
                        selected={"A": s0, "B": "A GENUINELY DIFFERENT SKILL", "C": s0},
                        last={"A": with_marker, "B": "A GENUINELY DIFFERENT SKILL", "C": with_marker})
