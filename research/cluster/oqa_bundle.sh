@@ -38,6 +38,10 @@ printf '%s\n' "$SHA" > "$STAGE/COMMIT"
 
 DEST="$(ssh gl 'source ~/.config/lean_skillopt/site.env; printf "%s" "$PROJECT_ROOT"')/$NAME"
 ssh gl "mkdir -p '$DEST'"
+# Remove any earlier tree from this bundle dir. The job body extracts oqa_tree_*.tar.gz by glob, so two of them
+# would make it extract the wrong revision or fail outright - and the manifest would not catch it, because a
+# manifest only checks the files it lists.
+ssh gl "rm -f '$DEST'/oqa_tree_*.tar.gz"
 scp -q "$STAGE/$TAR" "$STAGE/$(basename "$BODY")" "$STAGE/COMMIT" "$STAGE/MANIFEST.sha256" "gl:$DEST/"
 echo "bundle   $DEST"
 echo "commit   $SHA"
