@@ -330,8 +330,13 @@ def test_the_budget_reports_the_slow_update_prompt_against_what_was_actually_pro
     limit = chosen["context_risk"]["pre_send_guard_limit_tokens"]
     assert limit + 16384 <= 243986 + 7562
 
-    # The account rate limit, not latency, must be named as the constraint at this scale.
-    assert chosen["actor"]["binding_constraint"] == "the 50 RPM ACCOUNT limit"
+    # MEASURED on the campaign itself (job 66272737): 15.7 requests/min, so the account's 50 RPM limit is
+    # NOT what binds. The planned conclusion is kept beside the measured one, because the gap is the point.
+    assert "NOT the 50 RPM account" in chosen["actor"]["binding_constraint"]
+    assert chosen["actor"]["binding_constraint_as_planned"] == "the 50 RPM ACCOUNT limit"
+    assert chosen["actor"]["minutes_at_the_MEASURED_rate"] > chosen["actor"]["minutes_at_the_account_rate_limit"]
+    # One later-epoch arm-job needs more than the 60 minutes the plan allowed for it.
+    assert chosen["actor"]["job_minutes_for_one_later_epoch_arm"] > 55
 
 
 def test_the_budget_and_the_running_code_agree_on_the_prompt_limit():

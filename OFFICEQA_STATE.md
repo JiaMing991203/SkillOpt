@@ -83,6 +83,52 @@ prediction." That is in the report the optimizer reads, not only in a record bes
 
 Wall time floor 255 min from the account rate limit. **Nothing exceeds a ceiling.**
 
+### CORRECTED FROM THE CAMPAIGN'S OWN FIRST 47 ROLLOUTS (job 66272737) — read this, not the table above
+
+The table above was computed from the A40 pilot's per-question tokens. The campaign measured itself and three of
+those constants were wrong, two of them badly. From the spend ledger's own usage records over the first 47
+question-rollouts (24 training + 23 validation under S0):
+
+| constant | A40 estimate | **MEASURED here** | effect |
+|---|---|---|---|
+| attempts per question | 9.33 | **10.32** | +11% |
+| prompt tokens per question | 106,300 | **145,532** | +37% |
+| completion tokens per question | 4,221 | **10,525** | **+149%** |
+| throughput | 50 RPM (the account limit) | **15.7 requests/min** | wall time x3.2 |
+
+`cached_prompt_tokens` was 0 on every one of the 483 usage records, which confirms the endpoint does no prefix
+caching. 1 of 485 attempts failed and no 429 appeared, so **15.7 RPM is LATENCY, not throttling**: throughput is
+about `workers / mean request latency`, and with `workers: 4` only four questions are in flight while each
+question's tool loop is SEQUENTIAL - a question that reaches the 24-turn cap issues 24 requests one after
+another. **The plan's claim that "the binding constraint on wall time is the 50 RPM ACCOUNT limit" was wrong in
+the optimistic direction by a factor of 3.2.**
+
+**Cost per question-rollout: $0.00656** (budgeted $0.0046).
+
+| what | attempts | charge | against the authorization |
+|---|---|---|---|
+| **the 13 queued training jobs** (948 rollouts) | 9,783 | **$6.22** | inside $8.00, with $1.78 left |
+| held-out, per distinct skill (60 questions) | 619 | **$0.39** | |
+| everything at 7 distinct skills | 14,118 | **$8.97** | **OVER the $8.00 ceiling** |
+
+**THE ONE CEILING AT RISK IS THE ACTOR CHARGE, and only in the held-out stage.** Four distinct skills fit inside
+what the training chain leaves ($7.79); five or more do not ($8.18 / $8.58 / $8.97). **The held-out jobs are NOT
+submitted**, so nothing is committed: when the arms finish, run `oqa_heldout.py --plan`, read the distinct-skill
+count, and if it is 5 or more either ask for a raise to about $10 or cut the exploratory last-skill evaluations
+(the validation-selected skills are the primary comparison and there are at most 4 of those, S0 included).
+In the A40 two-arm run every candidate was rejected and both final skills were byte-identical to S0, which would
+collapse 7 requested skills to **one** distinct one - $0.39. So the worst case is unlikely, not impossible.
+
+Attempts and CPU job-hours are both fine: 14,118 of 15,000 even at 7 skills, and about 11 job-hours for the
+chain plus 0.66 per held-out skill, against 20 authorized.
+
+**ACTION TAKEN, 2026-11-17 ~04:00 EST:** the nine later-epoch jobs (66272741-66272749) had their time limit
+raised from 60 to **120 minutes** with `scontrol update`, because at the measured rate one of them needs about
+65 minutes (92 rollouts x 10.32 attempts / 15.7 per minute = 60.5 min of actor time, plus the optimizer calls)
+and would have hit a 60-minute wall and stopped the chain. Nothing else was changed: the config, the splits, the
+seeds and the per-job spend ceilings are untouched. The "each <= 60 min" job shape came from my own launch plan,
+not from the authorization, which caps CPU job-hours at 20.
+
 **FOUR GUARDS ARE IN FORCE, each because of a recorded failure. All four are inert unless their environment
 variables are set, so no other track's behaviour changes.**
 

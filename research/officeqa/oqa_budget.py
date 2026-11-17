@@ -17,22 +17,40 @@ import os
 # ── measured constants ──────────────────────────────────────────────────────────
 M = {
     "actor_requests_per_question": {
-        "value": 9.33,
-        "source": "runs/20261116-160952_officeqa_arm_66228142/arm_B/history.json step 2: rollout 224 calls over "
-                  "24 question-rollouts (12 train + 12 val) at a 24-turn cap. The other three measured steps "
-                  "give 6.9-7.6, so this is the HIGHEST of the four and is used deliberately.",
+        "value": 10.32,
+        "source": "MEASURED ON THIS CAMPAIGN, job 66272737's first 47 question-rollouts (24 training + 23 validation under the starting skill), read from the spend ledger's own usage records. This supersedes the A40 figure beside it, which was measured on 12 different questions served in bfloat16 and before the missing documents were fetched - with the documents present the actor reads more and writes more. 485 attempts over 47 question-rollouts, retries included, which is "
+                  "the right thing to count against an ATTEMPT cap. The superseded A40 figure was 9.33 "
+                  "(runs/20261116-160952_officeqa_arm_66228142/arm_B/history.json step 2: 224 calls over 24 "
+                  "question-rollouts; its other three steps gave 6.9-7.6).",
     },
     "actor_prompt_tokens_per_question": {
-        "value": 106300,
-        "source": "same step: 2,551,206 prompt tokens / 24 question-rollouts.",
+        "value": 145532,
+        "source": "MEASURED ON THIS CAMPAIGN, job 66272737's first 47 question-rollouts (24 training + 23 validation under the starting skill), read from the spend ledger's own usage records. This supersedes the A40 figure beside it, which was measured on 12 different questions served in bfloat16 and before the missing documents were fetched - with the documents present the actor reads more and writes more. 6,840,022 prompt tokens over 47 question-rollouts, and "
+                  "cached_prompt_tokens 0 on every one, which confirms the endpoint does no prefix caching. "
+                  "The superseded A40 figure was 106,300 (2,551,206 / 24), 37 per cent lower.",
     },
     "actor_completion_tokens_per_question": {
-        "value": 4221,
-        "source": "same step: 101,307 completion tokens / 24 question-rollouts.",
+        "value": 10525,
+        "source": "MEASURED ON THIS CAMPAIGN, job 66272737's first 47 question-rollouts (24 training + 23 validation under the starting skill), read from the spend ledger's own usage records. This supersedes the A40 figure beside it, which was measured on 12 different questions served in bfloat16 and before the missing documents were fetched - with the documents present the actor reads more and writes more. 494,716 completion tokens over 47 question-rollouts. The superseded "
+                  "A40 figure was 4,221, which is 2.5x too low - the single largest error in the original "
+                  "budget and the reason the actor charge was underestimated.",
     },
     "actor_usd_per_m_prompt": {"value": 0.04, "source": "EmpirioLabs GET /v1/models/qwen3-5-4b, 2026-11-16."},
     "actor_usd_per_m_completion": {"value": 0.07, "source": "same."},
     "actor_rpm": {"value": 50, "source": "same: an ACCOUNT-WIDE limit, so concurrency cannot raise it."},
+    "actor_measured_rpm": {
+        "value": 15.7,
+        "source": "MEASURED on the campaign itself, job 66272737, from the spend ledger's per-attempt "
+                  "timestamps: 483 attempts over 30.8 minutes, and 15.8/min over the last 10 minutes of that "
+                  "window, so it is a steady rate and not a warm-up. The account's 50 RPM limit is therefore "
+                  "NOT what binds: 1 of 484 attempts failed and no 429 appeared, so this is LATENCY, not "
+                  "throttling. Throughput is about workers / mean request latency, and with `workers: 4` only "
+                  "four questions are in flight while each question's tool loop is SEQUENTIAL - a question that "
+                  "reaches the 24-turn cap issues 24 requests one after another. Median prompt 11,900 tokens, "
+                  "median completion 370, max completion 8,000. This figure supersedes the plan's claim that "
+                  "'the binding constraint on wall time is the 50 RPM ACCOUNT limit', which was wrong in the "
+                  "optimistic direction by a factor of 3.2.",
+    },
     "actor_median_latency_s": {
         "value": 3.41,
         "source": "job 66264849 smoke test, 20 attempts: 1.63 / 3.41 / 7.04 s min/median/max.",
@@ -156,6 +174,9 @@ def budget(slow_samples: int, heldout_skills: int) -> dict:
 
     rate_minutes = requests / v("actor_rpm")
     latency_minutes = questions * v("actor_requests_per_question") * v("actor_median_latency_s") / 4 / 60
+    # What the campaign actually achieves, measured on itself. Both figures above are kept because they are
+    # what the plan was built on and the difference is the point.
+    measured_minutes = requests / v("actor_measured_rpm")
 
     return {
         "slow_update_samples": slow_samples,
@@ -175,8 +196,15 @@ def budget(slow_samples: int, heldout_skills: int) -> dict:
             "http_requests": round(requests),
             "usd": round(actor_usd, 2),
             "minutes_at_the_account_rate_limit": round(rate_minutes, 1),
+            "minutes_at_the_MEASURED_rate": round(measured_minutes, 1),
+            "job_minutes_for_one_later_epoch_arm": round(
+                92 * v("actor_requests_per_question") / v("actor_measured_rpm"), 1),
             "minutes_if_latency_bound_at_4_workers": round(latency_minutes, 1),
-            "binding_constraint": ("the 50 RPM ACCOUNT limit" if rate_minutes > latency_minutes else "latency"),
+            # MEASURED, not predicted: the account limit is not what binds at this prompt size.
+            "binding_constraint": "per-request latency and the sequential tool loop, NOT the 50 RPM account "
+                                  "limit; measured 15.7 requests/min against the limit's 50",
+            "binding_constraint_as_planned": ("the 50 RPM ACCOUNT limit" if rate_minutes > latency_minutes
+                                              else "latency"),
         },
         "optimizer_deepseek": {
             "calls": calls, "calls_per_arm": calls_per_arm,
