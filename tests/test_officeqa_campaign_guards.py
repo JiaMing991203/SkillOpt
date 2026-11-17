@@ -1711,14 +1711,23 @@ def test_verify_resolves_archived_paths_for_both_record_shapes(tmp_path):
     assert arch and all("live_path" in a for a in arch)
 
     out = REC.verify(str(tmp_path), rec)
-    assert out["unchanged_after_recovery"], "it must resolve at least one archived file"
-    assert all(r["exists"] for r in out["unchanged_after_recovery"]), \
-        [r for r in out["unchanged_after_recovery"] if not r["exists"]]
+    byp = {r["path"]: r for r in out["unchanged_after_recovery"]}
+    assert byp, "it must resolve at least one archived file"
+    # Resolution is correct when the path is relative to the CAMPAIGN root, so an arm's file carries its arm
+    # prefix. Before the fix these came back resolved against the arm root twice over.
+    assert all(k.startswith(("arm_", "contracts/")) for k in byp), sorted(byp)
+    # A file that was archived and left alone is found, and is the same file.
+    assert byp["arm_A/runtime_state.json"]["exists"] is True
+    # A resume marker was archived and then deliberately REMOVED, so it must resolve and be reported absent.
+    # This is the case my first version of this test wrongly asserted could not happen.
+    marker = byp["arm_A/slow_update/epoch_02/slow_result.json"]
+    assert marker["exists"] is False and marker["unchanged"] is False
 
     # The same record with live_path stripped, as an older run would have written it.
     old_shape = json.loads(json.dumps(rec))
     for a in old_shape["actions"]:
         a.pop("live_path", None)
     out2 = REC.verify(str(tmp_path), old_shape)
-    assert len(out2["unchanged_after_recovery"]) == len(out["unchanged_after_recovery"])
-    assert all(r["exists"] for r in out2["unchanged_after_recovery"])
+    assert {r["path"]: (r["exists"], r["unchanged"]) for r in out2["unchanged_after_recovery"]} == \
+           {r["path"]: (r["exists"], r["unchanged"]) for r in out["unchanged_after_recovery"]}, \
+        "the fallback must resolve exactly what live_path resolves"
