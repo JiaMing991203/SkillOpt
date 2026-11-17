@@ -2,9 +2,11 @@
 
 **Last update: 2026-11-17 03:28 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
-**THE THREE-ARM CAMPAIGN IS RUNNING.** 13 CPU jobs are queued as one `afterok` chain, **66272737 -> 66272749**;
-0 GPUs held and 0 requested. See section **A0-RUN** for the chain, the guards in force and what to check when it
-finishes. The user authorized it on 2026-11-17: 20 CPU job-hours, zero GPUs, 15,000 EmpirioLabs attempts and
+**THE THREE-ARM CAMPAIGN IS RUNNING, on its SECOND chain.** The first chain reached arm C epoch 1 and died
+there on a concurrent-import race (job 66272740); the fix is `df9d922` and the chain was resumed from that point
+as **66273855 -> 66273864** under commit `797846e`. Arms A and B epoch 1 are COMPLETE and were NOT re-run - see
+**A0-FAIL-1** for why that is sound. 0 GPUs held and 0 requested. See **A0-RUN** for the guards in force and
+what to check when it finishes. The user authorized it on 2026-11-17: 20 CPU job-hours, zero GPUs, 15,000 EmpirioLabs attempts and
 $8.00, 130 DeepSeek calls and $4.00, inside the shared 50 RPM account limit.
 
 **The preflight the user required is COMPLETE** (jobs 66272358 and 66272499, both free) -> section **A0-PREP**.
@@ -41,14 +43,23 @@ peer's ACK coordinates capacity, never authorizes work.
 `$PROJECT_ROOT/runs/20261117-officeqa-3arm-campaign`.**
 
 ONE `afterok` chain, so a single failure stops everything downstream instead of spending the authorization on a
-chain whose earlier step is broken:
+chain whose earlier step is broken. It did exactly that, which is why there are two chains:
 
 ```
-66272737 shared   ->  66272738 A.e1 -> 66272739 B.e1 -> 66272740 C.e1
-                  ->  66272741 A.e2 -> 66272742 B.e2 -> 66272743 C.e2
-                  ->  66272744 A.e3 -> 66272745 B.e3 -> 66272746 C.e3
-                  ->  66272747 A.e4 -> 66272748 B.e4 -> 66272749 C.e4
+CHAIN 1, commit 91b2494, bundle oqa_campaign_20261117
+  66272737 shared  COMPLETED   ->  66272738 A.e1  COMPLETED  ->  66272739 B.e1  COMPLETED
+  ->  66272740 C.e1  FAILED (the import race)  ->  66272741..66272749  CANCELLED by the dependency
+
+CHAIN 2, commit 797846e, bundle oqa_campaign_20261117b, resumed with `--from C.1`
+  66273855 C.e1 -> 66273856 A.e2 -> 66273857 B.e2 -> 66273858 C.e2
+               -> 66273859 A.e3 -> 66273860 B.e3 -> 66273861 C.e3
+               -> 66273862 A.e4 -> 66273863 B.e4 -> 66273864 C.e4
 ```
+
+**The shared stage was NOT re-run and arms A and B epoch 1 were NOT re-run.** Re-rolling the 24 training
+questions at temperature 0.7 would hand the later arms DIFFERENT traces from the ones arms A and B already
+reflected on, which would break the comparison rather than repair it. The epoch-1 jobs keep their 60-minute
+limit; the later epochs now ask for 120 (see the measured throughput below).
 
 **Why a chain and not concurrent arms.** The 50 RPM limit is ACCOUNT-WIDE, and one job with `workers: 4` at the
 measured 3.41 s median latency already offers about 70 RPM - so a single job is rate-limited on its own.
@@ -200,6 +211,60 @@ variables are set, so no other track's behaviour changes.**
 * The held-out evaluation is NOT in the chain. Run `research/officeqa/oqa_heldout.py --plan` over the three arm
   directories afterwards: it deduplicates S0 plus each arm's selected and last skill BY DIGEST, so at most 7
   rollouts of the 60 questions and fewer whenever skills coincide. 420 of the 12,763 budgeted requests cover it.
+
+---
+
+## A0-FAIL-1. Arm C epoch 1 died on a concurrent-import race (job 66272740), and why A and B stand
+
+**The failure.** Arm C epoch 1 wrote 16 of its 24 reports and then died:
+
+```
+File "research/officeqa/oqa_reports.py", line 72, in _lc_modules
+  spec.loader.exec_module(mod)
+File "research/officeqa/oqa_lc_report.py", line 43, in <module>
+  _ORDER = {CHAIN.VIOLATED: 0, CHAIN.OUTSTANDING: 1, CHAIN.UNKNOWN: 2, CHAIN.DISCHARGED: 3}
+AttributeError: module 'oqa_lc_chain' has no attribute 'VIOLATED'
+```
+
+Arms A and B ran the same code through the same two analyst threads and both completed. That asymmetry is the
+character of the bug: it is a race, and arm C lost it.
+
+**The mechanism, REPRODUCED rather than inferred.** `_lc_modules()` ran on every report, from a
+ThreadPoolExecutor sized by `gradient.analyst_workers`, and its loop registered an EMPTY module in `sys.modules`
+and only then executed it. Thread 1 registers an empty `oqa_lc_chain` and begins a slow exec; thread 2 arrives,
+finds the name present so its own `setdefault` is a no-op, execs its OWN copy from the warm page cache,
+overtakes thread 1, and reaches `oqa_lc_report`, whose module-level `import oqa_lc_chain as CHAIN` returns
+thread 1's still-empty object. Hand-written loading bypasses the import system's per-module lock, which exists
+precisely to prevent this.
+
+**My first reproduction attempt FAILED**, and that was informative: a uniform delay keeps the threads in
+lockstep and neither reads the other's half-built module. Making only the FIRST exec slow lets thread 2 overtake,
+and the job's error then appears verbatim. Against the fixed loader, 24 callers over six stagger patterns gave
+zero exceptions and zero identity failures.
+
+**The fix (`df9d922`)**: load once per process under a lock, and reuse anything already in `sys.modules`. That
+also removes a quieter hazard the old loop carried - `oqa_lc_report` imports `oqa_lc_replay` and
+`oqa_obligations`, which come after it in the load order, so the old code executed those twice and returned a
+DIFFERENT instance from the one `oqa_lc_report` holds.
+
+**WHY ARMS A AND B EPOCH 1 STAND.** Two independent reasons, both checked rather than argued:
+
+1. Every module-level assignment in the five learned-contract modules is an immutable constant - regexes,
+   literal dicts, cue lists. There is no module-level mutable cache, so two instances behave identically.
+2. **All 24 of arm B's stored epoch-1 reports rebuild BYTE-IDENTICAL under the fixed loader.** Checked against
+   the files the job wrote, not against a fixture.
+
+So the fix is a loader fix and nothing about report content changes. Arm A has no reports at all.
+
+**What the failure cost:** 3 optimizer calls (~$0.07), sunk. Arm C's `runtime_state.json` says
+`last_completed_step: 0`, so the rerun redoes step 1 from scratch; its injected rollout and the shared gate
+baseline are on disk, so no actor request is re-spent for those, and its 17 cached reports are keyed on
+(trace, model) and will be correctly reused. The ledger at resubmission: target 804 attempts / $0.4925, optimizer
+17 calls / $0.4669, zero refusals, verdict PASS.
+
+**The revision changes mid-campaign and that is recorded, not hidden:** arms A and B epoch 1 ran under
+`91b2494`, everything from arm C epoch 1 onward under `797846e`. The old bundle is kept intact on the cluster as
+the record of what A and B ran, and its manifest still verifies.
 
 ---
 

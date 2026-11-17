@@ -47,7 +47,7 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T08:30:00Z	66272737	oqa_campaign	shared	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; 24 train + 24 val under S0, actor only, optimizer key NOT loaded; seeds M0; job caps 900 attempts / $0.80
 2026-11-17T08:30:00Z	66272738	oqa_campaign	arm A epoch 1	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272737; job caps 700/$0.60 actor, 12/$0.50 optimizer
 2026-11-17T08:30:00Z	66272739	oqa_campaign	arm B epoch 1	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272738; job caps 700/$0.60 actor, 12/$0.50 optimizer
-2026-11-17T08:30:00Z	66272740	oqa_campaign	arm C epoch 1	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272739; job caps 700/$0.60 actor, 12/$0.50 optimizer
+2026-11-17T09:45:00Z	66272740	oqa_campaign	arm C epoch 1 (FAILED)	91b249449a48fb850b82a3d0d62457bfe1ca291a	FAILED after 16 of 24 reports: concurrent-import race in oqa_reports._lc_modules (AttributeError: module 'oqa_lc_chain' has no attribute 'VIOLATED'). 3 optimizer calls spent. Cancelled the 9 downstream jobs 66272741-66272749 via --kill-on-invalid-dep.
 2026-11-17T08:30:00Z	66272741	oqa_campaign	arm A epoch 2	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272740; job caps 1600/$1.20 actor, 16/$0.70 optimizer
 2026-11-17T08:30:00Z	66272742	oqa_campaign	arm B epoch 2	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272741; job caps 1600/$1.20 actor, 16/$0.70 optimizer
 2026-11-17T08:30:00Z	66272743	oqa_campaign	arm C epoch 2	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272742; job caps 1600/$1.20 actor, 16/$0.70 optimizer
@@ -57,3 +57,13 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T08:30:00Z	66272747	oqa_campaign	arm A epoch 4	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272746; job caps 1600/$1.20 actor, 16/$0.70 optimizer
 2026-11-17T08:30:00Z	66272748	oqa_campaign	arm B epoch 4	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272747; job caps 1600/$1.20 actor, 16/$0.70 optimizer
 2026-11-17T08:30:00Z	66272749	oqa_campaign	arm C epoch 4	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272748; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T09:45:00Z	66273855	oqa_campaign	arm C epoch 1	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 60min; chain head (the shared stage is NOT re-run)
+2026-11-17T09:45:00Z	66273856	oqa_campaign	arm A epoch 2	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273855
+2026-11-17T09:45:00Z	66273857	oqa_campaign	arm B epoch 2	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273856
+2026-11-17T09:45:00Z	66273858	oqa_campaign	arm C epoch 2	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273857
+2026-11-17T09:45:00Z	66273859	oqa_campaign	arm A epoch 3	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273858
+2026-11-17T09:45:00Z	66273860	oqa_campaign	arm B epoch 3	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273859
+2026-11-17T09:45:00Z	66273861	oqa_campaign	arm C epoch 3	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273860
+2026-11-17T09:45:00Z	66273862	oqa_campaign	arm A epoch 4	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273861
+2026-11-17T09:45:00Z	66273863	oqa_campaign	arm B epoch 4	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273862
+2026-11-17T09:45:00Z	66273864	oqa_campaign	arm C epoch 4	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273863
