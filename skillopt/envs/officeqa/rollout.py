@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -727,8 +728,36 @@ def process_one(
         "last_finish_reason": last_response_metadata.get("finish_reason", ""),
         "target_system_prompt": system,
         "target_user_prompt": user,
+        "rollout_settings_fingerprint": rollout_settings_fingerprint(
+            search_mode=search_mode, use_local_tools=use_local_tools, max_tool_turns=max_tool_turns,
+            max_queries_per_turn=max_queries_per_turn, max_completion_tokens=max_completion_tokens),
     }
     return result
+def rollout_settings_fingerprint(*, search_mode: str, use_local_tools: bool, max_tool_turns: int,
+                                 max_queries_per_turn: int, max_completion_tokens: int) -> str:
+    """The prompt-shaping settings of a rollout, as a short stable digest.
+
+    WHY IT IS RECORDED. The provenance guard compares the system prompt a saved row ran under against the one
+    the current call would build, which catches a changed SKILL, a changed search mode and a changed
+    use_local_tools. It cannot catch a changed `max_tool_turns`: in the offline/local-tools mode this project
+    uses, the turn budget appears in the per-round instruction and in the user prompt, not in the system
+    prompt. A rollout truncated at 12 rounds is nevertheless a different rollout from one allowed 24.
+
+    So every row written from now on carries this fingerprint and the guard checks it when present. Rows
+    written before it existed do not have one; for those the guard falls back to the system prompt and says
+    so, which is sound for the OfficeQA campaign because one config file fixes these settings for all three
+    arms and both runs.
+    """
+    payload = json.dumps({
+        "search_mode": _normalize_search_mode(search_mode),
+        "use_local_tools": bool(use_local_tools),
+        "max_tool_turns": int(max_tool_turns),
+        "max_queries_per_turn": int(max_queries_per_turn),
+        "max_completion_tokens": int(max_completion_tokens),
+    }, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def run_batch(
     items: list[dict],
     out_root: str,
@@ -775,6 +804,10 @@ def run_batch(
         max_tool_turns=max_tool_turns,
         max_queries_per_turn=max_queries_per_turn,
     ) if guard else ""
+    fingerprint = rollout_settings_fingerprint(
+        search_mode=search_mode, use_local_tools=use_local_tools, max_tool_turns=max_tool_turns,
+        max_queries_per_turn=max_queries_per_turn, max_completion_tokens=max_completion_tokens)
+    no_fingerprint = 0
 
     done_ids: set[str] = set()
     existing: list[dict] = []
@@ -786,11 +819,25 @@ def run_batch(
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if guard and str(row.get("target_system_prompt") or "") != expected_system:
-                    stale.append(str(row.get("id")))
-                    continue
+                if guard:
+                    stored_fp = str(row.get("rollout_settings_fingerprint") or "")
+                    if str(row.get("target_system_prompt") or "") != expected_system:
+                        stale.append(str(row.get("id")))
+                        continue
+                    if stored_fp and stored_fp != fingerprint:
+                        stale.append(str(row.get("id")))
+                        continue
+                    if not stored_fp:
+                        no_fingerprint += 1
                 done_ids.add(str(row.get("id")))
                 existing.append(row)
+    if guard and no_fingerprint:
+        print(
+            f"    [rollout] provenance guard: {no_fingerprint} saved row(s) predate the settings "
+            f"fingerprint, so their skill and search mode were checked but their turn budget could not be. "
+            f"Sound here because one config file fixes it; see rollout_settings_fingerprint.",
+            flush=True,
+        )
     if stale:
         # results.jsonl is append-only, so the re-rolled rows would otherwise land BESIDE the superseded ones
         # and every downstream reader - the scorer, the contract replay, the inventory - would see the same id

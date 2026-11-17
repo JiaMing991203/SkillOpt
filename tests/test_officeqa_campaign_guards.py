@@ -1043,22 +1043,79 @@ def test_the_guard_re_rolls_only_the_rows_that_changed(tmp_path, monkeypatch):
     assert sent == ["drop"], f"only the stale row should be paid for again, re-rolled: {sent}"
 
 
-def test_the_guard_notices_a_changed_turn_limit_not_only_a_changed_skill(tmp_path, monkeypatch):
-    """`settings match` means the whole prompt, not just the skill: the turn budget is in the system prompt."""
+def _row(RO, *, skill, turns, fingerprint: bool):
+    row = {"id": "q1", "hard": 1,
+           "target_system_prompt": RO._build_system(skill, search_mode="offline", use_local_tools=True,
+                                                    max_tool_turns=turns, max_queries_per_turn=4)}
+    if fingerprint:
+        row["rollout_settings_fingerprint"] = RO.rollout_settings_fingerprint(
+            search_mode="offline", use_local_tools=True, max_tool_turns=turns,
+            max_queries_per_turn=4, max_completion_tokens=16384)
+    return row
+
+
+def test_a_changed_turn_limit_is_invisible_in_the_system_prompt_alone(tmp_path, monkeypatch):
+    """The guard's real coverage, stated rather than assumed.
+
+    I first wrote this test asserting that a changed `max_tool_turns` would be caught by the system-prompt
+    comparison, and it failed - correctly. In the offline/local-tools mode this project uses, the turn budget
+    appears in the per-round instruction and the USER prompt; the system prompt is the skill section alone. A
+    row from before the settings fingerprint existed therefore cannot be checked for it, and is reused.
+    """
     RO = _rollout_module()
     monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
     d = str(tmp_path / "r")
-    RO_system = RO._build_system("S", search_mode="offline", use_local_tools=True,
-                                 max_tool_turns=12, max_queries_per_turn=4)
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "results.jsonl"), "w", encoding="utf-8") as f:
-        f.write(json.dumps({"id": "q1", "hard": 1, "target_system_prompt": RO_system}) + "\n")
+        f.write(json.dumps(_row(RO, skill="S", turns=12, fingerprint=False)) + "\n")
     sent: list[str] = []
     monkeypatch.setattr(RO, "process_one", lambda item, out_root, skill_content, **kw: (
         sent.append("q1"), {"id": "q1", "hard": 0, "target_system_prompt": "x"})[1])
     RO.run_batch([{"id": "q1"}], d, "S", search_mode="offline", use_local_tools=True,
                  max_tool_turns=24)
-    assert sent == ["q1"], "a different max_tool_turns is a different prompt and must not be reused"
+    assert sent == [], "a pre-fingerprint row is reused; the turn budget is not in the system prompt"
+
+
+def test_a_changed_turn_limit_IS_caught_once_the_row_carries_a_fingerprint(tmp_path, monkeypatch):
+    RO = _rollout_module()
+    monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
+    d = str(tmp_path / "r")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "results.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps(_row(RO, skill="S", turns=12, fingerprint=True)) + "\n")
+    sent: list[str] = []
+    monkeypatch.setattr(RO, "process_one", lambda item, out_root, skill_content, **kw: (
+        sent.append("q1"), {"id": "q1", "hard": 0, "target_system_prompt": "x"})[1])
+    RO.run_batch([{"id": "q1"}], d, "S", search_mode="offline", use_local_tools=True,
+                 max_tool_turns=24)
+    assert sent == ["q1"], "a fingerprinted row records its turn budget, so the change must be caught"
+
+
+def test_a_matching_fingerprint_does_not_force_a_re_roll(tmp_path, monkeypatch):
+    RO = _rollout_module()
+    monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
+    d = str(tmp_path / "r")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "results.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps(_row(RO, skill="S", turns=24, fingerprint=True)) + "\n")
+    out = RO.run_batch([{"id": "q1"}], d, "S", search_mode="offline", use_local_tools=True,
+                       max_tool_turns=24)
+    assert [r["id"] for r in out] == ["q1"]
+
+
+def test_a_new_row_records_the_settings_it_ran_under(monkeypatch):
+    """So that a rollout written today can be checked for settings tomorrow."""
+    RO = _rollout_module()
+    a = RO.rollout_settings_fingerprint(search_mode="offline", use_local_tools=True, max_tool_turns=24,
+                                        max_queries_per_turn=4, max_completion_tokens=16384)
+    b = RO.rollout_settings_fingerprint(search_mode="offline", use_local_tools=True, max_tool_turns=12,
+                                        max_queries_per_turn=4, max_completion_tokens=16384)
+    c = RO.rollout_settings_fingerprint(search_mode="offline", use_local_tools=False, max_tool_turns=24,
+                                        max_queries_per_turn=4, max_completion_tokens=16384)
+    assert a != b and a != c and len(a) == 16
+    assert a == RO.rollout_settings_fingerprint(
+        search_mode="offline", use_local_tools=True, max_tool_turns=24,
+        max_queries_per_turn=4, max_completion_tokens=16384), "it must be stable"
 
 
 # ── the recovery tool ─────────────────────────────────────────────────────────
