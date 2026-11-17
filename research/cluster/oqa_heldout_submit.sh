@@ -140,6 +140,24 @@ print('%s\t%s\t%s\t%s' % (r.get('skill_sha256', ''), r.get('settings_fingerprint
 done
 [ -s "$DONE" ] && echo "already evaluated: $(wc -l < "$DONE" | tr -d ' ') skill(s) with recorded provenance"
 
+# FROZEN BY DIGEST. The held-out split is the pre-registered primary result and it is read once; that only
+# means something if what gets scored is the skill that was frozen. The recovery of the starved arm-epochs
+# rewrote best_skill.md and skills/skill_v*.md on purpose, so these files are not immutable by nature - they
+# are made immutable by being checked. A mismatch stops the submission rather than quietly changing what is
+# measured.
+FROZEN="$CAMP/heldout/SKILLS_FROZEN.json"
+if [ ! -f "$FROZEN" ]; then
+    ( cd "$W" && "$OQA_PY" -I research/officeqa/oqa_freeze_skills.py freeze --campaign "$CAMP" \
+        --skill-init skillopt/envs/officeqa/skills/initial.md --out "$FROZEN" ) || {
+        echo "could not freeze the evaluation set" >&2; exit 2; }
+else
+    echo "evaluation set already frozen at $FROZEN"
+fi
+( cd "$W" && "$OQA_PY" -I research/officeqa/oqa_freeze_skills.py verify --frozen "$FROZEN" ) || {
+    echo "REFUSING: a skill in the frozen evaluation set has changed. Either a job rewrote it, in which" >&2
+    echo "case the recovery is not finished, or the freeze is stale and should be redone deliberately." >&2
+    exit 3; }
+
 i=0
 PREV=""
 while IFS=$'\t' read -r ROLE ARM DIGEST PATH_; do

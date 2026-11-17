@@ -1602,3 +1602,94 @@ def test_the_rewind_uses_the_step_record_when_the_slow_update_rejected(tmp_path)
     state = json.load(open(os.path.join(arm, "runtime_state.json")))
     assert state["current_score"] == 0.1667, "a rejected slow update must not move the incumbent"
     assert state["current_origin"] == "initial_skill"
+
+
+# ── freezing the held-out evaluation set by digest ────────────────────────────
+
+def _freezer():
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "research", "officeqa", "oqa_freeze_skills.py")
+    spec = importlib.util.spec_from_file_location("oqa_freeze_skills_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _skill_tree(root: str, *, s0: str, selected: dict, last: dict) -> str:
+    init = os.path.join(root, "initial.md")
+    with open(init, "w", encoding="utf-8") as f:
+        f.write(s0)
+    for arm, text in selected.items():
+        d = os.path.join(root, f"arm_{arm}")
+        os.makedirs(os.path.join(d, "skills"), exist_ok=True)
+        with open(os.path.join(d, "best_skill.md"), "w", encoding="utf-8") as f:
+            f.write(text)
+        with open(os.path.join(d, "skills", "skill_v0004.md"), "w", encoding="utf-8") as f:
+            f.write(last[arm])
+    return init
+
+
+def test_the_freeze_counts_distinct_by_digest_and_by_advice(tmp_path):
+    """Two skills that differ only inside an injected marker block carry the SAME advice to the actor.
+
+    Counting those as two different skills would overstate how far the arms diverged, which is exactly the
+    mistake the A40 run invited: both arms' final skills came out byte-identical to S0.
+    """
+    F = _freezer()
+    root = str(tmp_path)
+    s0 = "Read the oracle page and answer."
+    with_marker = s0 + "\n\n<!-- SLOW_UPDATE -->\nsome guidance\n<!-- /SLOW_UPDATE -->\n"
+    init = _skill_tree(root, s0=s0,
+                       selected={"A": s0, "B": "A GENUINELY DIFFERENT SKILL", "C": s0},
+                       last={"A": with_marker, "B": "A GENUINELY DIFFERENT SKILL", "C": with_marker})
+    doc = F.freeze(root, init)
+    assert doc["requested"] == 7
+    # by digest: S0, the marker variant, and arm B's skill
+    assert doc["distinct_by_digest"] == 3, doc["by_digest"]
+    # by advice: the marker variant collapses into S0
+    assert doc["distinct_by_advice"] == 2, doc["by_advice"]
+    assert doc["primary_distinct_by_advice"] == 2, "S0 + arm B's selected skill"
+
+
+def test_the_freeze_detects_a_skill_that_changed_afterwards(tmp_path):
+    F = _freezer()
+    root = str(tmp_path)
+    init = _skill_tree(root, s0="S0", selected={"A": "selected A"}, last={"A": "last A"})
+    out = os.path.join(root, "SKILLS_FROZEN.json")
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(F.freeze(root, init), f)
+    assert F.verify(out)["verdict"] == "PASS"
+    with open(os.path.join(root, "arm_A", "best_skill.md"), "w", encoding="utf-8") as f:
+        f.write("SOMETHING ELSE")
+    res = F.verify(out)
+    assert res["verdict"] == "FAIL"
+    assert any("has CHANGED" in p for p in res["problems"])
+
+
+def test_the_freeze_detects_an_edited_record(tmp_path):
+    """The record is the evidence; an edited record must not pass itself."""
+    F = _freezer()
+    root = str(tmp_path)
+    init = _skill_tree(root, s0="S0", selected={"A": "selected A"}, last={"A": "last A"})
+    out = os.path.join(root, "SKILLS_FROZEN.json")
+    doc = F.freeze(root, init)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(doc, f)
+    assert F.verify(out)["verdict"] == "PASS"
+    doc["entries"][0]["sha256"] = "0" * 64
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(doc, f)
+    res = F.verify(out)
+    assert res["verdict"] == "FAIL"
+    assert any("has been edited" in p or "has CHANGED" in p for p in res["problems"])
+
+
+def test_a_missing_skill_is_recorded_rather_than_skipped(tmp_path):
+    F = _freezer()
+    root = str(tmp_path)
+    init = _skill_tree(root, s0="S0", selected={"A": "selected A"}, last={"A": "last A"})
+    os.remove(os.path.join(root, "arm_A", "best_skill.md"))
+    doc = F.freeze(root, init)
+    assert doc["missing"] and doc["missing"][0]["role"] == "validation_selected"
+    assert doc["requested"] == 2, "a missing skill must not be counted as present"
