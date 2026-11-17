@@ -380,6 +380,47 @@ heldout)
         --cfg-options "env.split_dir=$OQA_SPLIT3_DIR" "env.data_dirs=$OQA_DOCS_DIR" \
         >> "$OUTDIR/job.log" 2>&1 || status=$?
     log "eval exit $status"
+    # PROVENANCE, so an identical evaluation is never paid for twice. The user's rule is "reuse an evaluation
+    # when the skill digest and evaluation settings are identical", and a digest alone is not enough: the same
+    # skill scored under a different split, config or turn budget is a different measurement. This records all
+    # of it beside the result, and oqa_heldout_submit.sh skips a digest whose settings already match.
+    if [ "$status" = "0" ]; then
+        "$OQA_PY" -I -c "
+import hashlib, json, os, sys
+sys.path.insert(0, os.environ['OQA_TREE'])
+skill = open('$OQA_SKILL', 'rb').read()
+cfg = open('$CFG', 'rb').read()
+rec = {'schema': 'lso.heldout_provenance.v1',
+       'label': '$LABEL',
+       'skill_path': '$OQA_SKILL',
+       'skill_sha256': hashlib.sha256(skill).hexdigest(),
+       'skill_bytes': len(skill),
+       'split': 'valid_unseen',
+       'config': '$CFG',
+       'config_sha256': hashlib.sha256(cfg).hexdigest(),
+       'split_dir': '$OQA_SPLIT3_DIR',
+       'docs_dir': '$OQA_DOCS_DIR',
+       'commit': '$COMMIT',
+       'slurm_job': os.environ.get('SLURM_JOB_ID', '')}
+try:
+    import yaml
+    from skillopt.envs.officeqa import rollout as RO
+    c = yaml.safe_load(open('$CFG')) or {}
+    env = c.get('env') or {}
+    rec['settings_fingerprint'] = RO.rollout_settings_fingerprint(
+        search_mode=env.get('search_mode', 'offline'),
+        use_local_tools=bool(env.get('use_local_tools', True)),
+        max_tool_turns=int(env.get('max_tool_turns', 24)),
+        max_queries_per_turn=int(env.get('max_queries_per_turn', 4)),
+        max_completion_tokens=int(env.get('max_completion_tokens', 16384)))
+except Exception as exc:
+    rec['settings_fingerprint'] = ''
+    rec['settings_fingerprint_error'] = '%s: %s' % (type(exc).__name__, exc)
+json.dump(rec, open(os.path.join('$OUT', 'PROVENANCE.json'), 'w'), indent=2, sort_keys=True)
+print('provenance: %s %s' % (rec['skill_sha256'][:16], rec['settings_fingerprint']))
+" >> "$OUTDIR/job.log" 2>&1 || log "WARNING: could not write the held-out provenance record"
+        cp "$OUT/PROVENANCE.json" "$OUTDIR/" 2>/dev/null || true
+    fi
     ;;
 esac
 

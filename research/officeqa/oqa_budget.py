@@ -252,12 +252,73 @@ def budget(slow_samples: int, heldout_skills: int) -> dict:
     }
 
 
+# ── THE AUTHORIZATION IN FORCE, and what has already been charged against it ─────────────────────────────────
+#
+# These are TOTALS for the campaign, as amended by the user on 2026-11-17, not fresh allowances. The `spent`
+# figures are MEASURED - from the campaign ledger's own per-process records and from sacct - so `headroom`
+# below is what is really left, not what a plan assumed. docs/research/OFFICEQA_AUTHORIZATION.md carries the
+# grant's wording, the inclusion rule and the arithmetic.
+CEILINGS = {
+    "actor_attempts": {"ceiling": 30_000, "spent": 7_313,
+                       "source": "campaign ledger, 7,313 target attempts; nothing paid outside it"},
+    "actor_usd": {"ceiling": 16.00, "spent": 4.9441,
+                  "source": "campaign ledger, $4.9441 target"},
+    "optimizer_attempts": {"ceiling": 260, "spent": 67,
+                           "source": "66 in the campaign ledger + 1 for the size probe, job 66271290"},
+    "optimizer_usd": {"ceiling": 8.00, "spent": 2.2324,
+                      "source": "$2.1913 in the ledger at PEAK prices + $0.0411 for the size probe"},
+    "cpu_core_hours": {"ceiling": 40.0, "spent": 19.95,
+                       "source": "sacct CPUTimeRAW over all 18 OfficeQA jobs; the conservative reading, "
+                                 "since every job asked for 2 CPUs. Summing Elapsed instead gives 9.98."},
+    "gpus": {"ceiling": 0, "spent": 0, "source": "no OfficeQA job has ever requested one"},
+}
+
+
+def headroom() -> dict:
+    """What is left of each ceiling. Negative means a ceiling is already crossed, which must be reported."""
+    out = {}
+    for key, rec in CEILINGS.items():
+        left = rec["ceiling"] - rec["spent"]
+        out[key] = {"ceiling": rec["ceiling"], "spent": rec["spent"],
+                    "headroom": round(left, 4) if isinstance(left, float) else left,
+                    "fraction_used": (round(rec["spent"] / rec["ceiling"], 4)
+                                      if rec["ceiling"] else 0.0),
+                    "source": rec["source"]}
+    return out
+
+
+def fits(*, actor_attempts: int, actor_usd: float, optimizer_attempts: int, optimizer_usd: float,
+         cpu_core_hours: float) -> dict:
+    """Would this additional work stay inside every ceiling? Reports the exact gap when it would not."""
+    want = {"actor_attempts": actor_attempts, "actor_usd": actor_usd,
+            "optimizer_attempts": optimizer_attempts, "optimizer_usd": optimizer_usd,
+            "cpu_core_hours": cpu_core_hours, "gpus": 0}
+    h = headroom()
+    gaps = {}
+    for key, need in want.items():
+        left = h[key]["headroom"]
+        if need > left:
+            gaps[key] = {"need": need, "headroom": left, "gap": round(need - left, 4)}
+    return {"requested": want, "headroom": h, "gaps": gaps, "fits": not gaps}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--slow-samples", type=int, default=4)
     ap.add_argument("--heldout-skills", type=int, default=7)
+    ap.add_argument("--headroom", action="store_true",
+                    help="print what is left of each amended ceiling and stop")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
+    if args.headroom:
+        h = headroom()
+        print("%-20s %12s %12s %12s %8s" % ("resource", "ceiling", "spent", "headroom", "used"))
+        for key, v in h.items():
+            print("%-20s %12s %12s %12s %7.0f%%" % (key, v["ceiling"], v["spent"], v["headroom"],
+                                                    100 * v["fraction_used"]))
+        for key, v in h.items():
+            print(f"\n  {key}: {v['source']}")
+        return 0
     variants = {str(s): budget(s, args.heldout_skills) for s in sorted({args.slow_samples, 4, 6, 20})}
     chosen = budget(args.slow_samples, args.heldout_skills)
     payload = {"generated": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),

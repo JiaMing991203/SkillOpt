@@ -40,11 +40,34 @@ ACCOUNT="${OQA_ACCOUNT:-csriram0}"
 PARTITION="${OQA_PARTITION:-standard}"
 BODY="$B/oqa_campaign_body.sh"
 USD_PER_SKILL=0.394          # 60 questions x $0.00656, measured on this campaign (job 66272737)
-USD_ALREADY=6.22             # the training chain's projected spend
-USD_CAP="${OQA_CAP_ACTOR_USD:-8.00}"
+# The amended ceiling of 2026-11-17: $16 and 30,000 attempts in total for the campaign.
+# docs/research/OFFICEQA_AUTHORIZATION.md.
+USD_CAP="${OQA_CAP_ACTOR_USD:-16.00}"
 
 W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT
 tar -xzf "$B"/oqa_tree_*.tar.gz -C "$W"
+
+# WHAT HAS ALREADY BEEN SPENT, read from the ledger rather than carried as a constant. The earlier version of
+# this script hardcoded the training chain's PROJECTED $6.22; the chain actually charged $4.94, and after the
+# recovery it will be a third number. A projection that is checked against the wrong baseline is worse than no
+# check, so the baseline is measured here every time.
+# oqa_ledger_read.py prints its report as JSON on stdout and exits non-zero when the ledger's own verdict is
+# not PASS, which is a verdict about the CAPS and not about this figure - so the exit code is tolerated here
+# and the caps are checked separately, by running that tool on its own.
+USD_ALREADY="$( ( cd "$W" && "$OQA_PY" -I research/officeqa/oqa_ledger_read.py "$CAMP/ledger" 2>/dev/null || true ) \
+    | "$OQA_PY" -I -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print('%.4f' % float(d['observed']['target']['usd']))
+except Exception:
+    print('')
+" )"
+if [ -z "$USD_ALREADY" ]; then
+    echo "could not read the actor charge from $CAMP/ledger - refusing to project against a guess" >&2
+    exit 2
+fi
+echo "actor charged so far, from the ledger: \$$USD_ALREADY of \$$USD_CAP authorized"
 # oqa_heldout.py --out names a DIRECTORY and writes HELDOUT_PLAN.json inside it.
 PLAN_DIR="$W/plan"
 PLAN="$PLAN_DIR/HELDOUT_PLAN.json"
@@ -100,11 +123,35 @@ if [ "$("$OQA_PY" -I -c "print(1 if $PROJECTED > $USD_CAP else 0)")" = "1" ]; th
 fi
 echo
 
+# ALREADY EVALUATED, by digest AND settings. The held-out stage writes a PROVENANCE.json beside each result
+# recording the skill digest, the split, the config digest and the prompt-shaping settings fingerprint. A skill
+# whose digest and settings both match a completed evaluation is reused, not re-scored: 60 question-rollouts
+# and $0.39 each time.
+DONE="$W/done.txt"
+: > "$DONE"
+for PV in "$CAMP"/heldout/*/PROVENANCE.json; do
+    [ -f "$PV" ] || continue
+    "$OQA_PY" -I -c "
+import json, sys
+r = json.load(open('$PV'))
+print('%s\t%s\t%s\t%s' % (r.get('skill_sha256', ''), r.get('settings_fingerprint', ''),
+                            r.get('split', ''), r.get('label', '')))
+" >> "$DONE" 2>/dev/null || true
+done
+[ -s "$DONE" ] && echo "already evaluated: $(wc -l < "$DONE" | tr -d ' ') skill(s) with recorded provenance"
+
 i=0
 PREV=""
 while IFS=$'\t' read -r ROLE ARM DIGEST PATH_; do
     i=$((i + 1))
     [ "$i" -le "$N_WANT" ] || break
+    FULL="$(sha256sum "$PATH_" | cut -d" " -f1)"
+    if PRIOR="$(awk -F'\t' -v d="$FULL" -v s="valid_unseen" '$1==d && $3==s {print $4; exit}' "$DONE")" \
+       && [ -n "$PRIOR" ]; then
+        printf '  %-26s %s  REUSED from %s (identical digest and settings)\n' \
+            "$ROLE/${ARM}" "$DIGEST" "$PRIOR"
+        continue
+    fi
     case "$ROLE" in
         S0)                  LABEL="S0" ;;
         validation_selected) LABEL="primary_${ARM}_selected" ;;
