@@ -547,3 +547,78 @@ def test_one_job_cannot_eat_an_authorization_the_other_arms_still_need(tmp_path,
     LEDGER._state.clear()
     LEDGER._owner = "second-job"
     assert _spend_until_refused() == 12
+
+
+# ── the concurrent-import race that killed arm C's epoch-1 job (66272740) ─────
+
+def test_the_learned_contract_modules_load_once_under_concurrency(monkeypatch):
+    """`_lc_modules` must be safe to call from several analyst threads at once.
+
+    The failure this guards against is recorded: job 66272740 died after writing 16 of its 24 reports with
+    `AttributeError: module 'oqa_lc_chain' has no attribute 'VIOLATED'`, because the loader registered an EMPTY
+    module in sys.modules and only then executed it, so a second thread reaching `oqa_lc_report`'s module-level
+    `import oqa_lc_chain as CHAIN` saw a half-built module. Arm B's job, with the same code and the same two
+    threads, happened to get away with it.
+    """
+    import concurrent.futures
+    import importlib.util
+
+    research = os.path.join(REPO, "research", "officeqa")
+    if research not in sys.path:
+        sys.path.insert(0, research)
+    spec = importlib.util.spec_from_file_location("oqa_reports_racetest",
+                                                  os.path.join(research, "oqa_reports.py"))
+    reports = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reports)
+
+    # Clear anything a previous test left behind, so the race is really run.
+    for name in reports._LC_NAMES:
+        sys.modules.pop(name, None)
+    reports._LC_CACHE = None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        results = [f.result() for f in [ex.submit(reports._lc_modules) for _ in range(8)]]
+
+    first = results[0]
+    for got in results[1:]:
+        assert got is first, "every caller must get the SAME tuple: the modules load once per process"
+    _none, IR, CHAIN, REPORT, REPLAY, OB = first
+    # The attribute whose absence killed the job, plus the rest of the obligation vocabulary.
+    for state in ("VIOLATED", "DISCHARGED", "OUTSTANDING", "UNKNOWN"):
+        assert hasattr(CHAIN, state), f"oqa_lc_chain.{state} is missing: the module is half-built"
+    assert REPORT._ORDER[CHAIN.VIOLATED] == 0
+    # And the second, quieter hazard: one instance per module, not two.
+    assert REPORT.REPLAY is REPLAY, "oqa_lc_report and _lc_modules must hold the SAME oqa_lc_replay"
+    assert REPORT.OB is OB, "oqa_lc_report and _lc_modules must hold the SAME oqa_obligations"
+    assert REPORT.CHAIN is CHAIN
+    assert REPORT.IR is IR
+
+
+def test_a_failed_module_load_leaves_nothing_half_built(monkeypatch, tmp_path):
+    """If exec fails, sys.modules must not keep the broken module for the next caller to trip over."""
+    import importlib.util
+
+    research = os.path.join(REPO, "research", "officeqa")
+    spec = importlib.util.spec_from_file_location("oqa_reports_failtest",
+                                                  os.path.join(research, "oqa_reports.py"))
+    reports = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reports)
+    for name in reports._LC_NAMES:
+        sys.modules.pop(name, None)
+    reports._LC_CACHE = None
+
+    real = importlib.util.spec_from_file_location
+
+    def broken(name, path):
+        if name == "oqa_lc_chain":
+            raise RuntimeError("simulated loader failure")
+        return real(name, path)
+
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", broken)
+    with pytest.raises(RuntimeError, match="simulated loader failure"):
+        reports._lc_modules()
+    assert "oqa_lc_chain" not in sys.modules or getattr(sys.modules["oqa_lc_chain"], "VIOLATED", None), \
+        "a half-built oqa_lc_chain was left in sys.modules"
+    assert reports._LC_CACHE is None, "a failed load must not be cached"
+    for name in reports._LC_NAMES:
+        sys.modules.pop(name, None)

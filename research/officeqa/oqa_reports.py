@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import sys
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -60,19 +61,66 @@ def lc_model_digest(model_path: str) -> str:
     return str(IR.load_frozen(model_path).get("sha256") or "")
 
 
+_LC_NAMES = ("oqa_lc_ir", "oqa_lc_chain", "oqa_lc_report", "oqa_lc_replay", "oqa_obligations")
+_LC_LOCK = threading.Lock()
+_LC_CACHE: tuple | None = None
+
+
 def _lc_modules():
-    """Import the learned-contract modules by path (research instrumentation, not a package)."""
-    import importlib.util
-    here = os.path.dirname(os.path.abspath(__file__))
-    mods = []
-    for name in ("oqa_lc_ir", "oqa_lc_chain", "oqa_lc_report", "oqa_lc_replay", "oqa_obligations"):
-        spec = importlib.util.spec_from_file_location(name, os.path.join(here, f"{name}.py"))
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules.setdefault(name, mod)
-        spec.loader.exec_module(mod)
-        mods.append(mod)
-    IR, CHAIN, REPORT, REPLAY, OB = mods
-    return None, IR, CHAIN, REPORT, REPLAY, OB
+    """Import the learned-contract modules by path, ONCE per process and under a lock.
+
+    WHY THE LOCK AND THE CACHE. This function used to execute all five modules on EVERY call, and the analyst
+    minibatches run in a ThreadPoolExecutor (`gradient.analyst_workers`), so two threads could be inside it at
+    once. The old body did
+
+        sys.modules.setdefault(name, mod)   # registers an EMPTY module
+        spec.loader.exec_module(mod)        # then fills it in
+
+    which leaves a half-built module visible in `sys.modules` for the duration of the exec. Thread 2, reaching
+    `oqa_lc_report`, would run its module-level `import oqa_lc_chain as CHAIN`, get thread 1's half-built
+    `oqa_lc_chain`, and die on `_ORDER = {CHAIN.VIOLATED: ...}` because line 45 had not run yet.
+
+    THAT IS NOT HYPOTHETICAL: it killed arm C's epoch-1 job 66272740 after 16 of its 24 reports had been
+    written, with `AttributeError: module 'oqa_lc_chain' has no attribute 'VIOLATED'`, while arm B's job - same
+    code, same two threads - got away with it. An intermittent failure of exactly the kind that is worst to
+    diagnose from a result rather than a crash.
+
+    A module already in `sys.modules` is now REUSED rather than executed again. Under the lock nothing else can
+    be mid-exec, so anything present there is complete - and reusing it also removes a second, quieter hazard:
+    `oqa_lc_report` imports `oqa_lc_replay` and `oqa_obligations`, which come after it in the load order, so the
+    old loop executed those twice and returned a DIFFERENT instance from the one `oqa_lc_report` holds. Two
+    instances of a module mean two separate caches, and this project has already been bitten once by a stale
+    cache in exactly these modules (`Evidence` keyed on the item id rather than the attempt).
+    """
+    global _LC_CACHE
+    cached = _LC_CACHE
+    if cached is not None:
+        return cached
+    with _LC_LOCK:
+        if _LC_CACHE is None:
+            import importlib.util
+            here = os.path.dirname(os.path.abspath(__file__))
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            loaded: dict = {}
+            for name in _LC_NAMES:
+                existing = sys.modules.get(name)
+                if existing is not None:
+                    loaded[name] = existing
+                    continue
+                spec = importlib.util.spec_from_file_location(name, os.path.join(here, f"{name}.py"))
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules[name] = mod
+                try:
+                    spec.loader.exec_module(mod)
+                except BaseException:
+                    # Never leave a half-built module behind for the next caller to trip over.
+                    sys.modules.pop(name, None)
+                    raise
+                loaded[name] = sys.modules.get(name, mod)
+            _LC_CACHE = (None, loaded["oqa_lc_ir"], loaded["oqa_lc_chain"], loaded["oqa_lc_report"],
+                         loaded["oqa_lc_replay"], loaded["oqa_obligations"])
+    return _LC_CACHE
 
 
 def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
