@@ -78,3 +78,8 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T21:20:49Z	66323203	oqa_recovery	arm C epoch 4 (recovered)	37c78ec683d53f656c0aceed9fde413b4ce1f941	bundle oqa_campaign_20261117c; standard 2cpu 8G 90min; afterok:66323202; model model_armC_epoch03.json; its rollouts are CONDITIONAL on epoch 3 rejecting again
 2026-11-17T21:31:56Z	66323593	oqa_tests	test suite from the heldout bundle	121cd15	FAILED: my own new test asserted every archived file still exists; prepare removes the resume markers it archives
 2026-11-17T21:31:56Z	66323970	oqa_tests	test suite from the heldout bundle	6a8dbb3	2187 passed 9 skipped 368 subtests
+2026-11-17T23:08:07Z	66331755	oqa_tests	test suite	a091840	FAILED: my edit dropped "import re" from oqa_freeze_skills while last_skill still used it
+2026-11-17T23:08:07Z	66331956	oqa_tests	test suite	251e9514beaefb88ed1ded997102c4769a2e23f1	2190 passed 9 skipped 368 subtests
+2026-11-17T23:08:07Z	66332133	oqa_heldout	PRIMARY S0 (887B, digest 9d377d1c2906)	251e9514beaefb88ed1ded997102c4769a2e23f1	bundle oqa_heldout_20261117; 2cpu 8G 60min; head of the chain
+2026-11-17T23:08:07Z	66332134	oqa_heldout	PRIMARY arm B selected (3603B, digest 95989ce5ebad)	251e9514beaefb88ed1ded997102c4769a2e23f1	afterok:66332133
+2026-11-17T23:08:07Z	66332135	oqa_heldout	EXPLORATORY arm A/C last (940B, digest 5bd17ea109bc) - same ADVICE as S0	251e9514beaefb88ed1ded997102c4769a2e23f1	afterok:66332134
