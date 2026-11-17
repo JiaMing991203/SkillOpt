@@ -35,3 +35,6 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-16T21:44:00Z	66234929	officeqa	heldout	3e9cd146c31c8e1fadd9f9999873b7aaaa358757	--time=00:45:00
 2026-11-17T03:36:18Z	66259421	oqa_lean	lean	87b9ad6742aaf768304d409d05713348c9e49de4	--cpus-per-task=1 --mem=2G --time=00:15:00 (staging bundle, not a git snapshot)
 2026-11-17T03:37:37Z	66259448	oqa_lean	lean	87b9ad6742aaf768304d409d05713348c9e49de4	--cpus-per-task=1 --mem=2G --time=00:15:00 (retry of 66259421: SLURM_SUBMIT_DIR fix)
+2026-11-17T04:33:07Z	66262999	oqa_api_smoke	smoke	27ea88d75fcfbd09c3c60a7b92c6784fb7affaa9	--cpus-per-task=2 --mem=8G --time=00:30:00 (staging bundle; 0 GPU)
+2026-11-17T04:45:04Z	66263561	oqa_api_smoke	smoke	27ea88d75fcfbd09c3c60a7b92c6784fb7affaa9	retry of 66262999 (4x NODE_FAIL); --no-requeue, 0 GPU
+2026-11-17T05:00:42Z	66264572	oqa_api_smoke	smoke	27ea88d75fcfbd09c3c60a7b92c6784fb7affaa9	3rd attempt: --wrap + node-local /tmp after 2x NODE_FAIL loops

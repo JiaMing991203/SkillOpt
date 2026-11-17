@@ -40,6 +40,11 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# The repository root, so `import skillopt` works however this driver is invoked. `python -I` is isolated mode,
+# which implies -E and therefore IGNORES PYTHONPATH: job 66264572 died with "No module named 'skillopt'" after
+# the job script had set PYTHONPATH correctly. Deriving the root from __file__ removes the dependency on how the
+# interpreter was started.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 DEFAULT_BASE_URL = "https://api.empiriolabs.ai/v1"
 DEFAULT_MODEL = "qwen3-5-4b"
