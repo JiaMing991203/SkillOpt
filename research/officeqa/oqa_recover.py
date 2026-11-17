@@ -891,11 +891,16 @@ def main() -> int:
         for c in doc["per_epoch"]:
             print(f"  {c['key']}  analyst={c['analyst_calls']}  ordinary={c['ordinary_action']}  "
                   f"slow={c['slow_action']}  meta={c['meta_action']}  {'ok' if c['ok'] else 'PROBLEM'}")
-        ch = [r for r in doc["unchanged_after_recovery"] if not r["unchanged"]]
         un = [r for r in doc["unchanged_after_recovery"] if r["unchanged"]]
-        print(f"\n  archived files: {len(un)} unchanged, {len(ch)} rewritten by the recovery")
+        gone = [r for r in doc["unchanged_after_recovery"] if not r["exists"]]
+        ch = [r for r in doc["unchanged_after_recovery"]
+              if r["exists"] and not r["unchanged"]]
+        print(f"\n  archived files: {len(un)} unchanged, {len(ch)} changed, {len(gone)} absent "
+              f"(a removed resume marker or a rollout moved aside is SUPPOSED to be absent)")
         for r in ch[:20]:
-            print(f"    rewritten  {r['path']}")
+            print(f"    changed  {r['path']}")
+        for r in gone[:20]:
+            print(f"    absent   {r['path']}")
         for m in doc.get("contract_models", []):
             state = ("unchanged" if m.get("unchanged") else
                      "regenerated" if m.get("regenerated") else "PROBLEM")
