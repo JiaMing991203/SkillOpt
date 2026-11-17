@@ -68,11 +68,30 @@ if [ -z "$USD_ALREADY" ]; then
     exit 2
 fi
 echo "actor charged so far, from the ledger: \$$USD_ALREADY of \$$USD_CAP authorized"
+# S0 MUST BE A DURABLE PATH. The arms' skills live in $CAMP and survive, but the starting skill lives in the
+# source tree - and this script extracts that tree into a temp directory it deletes on exit. Submitting
+# OQA_SKILL=<that temp path> gives a job a file that no longer exists by the time it runs; the body would die
+# on "no such skill file", after the earlier jobs in the chain had already been submitted. So S0 is copied
+# into the campaign root once and referenced there, which also makes the exact S0 that was scored an artifact
+# of the campaign rather than a path into a tarball.
+S0="$CAMP/heldout/S0.md"
+mkdir -p "$CAMP/heldout"
+if [ ! -f "$S0" ]; then
+    cp "$W/skillopt/envs/officeqa/skills/initial.md" "$S0"
+    echo "S0 copied into the campaign root: $S0 ($(wc -c < "$S0" | tr -d ' ') bytes)"
+else
+    LIVE="$(sha256sum "$W/skillopt/envs/officeqa/skills/initial.md" | cut -d" " -f1)"
+    HAVE="$(sha256sum "$S0" | cut -d" " -f1)"
+    [ "$LIVE" = "$HAVE" ] || { echo "REFUSING: $S0 differs from this bundle's initial skill. The starting
+skill of the comparison cannot change between the chain and the held-out evaluation." >&2; exit 3; }
+fi
+
 # oqa_heldout.py --out names a DIRECTORY and writes HELDOUT_PLAN.json inside it.
 PLAN_DIR="$W/plan"
 PLAN="$PLAN_DIR/HELDOUT_PLAN.json"
 ( cd "$W" && "$OQA_PY" -I research/officeqa/oqa_heldout.py --plan \
     --arm "A=$CAMP/arm_A" --arm "B=$CAMP/arm_B" --arm "C=$CAMP/arm_C" \
+    --skill-init "$S0" \
     --usd-per-question 0.00656 --requests-per-question 10.32 --out "$PLAN_DIR" ) > /dev/null
 [ -f "$PLAN" ] || { echo "the held-out planner wrote no plan at $PLAN" >&2; exit 2; }
 
@@ -148,7 +167,7 @@ done
 FROZEN="$CAMP/heldout/SKILLS_FROZEN.json"
 if [ ! -f "$FROZEN" ]; then
     ( cd "$W" && "$OQA_PY" -I research/officeqa/oqa_freeze_skills.py freeze --campaign "$CAMP" \
-        --skill-init skillopt/envs/officeqa/skills/initial.md --out "$FROZEN" ) || {
+        --skill-init "$S0" --out "$FROZEN" ) || {
         echo "could not freeze the evaluation set" >&2; exit 2; }
 else
     echo "evaluation set already frozen at $FROZEN"
