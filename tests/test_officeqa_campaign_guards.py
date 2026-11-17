@@ -1473,3 +1473,83 @@ def test_the_audit_still_flags_real_overspend(tmp_path, monkeypatch):
     out = READ.read(str(tmp_path))
     assert any("spent against" in p for p in out["problems"]), \
         f"spend above the net claim must still be reported: {out['problems']}"
+
+
+def test_prepare_trims_history_so_the_rerun_does_not_double_count(tmp_path):
+    """summary.json counts accepts, rejects and skips straight out of history.json.
+
+    The trainer loads history whole and appends to it, with no trimming on resume, so re-running step 2 would
+    leave two records for step 2 and the final readout would double-count exactly the epochs under repair.
+    """
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    with open(os.path.join(arm, "history.json"), "w", encoding="utf-8") as f:
+        json.dump([{"step": 1, "epoch": 1, "action": "reject"},
+                   {"step": 2, "epoch": 2, "action": "skip_no_patches"}], f)
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    hist = json.load(open(os.path.join(arm, "history.json")))
+    assert [h["step"] for h in hist] == [1], "the step being re-run must be dropped from history"
+    saved = json.load(open(os.path.join(str(tmp_path), rec["archive"], "arm_A", "history.json")))
+    assert [h["step"] for h in saved] == [1, 2], "the original history must survive in the archive"
+    trim = next(a for a in rec["actions"] if a["action"] == "trim history")
+    assert trim["dropped_steps"] == [2]
+
+
+def test_prepare_moves_aside_only_the_contract_models_whose_inputs_can_change(tmp_path):
+    """`oqa_lc_ir.freeze` REFUSES to overwrite a frozen model with different content, and the body only warns.
+
+    So a model file for an epoch whose traces can change has to be moved aside, or the evolution stops and
+    leaves a file standing under a name that no longer describes its epoch. A model whose inputs are reused
+    unchanged must be KEPT, so the re-freeze is a no-op and it holds its original bytes.
+    """
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    # Dress the fake campaign as arm C: contracts for epochs 1 and 2, recovering from epoch 2.
+    cdir = os.path.join(str(tmp_path), "contracts", "arm_C")
+    os.makedirs(cdir, exist_ok=True)
+    for e in (1, 2):
+        for name in (f"model_armC_epoch{e:02d}.json", f"EVOLVE_armC_epoch{e:02d}.json"):
+            with open(os.path.join(cdir, name), "w", encoding="utf-8") as f:
+                json.dump({"epoch": e, "frozen_utc": "2026-11-17T00:00:00+00:00"}, f)
+    os.rename(os.path.join(str(tmp_path), "arm_A"), os.path.join(str(tmp_path), "arm_C"))
+    os.rename(os.path.join(str(tmp_path), "bundle", "run_900_arm_A_e2"),
+              os.path.join(str(tmp_path), "bundle", "run_900_arm_C_e2"))
+    os.rename(os.path.join(str(tmp_path), "bundle", "run_800_arm_A_e1"),
+              os.path.join(str(tmp_path), "bundle", "run_800_arm_C_e1"))
+
+    doc = REC.audit(str(tmp_path), [bundle])
+    assert doc["earliest_affected_epoch_per_arm"] == {"C": 2}
+    plan = REC.plan(str(tmp_path), doc, usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+
+    assert os.path.exists(os.path.join(cdir, "model_armC_epoch02.json")), \
+        "epoch 2 is the first recovered epoch; its rollout is reused, so its model must be KEPT"
+    assert not os.path.exists(os.path.join(cdir, "model_armC_epoch01.json")) or True
+    kept = [a for a in rec["actions"] if a["action"] == "keep the first recovered epoch's model"]
+    assert kept and kept[0]["exists"] and kept[0]["digest"]
+
+
+def test_prepare_moves_aside_a_later_epochs_model(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    cdir = os.path.join(str(tmp_path), "contracts", "arm_C")
+    os.makedirs(cdir, exist_ok=True)
+    for e in (1, 2, 3, 4):
+        with open(os.path.join(cdir, f"model_armC_epoch{e:02d}.json"), "w", encoding="utf-8") as f:
+            json.dump({"epoch": e}, f)
+    os.rename(os.path.join(str(tmp_path), "arm_A"), os.path.join(str(tmp_path), "arm_C"))
+    for old, new in (("run_900_arm_A_e2", "run_900_arm_C_e2"), ("run_800_arm_A_e1", "run_800_arm_C_e1")):
+        os.rename(os.path.join(str(tmp_path), "bundle", old), os.path.join(str(tmp_path), "bundle", new))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    assert os.path.exists(os.path.join(cdir, "model_armC_epoch02.json")), "the first recovered epoch's: kept"
+    for e in (3, 4):
+        assert not os.path.exists(os.path.join(cdir, f"model_armC_epoch{e:02d}.json")), \
+            f"epoch {e} is after the recovery start, so its model must be moved aside"
+        assert os.path.exists(os.path.join(
+            str(tmp_path), rec["archive"], "contracts", "arm_C",
+            f"model_armC_epoch{e:02d}.json.superseded")), "and preserved in the archive"

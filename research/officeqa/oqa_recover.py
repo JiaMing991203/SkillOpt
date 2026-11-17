@@ -574,6 +574,29 @@ def prepare(campaign: str, plan_doc: dict, *, apply: bool, stamp: str) -> dict:
             act["status"] = "would rewind"
         actions.append(act)
 
+        # 2b. Trim history.json to the last sound step. The trainer LOADS history whole and APPENDS, with no
+        #     trimming on resume, so re-running step N would leave two records for step N. Nothing in the
+        #     gate path reads the duplicate - `sel_cache` is keyed on candidate content, and the slow
+        #     update's `prev_epoch_records[-1]["step"]` is the same either way - but `summary.json` counts
+        #     accepts, rejects and skips straight out of history, so the final readout would double-count
+        #     exactly the epochs under repair. The originals are in the archive.
+        hist_path = os.path.join(arm_root, "history.json")
+        hist = _load(hist_path, []) or []
+        kept = [h for h in hist if int(h.get("step", 0) or 0) < start]
+        a = {"arm": arm, "action": "trim history", "path": "history.json",
+             "records_before": len(hist), "records_kept": len(kept),
+             "dropped_steps": [h.get("step") for h in hist if int(h.get("step", 0) or 0) >= start]}
+        if len(kept) != len(hist):
+            if apply:
+                with open(hist_path, "w", encoding="utf-8") as f:
+                    json.dump(kept, f, ensure_ascii=False, indent=2)
+                a["status"] = "trimmed (archived above)"
+            else:
+                a["status"] = "would trim"
+        else:
+            a["status"] = "nothing to trim"
+        actions.append(a)
+
         # 3. Remove the result files the trainer takes for finished work. The slow update and the meta skill
         #    resume on the EXISTENCE of their result file, so a `no_content` left in place would be skipped
         #    again - silently, and for the second time.
@@ -591,6 +614,49 @@ def prepare(campaign: str, plan_doc: dict, *, apply: bool, stamp: str) -> dict:
                 else:
                     a["status"] = "would remove"
                 actions.append(a)
+
+        # 3b. Contract-model artifacts the recovery may legitimately need to rewrite with DIFFERENT content.
+        #
+        #     `oqa_lc_ir.freeze` refuses to overwrite a frozen model whose content digest differs, and the
+        #     body only WARNS when the evolution fails. So a model file left in place where the inputs have
+        #     changed would stop the evolution and leave the old file standing - silently, and under a name
+        #     that says it describes an epoch it no longer describes.
+        #
+        #     Which epochs can change? model_arm<X>_epoch<E>.json is evolved from epoch E's rollout, and
+        #     epoch E's rollout changes only if E's STARTING skill changes, which happens only for E > start.
+        #     So the model for the first recovered epoch is kept - its inputs are identical, the re-freeze is
+        #     a no-op, and the file keeps its original bytes including frozen_utc - and the later ones are
+        #     moved aside so the evolution can write them fresh.
+        if arm != "A":
+            cdir = os.path.join(campaign, "contracts", f"arm_{arm}")
+            for epoch in [e for e in EPOCHS if e > start]:
+                for name in (f"model_arm{arm}_epoch{epoch:02d}.json",
+                             f"EVOLVE_arm{arm}_epoch{epoch:02d}.json",
+                             f"predictions_epoch{epoch:02d}.jsonl"):
+                    src = os.path.join(cdir, name)
+                    if not os.path.exists(src):
+                        continue
+                    dst = os.path.join(archive, "contracts", f"arm_{arm}", name + ".superseded")
+                    a = {"arm": arm, "action": "move aside a contract artifact",
+                         "path": os.path.relpath(src, campaign),
+                         "to": os.path.relpath(dst, campaign),
+                         "why": f"epoch {epoch} is after the first recovered epoch ({start}), so its traces "
+                                f"can change; freeze() would refuse to overwrite this with new content"}
+                    if apply:
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        shutil.move(src, dst)
+                        a["status"] = "moved"
+                    else:
+                        a["status"] = "would move"
+                    actions.append(a)
+            keep = os.path.join(cdir, f"model_arm{arm}_epoch{start:02d}.json")
+            actions.append({"arm": arm, "action": "keep the first recovered epoch's model",
+                            "path": os.path.relpath(keep, campaign),
+                            "exists": os.path.exists(keep),
+                            "digest": _digest(keep) if os.path.exists(keep) else None,
+                            "status": "kept",
+                            "why": f"epoch {start}'s rollout is reused unchanged, so re-evolving it is a "
+                                   f"no-op and freeze() keeps this file byte-for-byte"})
 
         # 4. Rollouts the plan marked stale: moved aside, never deleted.
         for item in plan_doc["items"]:
@@ -652,10 +718,29 @@ def verify(campaign: str, record: dict) -> dict:
         live = os.path.join(campaign, f"arm_{arm}", a["path"]) if arm else live
         if os.path.isfile(live):
             reuse.append({"path": a["path"], "arm": arm, "unchanged": _digest(live) == a["digest"]})
+    # The contract models: the one kept must be byte-identical afterwards, because its inputs were reused.
+    models: list[dict] = []
+    for a in record["actions"]:
+        if a.get("action") != "keep the first recovered epoch's model" or not a.get("digest"):
+            continue
+        live = os.path.join(campaign, a["path"])
+        models.append({"path": a["path"], "exists": os.path.isfile(live),
+                       "unchanged": os.path.isfile(live) and _digest(live) == a["digest"],
+                       "why": "its rollout was reused, so re-evolving it must be a no-op"})
+    for a in record["actions"]:
+        if a.get("action") != "move aside a contract artifact":
+            continue
+        live = os.path.join(campaign, a["path"])
+        models.append({"path": a["path"], "exists": os.path.isfile(live),
+                       "regenerated": os.path.isfile(live),
+                       "why": "moved aside so the evolution could write it fresh"})
     failed = [c for c in checks if not c["ok"]]
+    model_problems = [m for m in models if m.get("unchanged") is False] + \
+                     [m for m in models if m.get("regenerated") is False]
     return {"rule": RULE, "utc": _utc(), "campaign": campaign, "archive": archive,
-            "per_epoch": checks, "unchanged_after_recovery": reuse,
-            "verdict": "PASS" if not failed else "PROBLEMS", "failed": failed}
+            "per_epoch": checks, "unchanged_after_recovery": reuse, "contract_models": models,
+            "verdict": "PASS" if not (failed or model_problems) else "PROBLEMS",
+            "failed": failed + model_problems}
 
 
 # ── cli ──────────────────────────────────────────────────────────────────────────────────────────────────────
