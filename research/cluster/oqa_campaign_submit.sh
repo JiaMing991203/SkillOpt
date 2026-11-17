@@ -4,6 +4,18 @@
 #
 #   OQA_BUNDLE=<bundle> bash oqa_campaign_submit.sh [--dry-run]
 #
+# TIME LIMITS. The shared stage and the epoch-1 arm jobs get 60 minutes; the later epochs get 120. That is not
+# a guess: the campaign measured its own throughput at 15.7 requests per minute (job 66272737's ledger
+# timestamps), not the 50 the account limit allows, because the binding constraint is per-request latency and
+# the sequential tool loop rather than the rate limit. A later-epoch arm-job runs 92 question-rollouts at 10.32
+# attempts each, which is about 60 minutes of actor time before the optimizer calls - so 60 would have been a
+# wall rather than a limit.
+#
+# RESUMING. `--from <ARM>.<EPOCH>` skips the shared stage and every arm-epoch before that point, and makes the
+# named one the head of a fresh chain. Use it after a failure: re-running the shared stage would re-roll the
+# 24 training questions at temperature 0.7 and hand the later arms DIFFERENT traces from the ones the earlier
+# arms already reflected on, which would break the comparison rather than repair it.
+#
 # WHY A STRICT CHAIN RATHER THAN CONCURRENT ARMS.
 #
 # The EmpirioLabs rate limit is 50 requests per minute ACCOUNT-WIDE. One rollout job with workers=4 at the
@@ -33,7 +45,17 @@
 set -euo pipefail
 B="${OQA_BUNDLE:?set OQA_BUNDLE to the bundle directory}"
 DRY=0
-[ "${1:-}" = "--dry-run" ] && DRY=1
+START=""          # e.g. C.1 - skip everything before that arm-epoch, and skip the shared stage
+SHARED_JOB=""     # a completed shared-stage job id, when resuming without re-running it
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dry-run) DRY=1 ;;
+        --from) START="${2:?--from needs an ARM.EPOCH, e.g. C.1}"; shift ;;
+        --from=*) START="${1#--from=}" ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
 FAKE=1000
 
 set -a; . "$B/settings.env"; set +a
@@ -73,18 +95,31 @@ echo "bundle:        $B  (commit $(cat "$B/COMMIT"))"
 echo
 
 # ── the shared epoch-1 work: 24 training questions + the 24-question gate baseline, actor only ──────────────
-JOB_SHARED="$(submit oqa-shared 60 "" "STAGE=shared" \
-    "OQA_JOB_CAP_ACTOR_ATTEMPTS=900" "OQA_JOB_CAP_ACTOR_USD=0.80")"
-echo "shared            $JOB_SHARED"
-
-PREV="$JOB_SHARED"
+# Skipped entirely with --from, because the shared rollout and M0 are already on disk and re-rolling them at
+# temperature 0.7 would give the arms DIFFERENT traces from the ones the earlier arms already reflected on.
+if [ -z "$START" ]; then
+    JOB_SHARED="$(submit oqa-shared 60 "" "STAGE=shared" \
+        "OQA_JOB_CAP_ACTOR_ATTEMPTS=900" "OQA_JOB_CAP_ACTOR_USD=0.80")"
+    echo "shared            $JOB_SHARED"
+    PREV="$JOB_SHARED"
+else
+    [ -f "$CAMP/shared/epoch1/results.jsonl" ] \
+        || { echo "--from $START needs an existing shared rollout at $CAMP/shared/epoch1" >&2; exit 2; }
+    [ -f "$CAMP/contracts/model_M0.json" ] \
+        || { echo "--from $START needs M0 at $CAMP/contracts/model_M0.json" >&2; exit 2; }
+    echo "resuming from $START; the shared stage is NOT re-run"
+    echo "  shared rollout  $(wc -l < "$CAMP/shared/epoch1/results.jsonl") items"
+    echo "  M0              $(sha256sum "$CAMP/contracts/model_M0.json" | cut -c1-16)"
+    PREV=""
+fi
+SKIPPING="$START"
 declare -A LAST_OF_ARM
 for EPOCH in 1 2 3 4; do
     for ARM in A B C; do
         # Per-epoch caps: epoch 1 only runs the 24-question gate (the training rollout is injected), while a
         # later epoch runs 24 train + 24 gate + 2x10 slow-update + 24 slow-update gate = 92 question-rollouts.
         if [ "$EPOCH" = "1" ]; then CAP_ACT=700; CAP_USD=0.60; CAP_OPT=12; CAP_OPT_USD=0.50; MIN=60
-        else CAP_ACT=1600; CAP_USD=1.20; CAP_OPT=16; CAP_OPT_USD=0.70; MIN=60
+        else CAP_ACT=1600; CAP_USD=1.20; CAP_OPT=16; CAP_OPT_USD=0.70; MIN=120
         fi
         EXPORTS=("STAGE=arm" "ARM=$ARM" "EPOCH=$EPOCH"
                  "OQA_SHARED_DIR=$CAMP/shared" "OQA_ARM_OUT=$CAMP/arm_$ARM"
@@ -97,6 +132,14 @@ for EPOCH in 1 2 3 4; do
                 4)   MODEL="$CAMP/contracts/arm_$ARM/model_arm${ARM}_epoch03.json" ;;
             esac
             EXPORTS+=("OFFICEQA_LC_MODEL=$MODEL")
+        fi
+        if [ -n "$SKIPPING" ]; then
+            if [ "$SKIPPING" = "$ARM.$EPOCH" ]; then
+                SKIPPING=""      # this one runs; everything after it follows
+            else
+                printf 'arm %s epoch %s    SKIPPED (already run)\n' "$ARM" "$EPOCH"
+                continue
+            fi
         fi
         JOB="$(submit "oqa-$ARM-e$EPOCH" "$MIN" "$PREV" "${EXPORTS[@]}")"
         printf 'arm %s epoch %s    %s   after %s%s\n' "$ARM" "$EPOCH" "$JOB" "$PREV" \
