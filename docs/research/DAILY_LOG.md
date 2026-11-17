@@ -674,3 +674,111 @@ Accuracy, recorded separately and not the verdict: 1 of 3 answered.
 ### Next actions
 The user will instruct on the full-scale run after a compaction. The comparison needs its own budget (section 4.4
 of the plan); the old OfficeQA allowance has 8 DeepSeek calls left and no CPU or actor budget.
+
+## 2026-11-17 — the OfficeQA comparison expanded to three arms; offline prep complete, nothing submitted
+
+The user expanded the planned hosted-actor comparison from two arms to three, following the ALFWorld AC-1
+structure: **A** Original SkillOpt, **B** Action Contracts Only, **C** Action Contracts + Stages. Larger splits
+(24 training questions × 4 epochs, the released 24-question validation set, 60 held-out), the gated slow update
+and the meta-skill on from epoch 2, and the two contract arms starting from one model learned on the shared
+rollout and then evolving from their own traces. They asked for the offline preparation and the revised budget
+**before** anything is submitted. Full plan: `OFFICEQA_THREE_ARM_LAUNCH.md`. Packet:
+`OFFICEQA_HANDOFF_LATEST.md`. Evidence: `runs/20261117-officeqa-3arm-prelaunch/`.
+
+**Nothing was submitted and nothing was spent.** All of it ran on the workstation.
+
+### What was built, and why each piece exists
+
+**Rule OQA-SEL-3** (`research/officeqa/oqa_sel3.py`, digest `117836ff4139…`). The validation set is the whole
+released val split, unfiltered — the user asked for the released set, and filtering the gate would be a
+selection the benchmark did not make. Train and held-out are balanced over category × document count, and
+**OQA-SEL-2's items are retained first**, so all three previous sets are subsets of the new ones and every saved
+development trace is still a trace of a current item. The draw order is `sha256("OQA-SEL-3" + uid)`, which
+depends on the rule name and the item id and on nothing else. UID0046 stays excluded with its reason recorded.
+48 of the 108 items have no availability verdict, because that needs the documents, which exist only on the
+cluster; the counts say so per set rather than leaving it implicit.
+
+**The report split.** The existing learned-contract report was entirely stage-oriented — the action contracts
+appeared only as a basis label. Arm B needs a report *about the tool calls*, so `oqa_lc_report.render_action`
+was added: the contracts in force with the evidence behind each, the ones withdrawn and why, what each forecast
+for this attempt's calls against what the observation showed, and the assumption checks. Arm C is that text
+**plus** the stage half, so arm C's report contains arm B's line for line and the arms differ by the stage
+material and nothing else. Both halves of that claim are checked on the rendered text, not on the intention.
+
+A design decision worth recording: the first version of `audit_action_only` banned a list of generic words
+("stage", "obligation", "conversion", "final answer"). That is too aggressive — the report quotes column
+headings out of the bulletins, and a Treasury table may legitimately contain such a word, so one word in a
+scanned page could have aborted an arm mid-campaign. The audit now **fails** only on markers that can only come
+from the stage renderer (its section headings, the obligation kind names, the states `DISCHARGED`/`OUTSTANDING`)
+and reports the generic words as advisories.
+
+**Per-arm model evolution** (`research/officeqa/oqa_lc_arm.py`). `seed` learns M0 on the shared rollout once, so
+both contract arms start byte-identical; `evolve` takes the model frozen before an epoch and that arm's own
+traces, replays them out-of-sample first (hash-chaining each prediction before the observation is released),
+then admits them and runs the same learner schedule. Evidence accumulates across epochs, so "recheck the earlier
+cases" means what it says.
+
+**One honest limitation, recorded rather than hidden.** M0 is learned on the shared epoch-1 rollout, which is
+also the rollout epoch 1's reports describe, so epoch 1's forecasts are in-sample and are not predictions. The
+frozen model now carries its evidence item list and a report on one of those items **says so in its own text**.
+Leave-one-out for epoch 1 would remove even this at no cost; it is offered as a decision, not done unilaterally.
+
+### The pre-launch check, and the four defects it found
+
+`research/officeqa/oqa_prelaunch.py` runs two saved epochs through `scripts/train.py:main()` — the real entry
+point and the real trainer — for each arm, replacing exactly two things because no authorization covers them:
+the actor raises (every rollout directory is pre-seeded from recorded predictions, so a correct run sends
+nothing and an unseeded one fails loudly) and the optimizer is a recorder that writes every prompt to disk. Each
+arm ran as two phases, one per epoch, resuming from `runtime_state.json`, which is the shape the campaign itself
+must use because `OFFICEQA_LC_MODEL` is read from the environment. Verdict **PASS, no problems**.
+
+Four real defects came out of building it, each now with a regression test:
+
+1. **`Evidence` keyed its atom cache on the item id, not the attempt.** The same training question is attempted
+   again every epoch, so with evidence accumulating the second epoch's attempt silently reused the first
+   epoch's atom values. On the real traces this reported **five** counterexamples for `read.effect.1` where
+   there is **one**. Attempts now carry a `trace_key` of `<item>/e<epoch>` that the cache and every
+   counterexample id use. This is the one that would have quietly corrupted the campaign's conclusions.
+2. **A counterexample found at replay never triggered the refutation.** Re-scoring and refuting a surviving
+   contract happens inside `apply_proposal`, which only ran when the learner proposed something new — not the
+   case from epoch 3 on. An empty proposal is now applied whenever the evidence contradicts an active contract.
+3. **A retired contract was invisible to the optimizer**, and retiring is what the repair schedule does most
+   often; only `refuted` was listed.
+4. **A contract kept with a counterexample printed "no counterexample"** beside a non-zero count.
+
+Two errors in my own checking code are worth recording because both produced a false alarm before being fixed:
+slicing the report out of an analyst prompt by looking for the next `####` heading swallowed the trajectory text
+that follows it, and the per-phase report check counted the previous phase's files.
+
+### The budget, and the one measurement that changed the plan
+
+`research/officeqa/oqa_budget.py` computes the budget from constants that each carry the record they came from.
+The ask is 6 h wall, 20 CPU job-hours, 0 GPUs, 15,000 actor requests, $8.00 actor, 130 DeepSeek calls, $4.00
+DeepSeek. The **50 RPM account limit is the binding constraint on wall time, not latency** (235 min against
+168), and being account-wide it means concurrency divides the quota rather than raising it.
+
+The measurement that changed the plan: **this repo deliberately disables per-trajectory truncation in the slow
+update**, so the longitudinal prompt carries both trajectories of every comparison pair at full length. Measured
+on the dry run, 12 pairs come to 846,563 characters — 262,257 tokens — against a **173,060-token** envelope,
+which is the largest optimizer prompt this project has ever sent successfully. At upstream's
+`slow_update_samples: 20` that extrapolates to 437,000–656,000 tokens. Four samples stay inside the envelope
+even if every pair lands in a trajectory-showing category, so the config is set to 4 and the deviation is
+documented in the file itself with the table of measurements. Exceeding the limit would not be fatal —
+`run_slow_update` catches the error and the trainer records `no_content` — but the run would then report a gated
+slow update that produced no guidance, which is worse than a small sample.
+
+**A correction to my own arithmetic.** I first put that envelope at ~104,000 tokens, by dividing a step's total
+analyst tokens by the number of calls in it. The per-call records in `optimizer_calls_summary.json` give
+173,060 for a single successful call. The conclusion about `slow_update_samples` is unchanged; the constant and
+its source are now right, and the budget script says which mistake it replaced.
+
+### The held-out evaluation, separated out
+
+The trainer's own `eval_test` evaluates the held-out split once per arm, and each pass re-scores the starting
+skill — three identical 60-question rollouts for one number, and more waste whenever two arms select the same
+skill, which is exactly what the A40 run produced (all four candidates rejected, both final skills identical to
+S0). So the campaign runs with `eval_test: false` and `research/officeqa/oqa_heldout.py` scores the held-out
+split **once per distinct skill**: S0 plus each arm's validation-selected and last skill, deduplicated by
+digest, at most 7 rollouts.
+
+The held-out outcome of job 66234927 remains deliberately unread.

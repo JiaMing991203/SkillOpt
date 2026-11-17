@@ -1,8 +1,11 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-17 00:34 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-17 01:17 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
-**Nothing is running or queued. 0 GPUs held.** The A40 two-arm comparison, the held-out evaluation, the learned-contract port, the Lean compile (job 66259448) and the hosted-actor smoke test (job 66264849) are all COMPLETE. **The next step is the full-scale four-epoch comparison, which needs its own budget - see section A0-NEXT.**
+**Nothing is running or queued. 0 GPUs held. Nothing has been submitted.** The A40 two-arm comparison, the
+held-out evaluation, the learned-contract port, the Lean compile (job 66259448) and the hosted-actor smoke test
+(job 66264849) are all COMPLETE. **The current step is the THREE-ARM campaign: the offline preparation is done
+and checked (verdict PASS), and it needs a budget and two decisions - see section A0-NEXT.**
 **The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
 `docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`. Correcting the eight stale reports changes the diagnosis for
 5 of 8 items but NOT the advice, so **no replay was run**; its exact cost is scoped in section 6 of that
@@ -28,53 +31,61 @@ of job 66234927 remains deliberately UNREAD/SEALED.**
 
 ---
 
-## A0-NEXT. THE FULL-SCALE RUN (user will instruct after this compaction). DO NOT START BEFORE THEY DO.
+## A0-NEXT. THE THREE-ARM CAMPAIGN: offline prep COMPLETE and CHECKED, awaiting a BUDGET (user, 2026-11-17)
 
-**Everything is built, tested and measured. What is missing is a budget.** Read
-`docs/research/OFFICEQA_API_COMPARISON_PLAN.md` section 4, not a paraphrase.
+**Read `docs/research/OFFICEQA_THREE_ARM_LAUNCH.md`, not a paraphrase. The copy-pasteable packet is
+`OFFICEQA_HANDOFF_LATEST.md`. Evidence: `runs/20261117-officeqa-3arm-prelaunch/`.**
 
-**ASK THE USER FOR, OR CONFIRM, THESE ALLOWANCES** (the old OQA-5 allowance has **8 DeepSeek calls** left and
-**no CPU or actor budget**; the Lean grant and the smoke-test grant are both spent):
+**NOTHING HAS BEEN SUBMITTED.** The user expanded the comparison to three arms (A Original SkillOpt / B Action
+Contracts Only / C Action Contracts + Stages), 24 training questions x 4 epochs, the released 24-question val
+split, 60 held-out, gated slow updates and meta-skill on from epoch 2. The offline preparation they asked for is
+done and its verdict is **PASS with no problems**; what is missing is the budget, which they asked to see before
+the campaign is submitted.
 
-| resource | request | measured basis |
+| resource | request | basis |
 |---|---|---|
-| CPU job time | **8 job-hours**, <=4 concurrent, each **<=60 min**, 2 CPUs + 8 GB | ~2 h wall at 2 CPUs ~= 4 CPU-h; 8 covers one retry per job |
-| GPUs | **0** | the actor is remote, the tools are local |
-| actor HTTP attempts | **4,000** | 20 attempts / 3 questions at a 12-turn cap; A40 at 24 turns averaged 11.7/question; 264 question-rollouts ~= 3,100 + retries |
-| actor charges | **$2.50** | measured $0.00112/question at 12 turns, ~$0.003 at 24 -> ~$0.80 total. **No prefix caching exists**, so the cached rate is NOT assumed |
-| DeepSeek calls | **56** | A40 used 4/epoch/arm; 4 epochs x 2 arms = 32, + ranking calls -> up to 48 |
-| DeepSeek charges | **$1.50** | measured $0.009/call -> ~$0.50 at 56; prompts grow over 4 epochs |
+| wall time | **6 h** | 235 min floor from the rate limit + optimizer latency + queue |
+| CPU job time | **20 job-hours**, <=4 concurrent, each <=60 min, 2 CPUs + 8 GB | 13 jobs + one retry each |
+| GPUs | **0** | remote actor, local document tools |
+| actor requests | **15,000** | 11,756 computed at the measured 9.33/question |
+| actor charges | **$8.00** | $5.73 at measured tokens x published prices |
+| DeepSeek calls | **130** | 102 computed, 34/arm |
+| DeepSeek charges | **$4.00** | $1.36 off-peak, $2.72 if all peak |
 
-**RUNTIME: ~2 hours, and the 50 RPM ACCOUNT LIMIT is the binding constraint, not latency.** 3,100 requests / 50
-RPM = 62 min floor; 44 min latency-bound at the measured 3.41 s median with `workers: 4`. Split into ~10 jobs of
-**<=60 min** (one per arm-epoch) and rely on resume: tonight's queue measurement showed <=60 min requests waiting
-6-72 min while a 90-min request waited 4h23m.
+**The 50 RPM ACCOUNT limit is the binding constraint on wall time, not latency** (235 min against 168).
+Account-wide, so concurrency divides the quota rather than raising it.
 
-**USE THE JOB SHAPE THAT WORKS - do not rediscover it.** `research/cluster/oqa_api_body.sh`, invoked as
-`sbatch --wrap="bash <bundle>/oqa_api_body.sh" --chdir=<bundle> --export=ALL,OQA_BUNDLE=<bundle>`, working in a
-**node-local /tmp**. A script submitted directly as the sbatch batch file from `/nfs/turbo` was killed by
-**NODE_FAIL at 60 s, four times each, on eight different nodes**; `--no-requeue` did NOT stop it. **The attempt
-ledger is per-process, so a requeue respends the authorized attempts** - keep jobs short and check
-`SLURM_RESTART_COUNT` in the log before trusting any ledger total.
+**VERIFIED (do not redo):** rule **OQA-SEL-3** 24/24/60, digest `117836ff4139...`, disjoint, and all three
+OQA-SEL-2 sets are subsets so the saved development traces stay usable; the report separation checked on the
+RENDERED text (24/24 attempts: arm B carries no stage marker, arm C contains arm B line for line); two saved
+epochs through `scripts/train.py:main()` for all three arms with ZERO actor calls and a recording optimizer stub
+(arm A gets the ordinary input, arm B the Action-Only report, arm C both halves, every report found verbatim in
+a prompt, 24 distinct trace digests each matching its attempt and its model); the per-arm model evolution with
+the prior model, the new evidence, the counterexample and the repair recorded; 25 new tests and 2,057 passing.
 
-**Deployment:** `research/deploy.sh` refuses a commit that is not on `origin`, and **pushing has not been
-authorized**. Both the Lean job and the smoke test ran from a `git archive HEAD` **staging bundle** with a
-sha256 manifest verified in-job. Either ask for a push, or reuse the bundle route (the bundle dir on the cluster
-is `$PROJECT_ROOT/oqa_api_smoke_bundle_20261116`, and `settings.env` there is private and already correct).
+**FOUR DEFECTS were found and fixed while building this** (each with a regression test) - the most consequential:
+`Evidence` keyed its atom cache on the ITEM id, so epoch 2's attempt of a training question silently reused
+epoch 1's atom values, which on the real traces turned ONE genuine counterexample into FIVE phantom ones.
 
-**THREE DECISIONS STILL OPEN before the comparison runs** (plan doc 4.5):
-1. **FP8 makes this a NEW baseline.** Same weights as the A40 (`Qwen/Qwen3.5-4B`), different numerics (FP8 + FP8
-   KV vs bfloat16). S0 must be re-measured on this actor; the A40's 5/12 does not transfer. Symmetric across arms.
-2. **Four epochs still gives NO cross-epoch memory.** `step_buffer` is declared inside the epoch loop and
-   `steps_per_epoch` is 1, so epoch n never sees epoch n-1's rejected edits. Four epochs = four independent
-   attempts. The restructure that would fix it is one epoch of four steps - still an open decision from the A40 run.
-3. **Arm B's frozen model (v7) has a known counterexample** on the confirmation collection
-   (`read.effect.1 = width_uniform` at UID0028@42). Defensible to freeze, but record it.
+**TWO DECISIONS for the user, both recorded with their measurements:**
+1. **`slow_update_samples: 4` against upstream's 20** - MEASURED: this repo disables per-trajectory truncation in
+   the slow update, so 12 comparison pairs come to 262,257 tokens against a 173,060-token envelope (the largest
+   optimizer prompt this project has sent successfully). 4 samples stay inside even in the worst case; 6 are
+   inside on the measured category mix but over at worst; 20 are far over. Too large is not fatal (the trainer
+   records `no_content`) but would mean reporting a gated slow update that produced no guidance.
+2. **Epoch 1's reports are in-sample** because M0 is learned on the shared rollout they describe, which is what
+   "the same model learned on the shared rollout" implies. The report says so in its own text. Leave-one-out for
+   epoch 1 would remove it at no cost; not implemented.
 
-**READY AND VERIFIED (do not redo):** the config (`configs/research/officeqa_api.yaml`, one file for both arms);
-the smoke driver with hard attempt/USD caps; the treatment arm wired to the compiled prototype with
-trace+model-version provenance (24 saved-trace reports PASS, stale-attempt and wrong-model reports FAIL); the
-two-attempt live probe; 2032 local tests passing.
+Still open from before and unchanged: **four epochs give no cross-epoch memory in the ORDINARY update** (one
+epoch of four steps is the fix); **FP8 makes this a new baseline** so S0 must be re-measured; **availability is
+untested for 48 of the 108 items**; **a push has not been authorized** (both previous jobs ran from a
+`git archive HEAD` staging bundle).
+
+**The job shape is 13 jobs, one per ARM-EPOCH plus the held-out evaluation** - required, not a convenience,
+because `OFFICEQA_LC_MODEL` is read from the environment and names a different frozen model each epoch. Reuse
+`research/cluster/oqa_api_body.sh` via `--wrap` with a node-local `/tmp`; a requeue respends the authorization
+because the attempt ledger is per-process.
 
 ## A-API. DONE: OfficeQA on a HOSTED ACTOR - smoke test PASSED (user, 2026-11-16) -> `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`
 

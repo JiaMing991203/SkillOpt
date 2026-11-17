@@ -33,7 +33,21 @@ class AnswerKeyLeak(RuntimeError):
     """The packet a report would be built from carries evaluator-only information. Never continue past this."""
 
 
+class StageLeak(RuntimeError):
+    """An Action-Only report carries stage material, so arm B would not be the arm it claims to be."""
+
+
+# The report conditions of the THREE-ARM comparison. "LC" is kept as an alias of LC_STAGE so the two-arm
+# artefacts and tests that name it keep working.
 LC_CONDITION = "LC"
+LC_ACTION = "LC_ACTION"        # arm B, Action Contracts Only
+LC_STAGE = "LC_STAGE"          # arm C, Action Contracts + Stages
+LC_CONDITIONS = (LC_CONDITION, LC_ACTION, LC_STAGE)
+# The heading the analyst prompt puts the report under. Arm B's must not say "stage": the heading is part of what
+# the optimizer reads.
+LC_HEADINGS = {LC_ACTION: "Action Contract Report",
+               LC_STAGE: "Action Contract and Stage Report",
+               LC_CONDITION: "Stage and Action Report"}
 
 
 def lc_model_digest(model_path: str) -> str:
@@ -42,7 +56,7 @@ def lc_model_digest(model_path: str) -> str:
     `oqa_lc_ir.load_frozen` refuses a file whose content does not match the digest it carries, so a report keyed
     by this value cannot be attributed to a model version that was edited after freezing.
     """
-    _, IR, _, _ = _lc_modules()
+    IR = _lc_modules()[1]
     return str(IR.load_frozen(model_path).get("sha256") or "")
 
 
@@ -51,18 +65,18 @@ def _lc_modules():
     import importlib.util
     here = os.path.dirname(os.path.abspath(__file__))
     mods = []
-    for name in ("oqa_lc_ir", "oqa_lc_chain", "oqa_lc_report"):
+    for name in ("oqa_lc_ir", "oqa_lc_chain", "oqa_lc_report", "oqa_lc_replay", "oqa_obligations"):
         spec = importlib.util.spec_from_file_location(name, os.path.join(here, f"{name}.py"))
         mod = importlib.util.module_from_spec(spec)
         sys.modules.setdefault(name, mod)
         spec.loader.exec_module(mod)
         mods.append(mod)
-    IR, CHAIN, REPORT = mods
-    return None, IR, CHAIN, REPORT
+    IR, CHAIN, REPORT, REPLAY, OB = mods
+    return None, IR, CHAIN, REPORT, REPLAY, OB
 
 
 def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
-                 model_path: str) -> tuple[str, dict]:
+                 model_path: str, condition: str = LC_CONDITION) -> tuple[str, dict]:
     """The LEARNED-CONTRACT report for one item: obligations with a resolution, under a frozen model.
 
     This is the treatment arm's report for the API comparison. It differs from `build_one` in what it says, not in
@@ -72,7 +86,9 @@ def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
       * `model_sha256`  the frozen model whose assumptions licensed its bindings.
     A report is valid only for that (attempt, model version) pair, and `verify_report_provenance` checks it.
     """
-    _, IR, CHAIN, REPORT = _lc_modules()
+    _, IR, CHAIN, REPORT, REPLAY, OB = _lc_modules()
+    if condition not in LC_CONDITIONS:
+        raise ValueError(f"unknown learned-contract condition {condition!r}; expected one of {LC_CONDITIONS}")
     packet = TR.build_packet(pred_root, item_id, question=question)
     if not packet.get("steps"):
         raise ValueError(f"{item_id}: no conversation events were recorded at {pred_root}")
@@ -80,12 +96,30 @@ def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
     if audit["verdict"] != "PASS":
         raise AnswerKeyLeak(f"{item_id}: {audit.get('problems')}")
     model = IR.load_frozen(model_path)
+    # The contracts are scoped by the kind of answer the question asks for, which is read from the question text
+    # alone (`oqa_obligations.derive`). Without it a scoped contract would never apply and arm B's report would be
+    # silently empty.
+    packet["answer_kind"] = (OB.derive(packet.get("question") or "")["answer_kind"]["kind"]
+                             if packet.get("question") else None)
+    replay = REPLAY.replay_attempt(packet, model)
     chain = CHAIN.build(packet, model)
-    text = REPORT.render(chain, model)
+    if condition == LC_ACTION:
+        text = REPORT.render_action(replay, model)
+        action_audit = REPORT.audit_action_only(text)
+        if action_audit["verdict"] != "PASS":
+            # Arm B carrying stage material would make the three-arm comparison measure nothing. Refuse loudly.
+            raise StageLeak(f"{item_id}: the Action-Only report contains stage vocabulary "
+                            f"{action_audit['stage_words_found']}")
+    else:
+        text = REPORT.render(chain, model, replay=replay if condition == LC_STAGE else None)
     ledger = CHAIN.summary(chain["ledger"])
+    fc = REPLAY.score(replay["attempts"])
     record = {
         "id": item_id,
-        "condition": LC_CONDITION,
+        "condition": condition,
+        "heading": LC_HEADINGS[condition],
+        "action_forecasts": fc["forecasts"],
+        "tool_steps": fc["steps"],
         "report_chars": len(text),
         "report_sha256": hashlib.sha256(text.encode()).hexdigest(),
         "trace_sha256": trace_digest(pred_root, item_id),
@@ -94,8 +128,8 @@ def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
         "model_assumptions": list(model.get("assumptions") or []),
         "boundary_audit": audit["verdict"],
         "boundary_problems": audit.get("problems", []),
-        "obligations": ledger,
-        "n_distinct_diagnoses": len(REPORT.group(chain["ledger"])),
+        "obligations": ledger if condition != LC_ACTION else None,
+        "n_distinct_diagnoses": len(REPORT.group(chain["ledger"])) if condition != LC_ACTION else 0,
     }
     return text, record
 
@@ -119,7 +153,7 @@ def verify_report_provenance(records: list, pred_root: str, model_path: str) -> 
     Returns {"verdict", "checked", "problems"}. This is the check the stale-report failure of the A40 run would
     have caught: there, eight epoch-2 failures were handed reports built from their epoch-1 trajectories.
     """
-    _, IR, _, _ = _lc_modules()
+    IR = _lc_modules()[1]
     want_model = str(IR.load_frozen(model_path).get("sha256") or "")
     problems = []
     for rec in records:

@@ -1,0 +1,112 @@
+# THE THREE-ARM OfficeQA comparison on the hosted actor. ONE FILE FOR ALL THREE ARMS.
+#
+#   arm A  Original SkillOpt                 OFFICEQA_STAGE_REPORT_DIR unset -> the analyst prompt is
+#                                            byte-identical to upstream's.
+#   arm B  Action Contracts Only             OFFICEQA_STAGE_REPORT_CONDITION=LC_ACTION
+#   arm C  Action Contracts + Stages         OFFICEQA_STAGE_REPORT_CONDITION=LC_STAGE
+#
+# The arms differ ONLY in those two environment variables, which the opt-in hook in skillopt/gradient/reflect.py
+# reads. Keeping one config file is the strongest available guarantee that the optimizer call schedule, the edit
+# budget, the gate, the splits and the scoring match across the arms.
+#
+#   target    = Qwen3.5-4B served by EmpirioLabs (openai_compatible backend, role prefix TARGET_)
+#   optimizer = DeepSeek V4.1 Flash (openai_compatible backend, role prefix OPTIMIZER_)
+#   tools     = OfficeQA's own document tools, executed locally in the rollout process, so no GPU is needed
+#
+# Supplied at runtime, never stored here:
+#   TARGET_OPENAI_COMPATIBLE_API_KEY / OPTIMIZER_OPENAI_COMPATIBLE_API_KEY, --optimizer_model,
+#   env.split_dir, env.data_dirs, OFFICEQA_LC_MODEL (the frozen contract model this arm-epoch runs under).
+#
+# WHAT IS NOT MATCHED to the A40 pilot, and cannot be. Same note as officeqa_api.yaml: FP8 weights and FP8 KV
+# cache against the pilot's bfloat16, top_k / min_p / repetition_penalty unsendable through the chat schema, and a
+# 262144 context against the pilot's 65536. Every one of those applies identically to all three arms.
+_base_: officeqa_api.yaml
+
+env:
+  # Rule OQA-SEL-3, digest 117836ff4139...: train 24, val 24 (the whole released val split), test 60.
+  # docs/research/OFFICEQA_FROZEN_SETS_V3.json
+  split_mode: split_dir
+  split_dir: ""               # supplied at submit time (OFFICEQA_SPLIT_DIR)
+  data_dirs: []               # supplied at submit time (OFFICEQA_DOCS_DIR)
+  search_mode: offline
+  use_local_tools: true
+  workers: 4
+  max_tool_turns: 24
+  max_completion_tokens: 16384
+  limit: 0
+
+train:
+  num_epochs: 4
+  # batch_size 40 is inherited and exceeds the 24 training questions, so ceil(24/40) = 1 step per epoch: one
+  # ORDINARY skill update per epoch, which is what the comparison asks for. Unchanged from the A40 run, where the
+  # same arithmetic over 12 questions also gave one step.
+
+gradient:
+  analyst_workers: 2
+
+optimizer:
+  # THE DEVIATION OF officeqa_api.yaml IS REVERSED HERE, for all three arms alike.
+  #
+  # The two-arm A40 run turned both of these OFF to keep exactly one skill modification per epoch. The user has
+  # now asked for "paper-style gated slow updates and meta-skill for all three arms from epoch 2", so both are on
+  # and the slow update is GATED rather than force-accepted:
+  #
+  #   use_slow_update true                  at epoch 1 the trainer injects an empty SLOW_UPDATE placeholder and
+  #                                         makes no optimizer call; from epoch 2 it replays the previous epoch's
+  #                                         skill and the current one over `slow_update_samples` training
+  #                                         questions, asks the optimizer for consolidated guidance, and submits
+  #                                         the result as a candidate.
+  #   slow_update_gate_with_selection true  THE PAPER-STYLE PART. The slow-update candidate is scored on the same
+  #                                         24-question selection set and accepted or rejected through the same
+  #                                         validation gate as an ordinary step. With this false (the repo
+  #                                         default) the guidance is force-injected into the current skill with no
+  #                                         val pass at all, which is not what "gated" means.
+  #   use_meta_skill true                   optimizer-side memory. It does not edit the skill. When the slow
+  #                                         update has already built this epoch's comparison pairs it REUSES them,
+  #                                         so turning it on beside the slow update costs one optimizer call per
+  #                                         epoch and no extra rollout.
+  #
+  # Cost, which is why it is spelled out: each epoch from 2 onward adds 2 x slow_update_samples training
+  # rollouts plus one 24-question gate rollout plus two optimizer calls, PER ARM. See section 6 of
+  # docs/research/OFFICEQA_THREE_ARM_LAUNCH.md for the arithmetic.
+  use_slow_update: true
+  slow_update_gate_with_selection: true
+  use_meta_skill: true
+  # DEVIATION FROM UPSTREAM'S 20, applied identically to all three arms. This is the one setting that decides
+  # whether the gated slow update works at all, and the numbers below are MEASURED on the pre-launch dry run.
+  #
+  # This repo DISABLES per-trajectory truncation in the slow update on purpose
+  # (skillopt/optimizer/slow_update.py: "Truncation disabled: return the full text"), so the longitudinal prompt
+  # carries BOTH trajectories of every comparison pair at full length. Measured: 12 pairs came to 846,563
+  # characters = 262,257 tokens, of which 8 pairs were in the trajectory-showing categories (regressed,
+  # persistent_fail, improved) - about 32,800 tokens per showing pair.
+  #
+  #   samples   prompt, measured mix   prompt, every pair showing   against the 173,060-token envelope
+  #     4             87,000                   131,000              inside even in the worst case
+  #     6            131,000                   197,000              inside on the measured mix, over at worst
+  #    20            437,000                   656,000              far over
+  #
+  # The envelope is the largest optimizer prompt this project has sent successfully: 173,060 tokens, arm B's
+  # second analyst call of step 2 (optimizer_calls_summary.json). A prompt over the provider's real limit is not
+  # fatal - run_slow_update catches the error and the trainer records action "no_content" - but the run would
+  # then report a gated slow update that produced no guidance, which is worse than a small sample.
+  #
+  # Four samples cost a thin longitudinal view: 4 of the 24 training questions per epoch. That is symmetric
+  # across the arms, so it cannot affect which arm wins; what it affects is how much the slow update has to work
+  # from. TO RAISE IT, confirm the optimizer's real context window first (a free GET /models against the
+  # configured base URL settles it; the published figures for the DeepSeek chat family disagree, 128k for the V3
+  # era against 1M for the current ones, and none of the sources is DeepSeek's own documentation).
+  #
+  # AFTER THE RUN, check slow_update/epoch_NN/slow_result.json in every arm for action "no_content" before
+  # reporting that the slow update ran.
+  slow_update_samples: 4
+  # Upstream's default: keep every comparison pair, which also means `_build_longitudinal_pairs` never runs the
+  # extra per-item top-up rollouts that policy "changed" would.
+  longitudinal_pair_policy: mixed
+
+evaluation:
+  use_gate: true
+  sel_env_num: 0              # the whole 24-question released val split
+  # The held-out set is evaluated by a SEPARATE job over the DISTINCT selected skills, so that S0 is scored once
+  # instead of once per arm and no skill is rolled out twice. research/officeqa/oqa_heldout.py --plan
+  eval_test: false

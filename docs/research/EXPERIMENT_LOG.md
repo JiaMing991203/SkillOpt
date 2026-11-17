@@ -845,3 +845,121 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
 - **Deviations from plan:**
 - **Observations / interpretation:**
 -->
+
+---
+
+## OQA-3ARM-PREP — the three-arm comparison: offline pre-launch check (2026-11-17, no job, no spend)
+
+**Authorization.** None needed and none used: no cluster job, no actor request, no paid call, no GPU, no network.
+The user asked for the offline preparation and the revised budget before the campaign is submitted.
+
+**Deployed revision.** Workstation only, branch `officeqa-contracts`. Entry point `scripts/train.py:main()` at
+the working-tree revision; the pre-launch driver records the repo path and every child command in
+`PRELAUNCH.json`.
+
+**Resources.** One workstation process tree, ~2 minutes of CPU across 12 child runs. Python 3.12.11 in the
+session scratch venv (the workstation python is 3.9 and cannot import SkillOpt).
+
+### Configuration under test
+
+`configs/research/officeqa_api3.yaml`, one file for all three arms. Effective settings read back through the
+pinned trainer's own `load_config`:
+
+```
+num_epochs 4   batch_size 40   accumulation 1   -> steps_per_epoch 1 (one ordinary update per epoch)
+minibatch_size 8   merge_batch_size 8   analyst_workers 2   failure_only false   skill_update_mode patch
+edit_budget 4, min 2, lr_scheduler cosine  -> per-epoch budget 4, 3, 2, 2 (identical in every arm)
+use_gate true   sel_env_num 0 (all 24 val)   gate on `hard`, strict improvement
+use_slow_update true   slow_update_gate_with_selection true   slow_update_samples 4
+longitudinal_pair_policy mixed   use_meta_skill true   eval_test false
+seed 42   workers 4   max_tool_turns 24   max_completion_tokens 16384   target qwen3-5-4b (EmpirioLabs)
+```
+
+Splits: rule **OQA-SEL-3**, digest `117836ff413934b307d282109675d10febec442c6431f7064cadef42fad098e5`,
+train 24 / val 24 / held-out 60, disjoint, with all three OQA-SEL-2 sets as subsets.
+
+### What ran
+
+Two saved epochs through the real training entry point, for each of the three arms, as two phases each (one per
+epoch, the second resuming from `runtime_state.json`). Collections used: the shared epoch-1 rollout of job
+66209754 as epoch 1, arm B's epoch-2 rollout of job 66228142 as epoch 2, and arm B's `selection_eval_baseline`
+to seed every gate. Two substitutions, both because no authorization covers them:
+
+* the actor (`chat_target_messages`) raises; every rollout directory is pre-seeded from recorded predictions and
+  `run_batch` resumes from `results.jsonl`, so **zero** actor requests were sent;
+* the optimizer (`chat_optimizer`, in all seven importing modules) is a recorder returning a fixed
+  recorded-shape response per stage. **Zero** paid calls. Its output is not realistic and no conclusion is drawn
+  from the skills produced.
+
+### Results
+
+| check | result |
+|---|---|
+| entry point completes | COMPLETED ×3 arms × 2 epochs, slow update and meta skill firing, gate rejecting |
+| arm A receives the ordinary SkillOpt input | PASS — no report, no report heading, in any of 4 analyst prompts |
+| arm B receives the Action-Only report | PASS — `#### Action Contract Report` in 2 of 2 prompts per phase, no other heading; 12 of 12 reports carry no stage marker |
+| arm C receives both halves | PASS — `#### Action Contract and Stage Report`, no other heading |
+| audited == sent | PASS — 12 of 12 reports per phase found **verbatim** in an analyst prompt |
+| trace and model digests reaching the optimizer | PASS — 24 reports over 2 collections, 24 distinct trace digests, each matching the attempt on disk, each under the model the arm ran with |
+| an evolved model reaches the optimizer | PASS — new digest in the report records; the text drops the retired contract and names the three new ones |
+| arm C's report contains arm B's line for line | PASS — 24 of 24 |
+| report sizes | arm B 2,965 chars mean (2,353–3,411), arm C 6,134 (4,450–15,370) |
+
+Optimizer calls recorded per arm, per phase: epoch 1 → 2 analyst + 1 merge; epoch 2 → 2 analyst + 1 merge +
+1 slow update + 1 meta skill. (No `ranking` call: `rank_and_select` short-circuits when the merged edit count is
+within budget, which the stub's two edits always are.)
+
+Model evolution, both contract arms, M0 → M2 with epoch 1's evidence carried forward:
+
+```
+M0 (shared epoch-1 rollout, 12 items / 128 tool steps)
+  adopted   flat_header_authoritative, table_scale_applies_to_rows, grep_cap_not_reached
+  REJECTED  index_alignment   contradicted at UID0026/e1@44
+            year_inheritance  contradicted at UID0028/e1@8
+  induced   grep.effect.1 (27 steps / 9 items), read.effect.1 (36/8), read.effect.2 (10/4), 0 counterexamples
+evolve, epoch 2 (12 items / 122 tool steps new, 12/128 carried forward)
+  out-of-sample before learning   82 forecasts confirmed, 1 violated, 71 unsettled
+  counterexample                  UID0028/e2@42, read, width_uniform forecast true, observed false
+  justified                       read.effect.1 auto-refuted, then RETIRED (no accepted repair)
+  induced                         grep.effect.2, read.effect.3, read.effect.4
+  retained with evidence          grep.effect.1 (60/11), read.effect.2 (23/6), 0 counterexamples
+```
+
+Both arms' evolved models came out identical in content (they were given the same traces) and differ only in the
+arm label recorded in the frozen file and hence in digest: `ef295b0e241e…` for B, `ffd09864455f…` for C.
+
+### Deviations from upstream, applied identically to all three arms
+
+* `use_slow_update` and `use_meta_skill` **on** (off in the A40 two-arm run), with
+  `slow_update_gate_with_selection: true` so the slow-update candidate passes the same validation gate rather
+  than being force-injected.
+* `slow_update_samples: 4` against upstream's 20. Measured reason: this repo disables per-trajectory truncation
+  in the slow update, so 12 comparison pairs come to 846,563 characters = 262,257 tokens against the
+  173,060-token largest prompt this project has sent successfully. 4 stays inside even when every pair shows a
+  trajectory; 6 is inside on the measured mix but over at worst; 20 reaches 437,000–656,000.
+* `eval_test: false`, with the held-out evaluation moved to a separate pass over the deduplicated skills.
+
+### What is **not** established
+
+Nothing about which arm is better, nothing about accuracy on the new splits, nothing about whether the reports
+help the optimizer, and nothing Lean verified. The dry run's skills and scores are meaningless: the optimizer was
+a stub and the rollouts were recorded. What it establishes is the wiring — which input reached which arm, under
+which trace and model digest. Availability is untested for 48 of the 108 items. Epoch 1's reports are in-sample.
+
+### Artifacts
+
+```
+runs/20261117-officeqa-3arm-prelaunch/
+  PRELAUNCH.json          the one verdict and every child command's exit status and output tail
+  BUDGET.json             the budget with every constant and the record it came from
+  HELDOUT_PLAN.json       the deduplicated held-out plan
+  OFFICEQA_FROZEN_SETS_V3.json
+  models/                 M0, each arm's evolved model, SEED.json, EVOLVE_*.json, MODEL_EVOLUTION.jsonl
+  arm_A|B|C/              full trainer out_roots; _dryrun/ holds every optimizer prompt and the DRYRUN_*.json
+  arm_B|C_evolved/        the single-epoch pass under the evolved model
+```
+
+Code: `research/officeqa/oqa_sel3.py`, `oqa_lc_arm.py`, `oqa_dryrun.py`, `oqa_prelaunch.py`, `oqa_heldout.py`,
+`oqa_budget.py`; `oqa_lc_report.py` (action renderer and the two audits), `oqa_reports.py` (the three
+conditions), `skillopt/gradient/reflect.py` (condition-dependent heading and mode).
+Tests: `tests/test_officeqa_three_arm.py`, 25 passed; whole local suite 2,057 passed, 11 skipped.

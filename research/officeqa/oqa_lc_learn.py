@@ -32,7 +32,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from oqa_lc_ir import active, next_id, normalize, render, semantic_sha, validate_contract  # noqa: E402
-from oqa_lc_replay import Evidence, score_contract  # noqa: E402
+from oqa_lc_replay import Evidence, score_contract
+from oqa_lc_replay import trace_key as REPLAY_trace_key  # noqa: E402
 from oqa_lc_vocab import ASSUMPTIONS, ATOMS, DIRECTLY_TESTABLE, VERBS, outcome_of  # noqa: E402
 import oqa_lc_cells as CELLS  # noqa: E402
 
@@ -69,7 +70,7 @@ def direct_contradictions(name: str, ev: Evidence) -> list:
     for attempt, step in ev.steps():
         if outcome_of(step) != "ok":
             continue
-        aid = f"{attempt.get('id')}@{step['i']}"
+        aid = f"{REPLAY_trace_key(attempt)}@{step['i']}"
         supplied = ev._supplied(attempt)  # noqa: SLF001  (Evidence's own cache helper)
         if name == "index_alignment":
             for d in CELLS.disagreement_witnesses(step, supplied, "leaf"):

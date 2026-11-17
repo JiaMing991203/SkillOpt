@@ -196,6 +196,15 @@ def _officeqa_report_cache_key(prediction_dir: str, tid: str, question: str, con
     return h.hexdigest()[:12]
 
 
+def _officeqa_report_heading() -> str:
+    """The analyst-prompt heading for this arm's report, chosen by the same variable that chooses the report."""
+    condition = os.environ.get("OFFICEQA_STAGE_REPORT_CONDITION", "C")
+    try:
+        return _officeqa_report_builder().LC_HEADINGS.get(condition, "Stage and Action Report")
+    except Exception:  # noqa: BLE001 - a heading must never be the thing that ends a run
+        return "Stage and Action Report"
+
+
 def _officeqa_stage_report(report_dir: str, prediction_dir: str, tid: str, item: dict) -> str:
     """Arm B's report for one item: the cached file for THIS trace, or one generated from it."""
     reports = _officeqa_report_builder()
@@ -210,10 +219,19 @@ def _officeqa_stage_report(report_dir: str, prediction_dir: str, tid: str, item:
     model_path = _officeqa_lc_model_path()
     try:
         if model_path:
-            text, record = reports.build_one_lc(prediction_dir, tid, question, results_path, model_path)
+            # Three-arm comparison: the condition selects WHICH report the arm gets. LC_ACTION is arm B
+            # (action contracts only) and LC_STAGE is arm C (action contracts plus the stage half). A condition
+            # that is not one of the learned-contract conditions is a configuration mistake, not something to
+            # paper over, so build_one_lc raises on it.
+            text, record = reports.build_one_lc(prediction_dir, tid, question, results_path, model_path,
+                                                condition=condition if condition in reports.LC_CONDITIONS
+                                                else reports.LC_CONDITION)
         else:
             text, record = reports.build_one(prediction_dir, tid, question, results_path, condition)
     except reports.AnswerKeyLeak:
+        raise
+    except getattr(reports, "StageLeak", ()):
+        # Arm B carrying stage material would silently turn the Action-Only arm into arm C. Never continue.
         raise
     except Exception as exc:  # noqa: BLE001 - one unparsable trace must not end a run
         os.makedirs(report_dir, exist_ok=True)
@@ -361,7 +379,8 @@ def fmt_minibatch_trajectories(
         if stage_report_dir:
             stage_report = _officeqa_stage_report(stage_report_dir, prediction_dir, tid, item)
             if stage_report:
-                header += f"\n#### Stage and Action Report\n{stage_report}\n"
+                # The HEADING is part of what the optimizer reads, so arm B's must not say "stage" either.
+                header += f"\n#### {_officeqa_report_heading()}\n{stage_report}\n"
 
         preview = item.get("spreadsheet_preview", "")
         if not preview:

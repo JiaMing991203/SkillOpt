@@ -44,6 +44,18 @@ from oqa_lc_vocab import VERBS, canon, outcome_of, sha  # noqa: E402
 FORECAST_CONFIRMED, FORECAST_VIOLATED, FORECAST_UNRESOLVED = "confirmed", "violated", "unresolved"
 
 
+def trace_key(attempt: dict) -> str:
+    """The identity of ONE recorded attempt, which is not the same thing as the identity of the question.
+
+    Evidence accumulates across epochs, and the same training question is attempted again in every epoch. Keyed by
+    the item id alone, two different attempts of UID0063 are indistinguishable: the atom cache returns the first
+    attempt's values for the second one's steps, and a counterexample "UID0063@6" does not say which attempt it
+    was found in. A caller that admits more than one collection sets `trace_key` on each packet (the arm driver
+    uses "<item>/e<epoch>"); callers with a single collection need not, and fall back to the item id.
+    """
+    return str(attempt.get("trace_key") or attempt.get("id"))
+
+
 class RevealOrderError(RuntimeError):
     pass
 
@@ -195,7 +207,7 @@ def replay_attempt(attempt: dict, model: dict, sink=None) -> dict:
     for t in range(rev.n):
         req = rev.request(t)
         pred = predict(model, req, answer_kind, split_pages=has_split)
-        rec = {"aid": f"{attempt.get('id')}@{req['i']}", "item": attempt.get("id"), "t": t, "step": req["i"],
+        rec = {"aid": f"{trace_key(attempt)}@{req['i']}", "item": attempt.get("id"), "t": t, "step": req["i"],
                "tool": req["tool"], "args": req["args"], "model_sha256": model.get("sha256"),
                "model_version": model.get("version"), "prediction": pred}
         h = rev.commit(t, rec)
@@ -256,7 +268,7 @@ class Evidence:
         return out
 
     def atoms(self, attempt: dict, step: dict, assumptions) -> dict:
-        key = (attempt.get("id"), step["i"], tuple(sorted(assumptions)))
+        key = (trace_key(attempt), step["i"], tuple(sorted(assumptions)))
         if key not in self._atoms:
             self._atoms[key] = CELLS.atom_values(step, set(assumptions), self._supplied(attempt))
         return self._atoms[key]
@@ -286,7 +298,7 @@ def score_contract(c: dict, ev: Evidence, assumptions, max_ids: int = 12) -> dic
             continue
         out["applicable"] += 1
         o = outcome_of(step)
-        aid = f"{attempt.get('id')}@{step['i']}"
+        aid = f"{trace_key(attempt)}@{step['i']}"
         atoms = ev.atoms(attempt, step, assumptions)
         if c["kind"] == "effect":
             if o != "ok":
