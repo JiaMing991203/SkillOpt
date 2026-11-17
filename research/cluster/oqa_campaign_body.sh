@@ -132,6 +132,20 @@ load_optimizer_key() {
     log "optimizer key loaded (length ${#OPT_KEY})"
 }
 
+# What the shared ledger says, as JSON. `python -I` implies -E, so PYTHONPATH is ignored and a
+# `-m skillopt.model.spend_ledger` invocation cannot find the extracted tree - which is how the first run of
+# this body lost its end-of-job ledger summary (job 66272737: "No module named 'skillopt'"). The tree is
+# therefore put on sys.path explicitly. Only this diagnostic was affected: the ledger that enforces the caps is
+# imported inside the trainer's own process, and the caps held throughout.
+ledger_report() {
+    "$OQA_PY" -I -c "
+import json, os, sys
+sys.path.insert(0, os.environ['OQA_TREE'])
+from skillopt.model import spend_ledger as L
+print(json.dumps(L.report(), indent=2, sort_keys=True))
+"
+}
+
 ACTOR_ROUTE="target=openai_compatible|https://api.empiriolabs.ai/v1|qwen3-5-4b"
 OPT_ROUTE="optimizer=openai_compatible|https://api.deepseek.com|deepseek-flash"
 CFG="configs/research/officeqa_api3.yaml"
@@ -139,6 +153,7 @@ SKILL_INIT="skillopt/envs/officeqa/skills/initial.md"
 status=0
 cd "$WORK" || exit 1
 export PYTHONPATH="$WORK"
+export OQA_TREE="$WORK"
 
 case "$STAGE" in
 prep)
@@ -182,8 +197,8 @@ prep)
         --root "$OQA_LEDGER_DIR/_selftest" --out "$OUTDIR/LEDGER_CHECK.json" >> "$OUTDIR/job.log" 2>&1 \
         || die "the shared ledger does not hold on this filesystem; see LEDGER_CHECK.json. No paid stage may run."
     rm -rf "$OQA_LEDGER_DIR/_selftest"
-    "$OQA_PY" -I -m skillopt.model.spend_ledger report "$OQA_LEDGER_DIR" \
-        > "$OUTDIR/LEDGER_BEFORE.json" 2>> "$OUTDIR/job.log" || log "WARNING: ledger report failed"
+    ledger_report > "$OUTDIR/LEDGER_BEFORE.json" 2>> "$OUTDIR/job.log" \
+        || log "WARNING: ledger report failed"
     unset HF_TOKEN
     ;;
 shared)
@@ -348,8 +363,7 @@ heldout)
 esac
 
 # ── what this job actually spent, from the shared ledger ─────────────────────────────────────────────────────
-"$OQA_PY" -I -m skillopt.model.spend_ledger report "$OQA_LEDGER_DIR" \
-    > "$OUTDIR/LEDGER_AFTER.json" 2>> "$OUTDIR/job.log" || log "WARNING: ledger report failed"
+ledger_report > "$OUTDIR/LEDGER_AFTER.json" 2>> "$OUTDIR/job.log" || log "WARNING: ledger report failed"
 if [ -f "$OUTDIR/LEDGER_AFTER.json" ]; then
     "$OQA_PY" -I -c "
 import json,sys
