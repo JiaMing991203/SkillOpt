@@ -1,6 +1,6 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-16 22:05 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-16 22:45 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
 **Nothing is running or queued. 0 GPUs held.** Both arms and the held-out evaluation are COMPLETE.
 **The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
@@ -68,10 +68,31 @@ contracts; **one of those 3 acquires a counterexample on the confirmation collec
 width_uniform` at UID0028@42); and nothing here shows any of it changes a skill edit that survives merge, budget
 and the 6/12 gate.
 
-**Lean: GENERATED, NOT COMPILED.** `lean/OqaContracts.lean`, Lean 4 core only, 64 statements (25 general by
-exhaustion + 39 over exported evidence), no `sorry`/`native_decide`/axioms. The Python mirror agrees on every row
-(0 mismatches) - that is a cross-implementation check, NOT a Lean proof. `lean`/`lake`/`elan` are absent on the
-workstation AND on the Great Lakes login node (checked).
+**Lean: COMPILED. Job 66259448, COMPLETED, ExitCode 0:0.** USER-AUTHORIZED 2026-11-16 (1 CPU, 2 GB, <=15 min,
+0 GPU, 0 paid calls); the grant is now spent and OQA-5's caps are untouched (6.23 of 8 A40-h, 8 of 24 calls).
+- **Lean 4.20.0** (x86_64-unknown-linux-gnu, commit 77cfc4d1a4f6, Release), from `OQA_LEAN_BIN` in the PRIVATE
+  cluster site settings. The toolchain is NOT on the workstation and NOT on the login node. The learned-contract
+  state note's "Lean 4.35.0" does not exist there any more; 4.20.0 is what compiled this.
+- 1 CPU / 2 GB allocated, **0 GPUs**; elapsed 00:00:06, TotalCPU 00:00.907, `lean` itself **4.24 s**.
+- **All 64 statements compiled: 23 in `section General` + 2 `rfl` bridge theorems + 39 over the exported
+  evidence.** Compiler output **0 bytes** (Lean is silent when everything checks); **0 errors, 0 warnings, 0
+  `sorry`**.
+- **Digest identical at all six links** - recorded locally before submission, reproduced twice by the generator at
+  `47c6ed8`, committed at `87b9ad6`, verified by the job's manifest check, logged by the job, and the copy fed to
+  `lean`: `e40a7e62faed92ffdc53093b4937f8eb6b655ba5eabda14d7036444c0b9eecbb`.
+- **NOT established: the axiom set.** `#print axioms` was deliberately not added, because changing the file would
+  break the digest guarantee. 0 warnings does rule out `sorry` (Lean always warns on one). An axiom check needs one
+  further job of the same shape; NOT authorized, NOT submitted.
+- First submission **66259421 FAILED in 1 s, exit 3, before `lean` ran**: a Slurm batch script is copied to the
+  node spool, so `${BASH_SOURCE[0]}` pointed there instead of at the bundle and the private site file was
+  unreadable. Fixed with `$SLURM_SUBMIT_DIR`. The `.lean` file was never touched; its digest was re-verified on the
+  cluster before the retry. Both logs preserved.
+- Ran from a read-only **staging bundle**, not a git snapshot: `research/deploy.sh` refuses a commit that is not on
+  `origin` and pushing was not authorized, so nothing was pushed. `research/cluster/oqa_lean.sbatch` is committed
+  for the snapshot route whenever a push is authorized.
+- Artifacts: `~/dev/lean_skillopt/runs/20261116-offline-lc-port/lean_job_66259448/` (job.log, results.tsv,
+  lean_version.txt, manifest_check.txt, the compiled copy, the 0-byte compiler output, and the failed job's log).
+  Note the `job.log` is missing its final line - a `tee` flush race at exit; `results.tsv` carries the full record.
 
 **CORRECTION to the old A0:** it claimed `OFFICEQA_TRANSFER_MANIFEST.json` was untracked and that its
 `source_commit` and per-file `source` paths were null. All three claims were wrong - the manifest is tracked and
@@ -80,13 +101,13 @@ untracked in their own worktree. There was no provenance gap. Nine further files
 (manifest entry 2), bringing `research/officeqa/transferred/` to 15 reference files, none on an execution path.
 
 ### STILL WITH THE USER after this port
-1. **Compile the Lean file?** Needs **1 Slurm CPU job: 1 core, 2 GB, 15 min, 0 GPU, no key, no paid call**, plus
-   the `LEAN_BIN` path from the learned-contract worktree's private `lc_site.env`. **The OQA-5 authorization does
-   NOT cover it** - it is expressed in A40-hours and DeepSeek calls and names no CPU job-hours. Port note 5.3.
-2. **Approve the guarded-`effect` extension?** Documented with two worked examples and the smallest change in port
-   note 3.3; deliberately NOT implemented, because it changes contract semantics.
-3. **Spend 1-2 of the 8 remaining DeepSeek calls on one learner round**, to test whether a paid learner proposes
-   hypotheses the deterministic template proposer does not? Priced in port note section 7.
+1. **Approve the guarded-`effect` extension?** Documented with two worked examples and the smallest change in port
+   note 3.3; deliberately NOT implemented, because it changes contract semantics. **PENDING by instruction.**
+2. **Spend 1-2 of the 8 remaining DeepSeek calls on one learner round**, to test whether a paid learner proposes
+   hypotheses the deterministic template proposer does not? Priced in port note section 7. **PENDING by
+   instruction.**
+3. **One more CPU job to check the axiom set?** Same shape as 66259448 but compiling a separately digested
+   axiom-printing variant. Not authorized, not submitted.
 
 ## A. The authorized task
 

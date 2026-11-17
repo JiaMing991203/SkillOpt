@@ -50,9 +50,10 @@ What came out of it:
    VIOLATED for a different and verifiable reason**: thousands-to-billions was applied with a factor of 1e-3 where
    1e-6 is required, so fourteen regression inputs are 1,000x too large. The plain report P says nothing about any
    of it.
-5. **Nothing was Lean-compiled.** There is no Lean toolchain on the workstation and no authorization I hold covers
-   a cluster CPU job for this task. The file is generated, its Python mirror agrees with it on every row, and
-   section 6 states the exact remaining request.
+5. **The Lean file compiles.** Job **66259448** on Great Lakes, **Lean 4.20.0**, 1 CPU / 2 GB / 6 s elapsed
+   (4.24 s in `lean`), **rc 0**, zero compiler output, zero warnings, zero `sorry`: all **64** statements check
+   (23 general exhaustions + 2 `rfl` bridges + 39 over the exported evidence). The axiom set was **not** checked -
+   see 5.4.
 
 Honest limits, stated once here and not softened later: the adjudicating evidence is **very sparse** (5 adjudicated table pairs
 over 3 tool steps in 24 attempts), the learned model is **small** (3 surviving contracts), one of those three **acquires a
@@ -394,28 +395,75 @@ Kept separate, because the distinction is the whole point of design v0.1 section
 | **Evidence extraction supplies, and Lean does not check** | that a row's label is the period it is read as; that a flattened header cell states its column's path; that an operand is the cell it was matched to; that a message line is the conversion it was parsed as. Every atom value in the EVIDENCE section is a **trusted export** of `oqa_lc_cells`. |
 | **Nothing here establishes** | that the Treasury corpus obeys any learned hypothesis (a finite set of observations supports an empirical claim, it does not prove one); that a reported violation caused the item to be answered wrongly; that the readable report preserves the checked proposition's scope. |
 
-### 5.3 Not compiled - and the exact remaining request
+### 5.3 COMPILED - job 66259448, Lean 4.20.0, all 64 statements, rc 0
+
+**USER-AUTHORIZED 2026-11-16** (1 CPU core, 2 GB, up to 15 minutes, 0 GPUs, 0 paid calls) and **done**.
+
+| | |
+|---|---|
+| job | **66259448**, `oqa-lean`, partition `standard`, Great Lakes |
+| requested / allocated | 1 CPU, 2 GB, 15 min walltime / `cpu=1, mem=2G, node=1`, **0 GPUs** |
+| state | **COMPLETED, ExitCode 0:0** |
+| elapsed / TotalCPU | 00:00:06 / 00:00.907; `lean` itself ran **4.24 s** |
+| Lean version | **Lean 4.20.0, x86_64-unknown-linux-gnu, commit 77cfc4d1a4f6, Release** |
+| file compiled | `OqaContracts.lean`, sha256 `e40a7e62faed92ffdc53093b4937f8eb6b655ba5eabda14d7036444c0b9eecbb` |
+| compiler output | **0 bytes** - Lean prints nothing when every declaration checks |
+| error lines / warning lines / `sorry` lines | **0 / 0 / 0** |
+| statements compiled | **23** in `section General` + **2** `rfl` bridge theorems + **39** over the exported evidence = **64** |
+| paid calls | 0 |
+
+**The identity of the compiled file is checkable at every link, not asserted.** The digest was recorded locally
+before submission; the generator at `47c6ed8` reproduces it byte-for-byte (regenerated twice, same digest); it is
+committed at `87b9ad6` as `research/officeqa/lean/OqaContracts.lean` with `MANIFEST.sha256` beside it; the job
+verified that manifest before compiling (`manifest_check.txt`: `OqaContracts.lean: OK`) and logged the digest it
+compiled; and the copy it actually fed to `lean` has the same digest. All six are
+`e40a7e62faed92ffdc53093b4937f8eb6b655ba5eabda14d7036444c0b9eecbb`.
+
+**One failed submission first, and it was not a Lean result.** Job **66259421** failed in 1 second with exit 3,
+before `lean` ran: a Slurm batch script is copied into the node's spool directory, so `${BASH_SOURCE[0]}` resolved
+there instead of to the bundle and the private site file could not be read
+(`/var/spool/slurmd.spool/job66259421/oqa_lean_site.env: No such file or directory`). Fixed by using
+`$SLURM_SUBMIT_DIR`; the `.lean` file was never touched and its digest was re-verified on the cluster before the
+retry. The failed job's log is preserved beside the successful one. It consumed ~1 CPU-second.
+
+**Not run from a git snapshot.** `research/deploy.sh` refuses a commit that is not on `origin`, and pushing was
+not authorized for this task, so the job ran from a read-only **staging bundle** - the same mechanism the
+learned-contract line used for its Lean jobs - carrying the `.lean` file, its manifest and a self-contained job
+script. `research/cluster/oqa_lean.sbatch` is committed for the snapshot route whenever a push is authorized.
+The Lean binary path came from `OQA_LEAN_BIN` in the private, untracked cluster site settings; it appears in no
+tracked file and in no log, and the only thing printed about it is its `--version` string.
+
+### 5.4 What this run does and does not establish
+
+**Established by the compiler.** Every one of the 64 statements type-checks and every proof closes: the 23
+exhaustions and 2 bridge lemmas of the general section, and the 39 `by decide` checks over the exported evidence.
+With zero warnings, there is no `sorry` anywhere - Lean emits a warning for every `sorry`, and the output was
+empty.
+
+**NOT established, and I am not claiming it.** The run did **not** check which axioms the declarations use. The
+job compiles the file exactly as its digest records, and adding `#print axioms` would change the file and break
+that guarantee, so `oqa_lc_lean.parse_results`' axiom test had nothing to parse. Nothing in the file declares an
+`axiom` and `by decide`/`rfl` introduce none, but that is an argument, not a check. One more job of the same shape
+with an axiom-printing variant (a separate file, separately digested) would settle it; it is not authorized and I
+have not submitted it.
+
+### 5.5 The earlier request, now satisfied
 
 `lean`, `lake` and `elan` are absent on the workstation **and on the Great Lakes login node** (checked, not
 assumed); the learned-contract line's Lean jobs got their binary from a private `lc_site.env` inside a Slurm CPU
 job. So:
 
-- **Done offline instead:** the Python mirror in `oqa_lc_lean.py` evaluates every general exhaustion and every
-  exported row. `general_mirror()["all_ok"] == true`, and **0 mismatches** between the mirror and the values the
-  Lean file asserts. That is a real check of the generator against an independent implementation of the same
-  semantics; it is **not** a Lean proof, and I am not reporting it as one.
-- **Does the existing authorization cover compiling it? No.** The OfficeQA grant (OQA-5) is expressed in
-  **A40-hours and DeepSeek calls** - 6.23 A40-hours and 8 calls remain - and mentions no CPU job-hours at all. A
-  CPU-only Slurm job is neither. The learned-contract track's CPU allowance belongs to a different track's ledger
-  and a different task's authorization, and A4 section 2 states that a task's limits end with that task. So I
-  stopped here.
-- **The exact request, if you want it compiled:** one Slurm CPU job, `1 CPU core, 2 GB, 15 minutes walltime`, no
-  GPU, no network, no API key, no paid call. It stages `OqaContracts.lean` with a sha256 manifest, runs
-  `lean OqaContracts.lean` under a 600-second timeout, saves the return code, the compiler output and
-  `lean --version`, and the verdict is parsed locally by `oqa_lc_lean.parse_results` (which fails the check on any
-  error, any `sorry` and any axiom outside `propext` / `Classical.choice` / `Quot.sound`). It also needs the
-  `LEAN_BIN` path from the learned-contract worktree's private `lc_site.env`. Comparable earlier jobs - 105
-  theorems - completed well inside one job; this file has 64.
+- **The Python mirror**, which was the only check available before the job ran, agrees with the file on every
+  row: `general_mirror()["all_ok"] == true` and **0 mismatches**. Lean has now independently confirmed the same
+  statements, so the mirror's role is reduced to catching generator drift before a job is submitted.
+- **The authorization.** OQA-5 covered neither a CPU job nor a learner call, so this needed its own grant, and
+  the user gave one on 2026-11-16: 1 CPU core, 2 GB, up to 15 minutes, 0 GPUs, 0 paid calls. It was used once
+  (plus ~1 CPU-second on the failed first submission) and is now spent. OQA-5's own caps are untouched: 6.23 of 8
+  A40-hours and 8 of 24 DeepSeek calls remain unused.
+- **Where the Lean toolchain actually is.** Not on the workstation and not on the Great Lakes login node. The
+  installed toolchain is **Lean 4.20.0** under the project's own `elan` directory on cluster storage, registered
+  as `OQA_LEAN_BIN` in the private site settings. The learned-contract state note records "Lean 4.35.0"; no such
+  toolchain exists there now, and 4.20.0 is what compiled this file.
 
 ---
 
@@ -493,7 +541,7 @@ output. `docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md` section 6 prices the rep
 
 | | |
 |---|---|
-| **Blocked on authorization** | compiling `OqaContracts.lean` (section 5.3: 1 CPU, 2 GB, 15 min, no GPU, no key). Nothing else is blocked. |
+| **Blocked on authorization** | nothing. The Lean compile was authorized and done (job 66259448, section 5.3). An axiom check would need one further job of the same shape (section 5.4). |
 | **Blocked on a design decision** | the guarded-`effect` extension of 3.3. Documented, not implemented; it changes contract semantics, so it needs approval. |
 | **Open question, priced** | whether a DeepSeek learner proposes hypotheses the template proposer does not. One round over the 12 development attempts is 1-2 calls at ~$0.02 each, inside the remaining 8-call OQA-5 budget, but the OfficeQA authorization was granted for the two-arm comparison and I would want that said explicitly before spending it. |
 | **Not in scope, per the instruction** | new rollouts, skill-optimization campaigns, held-out evaluation. Job 66234927's held-out score remains **unread**. |
