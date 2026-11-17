@@ -138,13 +138,26 @@ the optimistic direction by a factor of 3.2.**
 | held-out, per distinct skill (60 questions) | 619 | **$0.39** | |
 | everything at 7 distinct skills | 14,118 | **$8.97** | **OVER the $8.00 ceiling** |
 
-**THE ONE CEILING AT RISK IS THE ACTOR CHARGE, and only in the held-out stage.** Four distinct skills fit inside
-what the training chain leaves ($7.79); five or more do not ($8.18 / $8.58 / $8.97). **The held-out jobs are NOT
-submitted**, so nothing is committed: when the arms finish, run `oqa_heldout.py --plan`, read the distinct-skill
-count, and if it is 5 or more either ask for a raise to about $10 or cut the exploratory last-skill evaluations
-(the validation-selected skills are the primary comparison and there are at most 4 of those, S0 included).
-In the A40 two-arm run every candidate was rejected and both final skills were byte-identical to S0, which would
-collapse 7 requested skills to **one** distinct one - $0.39. So the worst case is unlikely, not impossible.
+**THE ONE CEILING AT RISK IS THE ACTOR CHARGE, and only in the held-out stage - and the PRIMARY comparison
+always fits.** Refined after running `oqa_heldout.py --plan` against arm A's real output:
+
+| what is scored | distinct skills | total with the $6.22 training chain |
+|---|---|---|
+| **the PRIMARY comparison** - S0 plus each arm's validation-selected skill | at most **4** | **$7.79, inside $8.00 at its worst** |
+| + 1 exploratory last skill | 5 | $8.19, over by $0.19 |
+| + 2 | 6 | $8.58, over by $0.58 |
+| + 3 (every arm's last skill distinct) | 7 | $8.97, over by $0.97 |
+
+So **no decision is needed to get the primary result**. What may not fit is the EXPLORATORY last-skill
+evaluation, and only if every arm's last skill is distinct. If candidates keep being rejected as arm A's epoch-1
+candidate was, every arm's selected skill IS S0 - 1 distinct for the primary - and the three distinct last
+skills then also fit, at $7.79 in total. Verified on arm A's real output: 3 skills requested, **2 distinct**,
+because its selected skill is S0 and its last skill is the rejected candidate.
+
+**The held-out jobs are NOT submitted.** When the chain finishes, run
+`oqa_heldout.py --plan --arm A=... --arm B=... --arm C=... --usd-per-question 0.00656 --requests-per-question 10.32`,
+read the distinct-skill count, and submit the primary skills first. If the exploratory extras would cross $8.00,
+that is the point to ask the user - not before.
 
 Attempts and CPU job-hours are both fine: 14,118 of 15,000 even at 7 skills, and about 11 job-hours for the
 chain plus 0.66 per held-out skill, against 20 authorized.
