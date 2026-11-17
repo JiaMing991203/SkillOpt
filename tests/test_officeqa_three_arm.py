@@ -316,13 +316,17 @@ def test_the_budget_reports_the_slow_update_prompt_against_what_was_actually_pro
     assert four["context_risk"]["verdict"].startswith("INSIDE")
     assert four["context_risk"]["worst_case_needs_trimming"] is False
 
-    # 10 pairs - the campaign's setting - sit AT the proven point on the measured mix and above it at worst,
-    # which is exactly why the pre-send guard exists rather than being optional.
-    assert chosen["context_risk"]["worst_case_needs_trimming"] is True
-    assert chosen["context_risk"]["pairs_that_fit_the_guard_in_the_worst_case"] >= 6
+    # 10 pairs: the plan put the worst case at 345,690 tokens, over the guard's limit. The CAMPAIGN measured
+    # itself (job 66273856, arm A epoch 2) on a draw where all ten pairs were in trajectory-showing
+    # categories - the worst case - and the prompt came to about 185,332 tokens. So 10 pairs fits even at
+    # worst, and the guard did not need to trim. The assertion records the measurement, not the estimate.
+    assert chosen["context_risk"]["worst_case_needs_trimming"] is False
+    assert chosen["context_risk"]["slow_update_prompt_tokens_worst_case"] < \
+        chosen["context_risk"]["pre_send_guard_limit_tokens"]
+    assert chosen["context_risk"]["pairs_that_fit_the_guard_in_the_worst_case"] >= 10
 
-    # 20 is beyond anything demonstrated.
-    assert upstream["context_risk"]["verdict"].startswith("LARGER")
+    # 20 pairs would still be beyond the guard's limit even at the campaign's smaller per-pair size.
+    assert upstream["context_risk"]["worst_case_needs_trimming"] is True
     assert upstream["question_rollouts"]["total"] > chosen["question_rollouts"]["total"] \
         > four["question_rollouts"]["total"]
 

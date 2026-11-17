@@ -66,7 +66,7 @@ M = {
                   "it was measured on the arm that carried a report.",
     },
     "slow_update_prompt_tokens_per_showing_pair": {
-        "value": 34569,
+        "value": 18533,
         "source": "MEASURED on the pre-launch dry run. build_comparison_pairs + format_comparison_text over the "
                   "12 pairs of the dry run's epoch-2 slow update gives 846,563 characters; the A40 run's "
                   "per-call records put this project's optimizer prompts at 3.228 characters per token, so "
@@ -77,7 +77,15 @@ M = {
                   "persistent_fail / improved print a trajectory; stable_success does not. Per-trajectory "
                   "truncation is DISABLED in this repo on purpose "
                   "(skillopt/optimizer/slow_update.py: 'Truncation disabled: return the full text'). "
-                  "runs/20261117-officeqa-slow-probe-66271190/GROWTH.json",
+                  "runs/20261117-officeqa-slow-probe-66271190/GROWTH.json. "
+                  "SUPERSEDED 2026-11-17 BY THE CAMPAIGN ITSELF. Arm A's epoch-2 slow update (job 66273856) "
+                  "drew 10 pairs of which ALL TEN were in trajectory-showing categories (1 regressed, 1 "
+                  "improved, 8 persistent_fail, 0 stable_success) - the worst case for size - and the rendered "
+                  "prompt came to 593,060 characters, about 185,332 tokens: 18,533 per showing pair, HALF the "
+                  "34,569 measured on the saved collection. That collection came from the two-arm A40 run over "
+                  "12 different questions and contained a 171,394-character outlier; this campaign's "
+                  "trajectories are simply shorter. The practical consequence is that 10 pairs has far more "
+                  "headroom here than the plan assumed, and the pre-send guard did not need to trim.",
     },
     "showing_pair_fraction": {
         "value": 0.667,

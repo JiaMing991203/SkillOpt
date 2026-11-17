@@ -189,8 +189,13 @@ variables are set, so no other track's behaviour changes.**
    arm-epoch cannot eat what the other arms need. **Verified on NFS** by job 66272499.
 2. **A pre-send prompt size check** (`skillopt/optimizer/prompt_budget.py`), rule **OQA-PB-1**, limit **225,000**
    estimated tokens. A draw over it drops comparison pairs - `stable_success` -> `improved` ->
-   `persistent_fail` -> `regressed`, later-sampled first - until it fits. **EXPECT SOME SLOW UPDATES TO SEND 9
-   PAIRS RATHER THAN 10**: the typical 10-pair mix estimates to ~230,000 tokens, above the limit. The log
+   `persistent_fail` -> `regressed`, later-sampled first - until it fits. **MEASURED, and it does not need to
+   trim:** arm A's epoch-2 slow update (job 66273856) drew 10 pairs of which ALL TEN were in
+   trajectory-showing categories - the worst case for size - and the prompt came to **185,332 tokens against
+   the 225,000 limit**, sent whole, guidance produced. That is 18,533 tokens per showing pair against the
+   34,569 the plan assumed, because this campaign's trajectories are about half the size of the saved
+   collection the constant came from (which held a 171,394-character outlier). My earlier prediction that
+   "some slow updates will send 9 pairs rather than 10" was wrong in the cautious direction. The log
    (`prompt_budget.jsonl` in each job's run dir) records the pair count actually sent and whether guidance came
    back, for every arm.
 3. **An in-process route guard** (`skillopt/model/route_guard.py`), called by the trainer and by `eval_only`. It
