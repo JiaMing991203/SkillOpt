@@ -167,6 +167,11 @@ class Ledger:
             "ok": len(ok),
             "errors": sum(1 for a in self.attempts if a["outcome"] not in ("ok", "in_flight")),
             "in_flight_at_exit": sum(1 for a in self.attempts if a["outcome"] == "in_flight"),
+            # An attempt that failed before any HTTP request (latency 0, a client-side error) is still COUNTED
+            # and still CHARGED at its worst case here. That is deliberately the safe direction, but it means the
+            # ledger can over-state spend; `never_sent` says how much of it never reached the network.
+            "never_sent": sum(1 for a in self.attempts
+                              if a["outcome"].startswith("error:") and not a.get("latency_s")),
             "unreconciled": sum(1 for a in self.attempts if a.get("unreconciled")),
             "malformed_replies": sum(1 for a in self.attempts if a.get("malformed")),
             # A reply whose tool-call arguments are not valid JSON is usually rejected by the client library
@@ -382,6 +387,23 @@ def main() -> int:
         if not getattr(args, required.replace("-", "_")):
             print(f"--{required.replace('_', '-')} is required for the smoke test", file=sys.stderr)
             return 2
+
+    # Point SkillOpt at THIS endpoint explicitly. Without this the target backend defaults to Azure OpenAI and
+    # every rollout dies with "Azure OpenAI endpoint is not configured for target" (job 66264701) - the trap this
+    # module's own plan document warns about, which I had documented and then not guarded here. Both roles must
+    # read "openai_compatible" because skillopt/model dispatches on the COMBINED backend name, and the backend
+    # keeps a module-level config per role, so the config object is set rather than only the environment.
+    from skillopt.model import backend_config as _BC
+    from skillopt.model import openai_compatible_backend as _OC
+    _BC.set_optimizer_backend("openai_compatible")
+    _BC.set_target_backend("openai_compatible")
+    _OC.configure_openai_compatible(
+        target_base_url=args.base_url, target_api_key=os.environ[key_env], target_model=args.model,
+        target_temperature=0.7, target_max_tokens=args.max_completion_tokens, target_timeout_seconds=300)
+    report["backend"] = {"optimizer": _BC.get_optimizer_backend(), "target": _BC.get_target_backend(),
+                         "target_base_url": args.base_url, "target_model": args.model,
+                         "note": "the optimizer role is configured but unused; its key is not loaded by the job"}
+    print(json.dumps(report["backend"], indent=1))
 
     ledger = Ledger(args.max_attempts, args.usd_cap, args.max_completion_tokens)
     restore = install_guard(ledger)
