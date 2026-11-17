@@ -182,12 +182,20 @@ def test_selection_rule_is_recorded_and_names_the_training_split_only():
     assert "TRAINING" in SMOKE.SELECTION_RULE and "never read" in SMOKE.SELECTION_RULE
 
 
-def test_select_items_refuses_an_id_outside_the_training_split(tmp_path):
+def test_select_items_reads_the_real_csv_shape_and_refuses_an_id_outside_training(tmp_path):
+    """The frozen splits are CSV with quoted multi-line source_docs fields, so the loader has to be the adapter's
+    own. A first version looked for *.json and found nothing in the real split."""
     train = tmp_path / "train"
     train.mkdir()
-    (train / "a.json").write_text(json.dumps([{"id": "UID0033", "question": "q"}]))
-    assert [i["id"] for i in SMOKE.select_items(str(tmp_path), ["UID0033"])] == ["UID0033"]
-    with pytest.raises(RuntimeError, match="not found"):
+    (train / "officeqa_train.csv").write_text(
+        'uid,question,ground_truth,category,source_files,source_docs,split\n'
+        'UID0033,"When was it signed?","March 3, 1977",easy,"b_1977_04.txt",'
+        '"""b_1977_04.txt"" https://fraser.example/page\nsecond line of the same field",train\n',
+        encoding="utf-8")
+    got = SMOKE.select_items(str(tmp_path), ["UID0033"])
+    assert [i["id"] for i in got] == ["UID0033"]
+    assert got[0]["question"] == "When was it signed?"
+    with pytest.raises(RuntimeError, match="TRAINING split"):
         SMOKE.select_items(str(tmp_path), ["UID0091"])   # a validation id
 
 

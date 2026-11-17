@@ -249,21 +249,22 @@ SELECTED_IDS = ["UID0033", "UID0063", "UID0034"]
 
 
 def select_items(split_dir: str, ids: list[str] | None = None) -> list[dict]:
-    """Load the three training items by id from the frozen split. Refuses an id outside train/."""
+    """Load the three training items by id from the frozen split. Refuses an id outside train/.
+
+    Uses the OfficeQA adapter's OWN dataloader rather than parsing the split file here. The frozen splits are
+    CSV with quoted multi-line `source_docs` fields, so neither line counting nor a hand-rolled reader gets them
+    right - a first version of this function looked for `*.json` and found nothing. Going through the adapter
+    also guarantees the items are normalised exactly as a real rollout sees them (`uid` -> `id`, list fields
+    parsed), which is the point of a smoke test.
+    """
     want = list(ids or SELECTED_IDS)
-    train = os.path.join(split_dir, "train")
-    items: dict[str, dict] = {}
-    for name in sorted(os.listdir(train)):
-        if not name.endswith(".json"):
-            continue
-        with open(os.path.join(train, name), encoding="utf-8") as f:
-            blob = json.load(f)
-        for row in (blob if isinstance(blob, list) else [blob]):
-            if str(row.get("id")) in want:
-                items[str(row["id"])] = row
+    from skillopt.envs.officeqa.dataloader import OfficeQADataLoader
+    rows = OfficeQADataLoader().load_split_items(os.path.join(split_dir, "train"))
+    items = {str(r.get("id")): r for r in rows if str(r.get("id")) in want}
     missing = [i for i in want if i not in items]
     if missing:
-        raise RuntimeError(f"ids not found in {train}: {missing} (the smoke test only reads the training split)")
+        raise RuntimeError(f"ids not found in the TRAINING split at {split_dir}: {missing}. The smoke test reads "
+                           f"train/ only; validation and held-out items are out of scope.")
     return [items[i] for i in want]
 
 
