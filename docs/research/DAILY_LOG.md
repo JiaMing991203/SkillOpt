@@ -1081,3 +1081,92 @@ test states the real coverage instead of the coverage I assumed.
 The non-independence caveat applies to both tails and is stated once: all gates in an arm share the same 24
 questions, so 0.020 could plausibly be several times larger, while a 32-question pooled deficit is far too
 large for within-arm correlation to explain.
+
+## 2026-11-17 (end of day) — the recovery finished; four epochs in all three arms
+
+**Jobs 66323200–66323203, all COMPLETED**, 26:20 / 20:14 / 24:52 / 27:01 of wall time, **3.28 CPU
+core-hours** between them. `oqa_recover.py verify`: **PASS**. The post-recovery audit reports **still starved:
+none; recovered: A.4, B.4, C.3, C.4.**
+
+### What the recovery cost, and why it was cheaper than planned
+
+$0.68 of actor against the $1.26 the plan called certain, and 1,081 attempts against 1,981. The gate passes
+used about **5.6 attempts per question** rather than the campaign average of 10.32, because a candidate that
+answers nothing ends its tool loop early — which is itself a symptom of the finding below. Optimizer: 36 calls
+and $1.2692, close to the $1.44 estimate.
+
+**Every saved rollout was reused and nothing was re-rolled.** All four recovered epochs rejected their
+candidates, so the skill in force at each epoch's end was unchanged and `rollout_curr`'s provenance held. The
+guard reported, for each of the three directories per job, that the rows predate the settings fingerprint and
+so their skill and search mode were checked but their turn budget could not be — which is honest and sound
+here, because one config file fixes it.
+
+**The reuse was faithful, and the prompt-budget log proves it.** Each recovered epoch's slow update rebuilt
+*identical* pair and token counts: A.4 10→8 pairs at 261,376→205,051 tokens both times, C.3 10→7 at
+252,996→207,927, B.4 10→10 at 181,849. Same inputs, same trimming decisions, same sizes.
+
+**And it settles what the four `no_content` results were.** The original B.e4 sent 10 pairs at 181,849 tokens
+— far inside the 225,000 limit — and got no guidance; B.e2 sent 10 at 223,815 and did. The size was never the
+problem; the ledger was.
+
+### The result: only arm B updated its skill
+
+| arm | selected skill | size | what happened |
+|---|---|---|---|
+| A (Original SkillOpt) | **S0** | 887 B | 4 ordinary + 3 slow gates, all rejected |
+| B (Action Contracts Only) | **step 2's skill** | 3,603 B | **accepted at epoch 2**, 5/24 vs 4/24 |
+| C (Action Contracts + Stages) | **S0** | 887 B | 4 ordinary + 3 slow gates, all rejected |
+
+7 skills requested, **3 distinct by digest, 2 by advice**: arms A's and C's last skills are S0 plus an empty
+placeholder, advice digest identical to S0's.
+
+**Arm C's epoch-3 slow update scored exactly 4/24, tying S0's baseline**, and was rejected only because
+upstream's gate requires strict improvement. That is the concrete case behind the "accept on a tie" option,
+which remains unauthorized and unapplied.
+
+### The statistics over all 21 gates — the direction is now unmistakable
+
+12 ordinary + 9 slow-update gates, **1 acceptance**. Expected under each gate's own incumbent: **7.85**;
+P(at most 1) = **0.001**. Pooled over 504 question-level observations the candidates got **33** right where
+the null predicts **89**, P(total ≤ 33) = **2.1e-13**.
+
+So the optimizer's edits made this actor **worse** on the selection set, in all three arms including Original
+SkillOpt. It does not separate the arms, and it does not make arm B's one-question acceptance noise. At
+thirteen gates I recorded this finding as reversing my earlier "harmful versus neutral is indistinguishable";
+at twenty-one it is not close.
+
+### The accounting fix, proven in production
+
+Ledger **PASS**: net claims equal recorded spend exactly in both roles, zero unresolved requests, zero reserve
+breaches. The four recovery jobs **released their own unspent claims on clean exit** — the first time the fix
+has run outside a test. Across the campaign, 46 optimizer attempts / $2.2395 and 456 target attempts / $2.2259
+went back to the authorization instead of being stranded.
+
+### Held-out, submitted and partly in
+
+`66332133` S0 → `66332134` arm B's selected → `66332135` the exploratory placeholder variant, `afterok`,
+frozen by digest first (`SKILLS_FROZEN.json`, record `f26ba852b9e59dc4`).
+
+**S0 scores 3/60 = 0.0500 on the 60 held-out questions**, against 4/24 = 0.1667 on the gate set. Different
+question sets, and the intervals overlap, so that gap is not yet a finding.
+
+The third job is worth naming carefully: the 940-byte skill differs from S0 only by two HTML comment lines, so
+its advice is identical. Its held-out number is **not a third arm's result** — it is an inadvertent replicate
+of S0 under a slightly different system prompt, which makes it a read on the instrument's run-to-run
+variability and nothing more.
+
+### Four more of my own mistakes, all caught by running things
+
+1. **The held-out submitter would have handed every job a path it had just deleted.** S0's path pointed into
+   the temp tree the script extracts and removes on exit. Found by smoke-testing against a throwaway campaign
+   root instead of waiting to run it for real. S0 is now a durable campaign artifact.
+2. **I wrote a second advice-stripper with guessed markers** (`<!-- SLOW_UPDATE -->`) when the trainer writes
+   `<!-- SLOW_UPDATE_START -->`. It stripped nothing, and the tool reported 3 skills distinct by advice where
+   there are 2. `oqa_heldout.py` had the correct definition all along; the freezer now loads it rather than
+   duplicating the concept, and raises if it cannot.
+3. **The audit called the repaired epochs starved**, because a refusal record is permanent history. Left
+   as it was, the record would have claimed the arms were still broken while `verify` said PASS.
+4. **`verify` guessed how to resolve an archived file's path** and got every contracts entry wrong.
+
+Plus two test errors of mine: asserting every archived file still exists (`prepare` removes the markers it
+archives, deliberately), and dropping an `import re` while replacing the regexes.

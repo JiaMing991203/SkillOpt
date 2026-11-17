@@ -1,187 +1,204 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-17 21:30 UTC (from `date` on the cluster). Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. HEAD `12f60e7` (NOT pushed; pushing is still not authorized).**
+**Last update: 2026-11-17, prepared for a compaction. Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`. HEAD `cd6cd5b` (NOT pushed; pushing is still not authorized).**
 
-## RIGHT NOW: the recovery chain is RUNNING. Do not resubmit it.
+## RIGHT NOW: the HELD-OUT chain is RUNNING. Do not resubmit it.
 
 ```
-66323200  oqa-rec-A-e4   arm A epoch 4   head of the chain
-66323201  oqa-rec-B-e4   arm B epoch 4   afterok 66323200   model model_armB_epoch03.json
-66323202  oqa-rec-C-e3   arm C epoch 3   afterok 66323201   model model_armC_epoch02.json
-66323203  oqa-rec-C-e4   arm C epoch 4   afterok 66323202   model model_armC_epoch03.json
+66332133  oqa-ho-S0                   COMPLETED   hard 0.0500 (3/60)
+66332134  oqa-ho-primary_B_selected   RUNNING
+66332135  oqa-ho-exploratory_A_last   PENDING (afterok 66332134)
 ```
 
-Bundle `oqa_campaign_20261117c`, commit `37c78ec683d53f656c0aceed9fde413b4ce1f941`. **Do not rebuild that
-bundle while these jobs are queued** — the manifest is verified in-job and the pin recorded in
-`docs/research/jobs.tsv` would stop matching the code that ran. The held-out stage has its own bundle,
-`oqa_heldout_20261117` at `12f60e7`, whose `skillopt/`, `configs/` and `scripts/` are byte-identical to the
-recovery bundle's (verified with `git diff --stat`).
+Bundle `oqa_heldout_20261117`, commit `251e9514beaefb88ed1ded997102c4769a2e23f1`. **Do not rebuild that
+bundle while 66332134/66332135 are queued** — the manifest is verified in-job. The recovery bundle
+`oqa_campaign_20261117c` (commit `37c78ec`) has no queued jobs and may be left alone.
 
-**Check state before acting:** `squeue -u $USER`, then `sacct -X -j 66323200,66323201,66323202,66323203`.
+**Check state before acting:** `squeue -u $USER`, then
+`sacct -X -j 66332133,66332134,66332135 --format=JobID,JobName%26,State,Elapsed`.
 
-### WHAT TO DO WHEN THE CHAIN FINISHES, in this order
+### WHAT TO DO WHEN THE HELD-OUT CHAIN FINISHES
 
 ```
 D=$PROJECT_ROOT/oqa_heldout_20261117 ; CAMP=$PROJECT_ROOT/runs/20261117-officeqa-3arm-campaign
-# 1. did the recovery do what it was staged to do?
-oqa_recover.py verify --campaign $CAMP --record $CAMP/recovery/RECOVERY_RECORD.json
-# 2. release the recovery jobs' unspent claims, then read the caps from outside the job
-oqa_ledger_reconcile.py $CAMP/ledger --exited-jobs 66323200,66323201,66323202,66323203 --apply
+# 1. the three scores and their provenance
+for d in $CAMP/heldout/*/; do cat $d/eval_summary.json; cat $d/PROVENANCE.json; done
+# 2. release the held-out jobs' unspent claims, then read the caps from outside the job
+oqa_ledger_reconcile.py $CAMP/ledger --exited-jobs 66332133,66332134,66332135 --apply
 oqa_ledger_read.py $CAMP/ledger --questions N
-# 3. the gates, recomputed from the artifacts (never from memory)
-oqa_gate_stats.py --campaign $CAMP --out $CAMP/GATE_STATS.json
-# 4. freeze the evaluation set, then submit PRIMARY first
-OQA_BUNDLE=$D bash oqa_heldout_submit.sh --dry-run      # it freezes and verifies before it submits
-OQA_BUNDLE=$D bash oqa_heldout_submit.sh
+# 3. refresh the measured spend in oqa_budget.py CEILINGS and OFFICEQA_AUTHORIZATION.md section 3
 ```
 
-## THE AUTHORIZATION, AS AMENDED 2026-11-17 (user)
+## THE CAMPAIGN IS COMPLETE: four epochs, three arms, all twelve arm-epochs sound
 
-TOTALS for the campaign, **including everything already spent**: EmpirioLabs **$16 / 30,000 attempts**,
-DeepSeek **$8 / 260 attempts**, CPU **40 job-hours**, GPUs **zero**. The user also authorized the recovery and
-the planned evaluations **without further approval** inside those ceilings, and asked for the exact resource
-gap to be reported rather than a ceiling crossed.
+`oqa_recover.py audit` after the recovery: **still starved: none. recovered: A.4, B.4, C.3, C.4.**
+`oqa_recover.py verify`: **PASS** — every recovered epoch has 4 analyst calls, an ordinary gate decision, a
+slow-update gate decision and a meta skill.
 
-`docs/research/OFFICEQA_AUTHORIZATION.md` is the authoritative record. `oqa_budget.py --headroom` prints what
-is left from MEASURED spend:
+| arm.epoch | train hard | candidate | ordinary gate | pairs sent | slow gate | guidance | meta skill |
+|---|---|---|---|---|---|---|---|
+| A.1 | 0.1250 | 1/24 | reject | — | placeholder | — | skip (epoch 1) |
+| A.2 | 0.0417 | 2/24 | reject | 10/10 | reject 2/24 | yes | written |
+| A.3 | 0.0417 | 1/24 | reject | 10/10 | reject 1/24 | yes | written |
+| A.4 | 0.2500 | 1/24 | reject | **8/10** | reject 0/24 | yes | written |
+| B.1 | 0.1250 | 3/24 | reject | — | placeholder | — | skip (epoch 1) |
+| B.2 | 0.0833 | **5/24** | **accept_new_best** | 10/10 | reject 1/24 | yes | written |
+| B.3 | 0.0000 | 1/24 | reject | 10/10 | reject 1/24 | yes | written |
+| B.4 | 0.1250 | 0/24 | reject | 10/10 | reject 1/24 | yes | written |
+| C.1 | 0.1250 | 2/24 | reject | — | placeholder | — | skip (epoch 1) |
+| C.2 | 0.2083 | 2/24 | reject | 10/10 | reject 1/24 | yes | written |
+| C.3 | 0.0833 | 2/24 | reject | **7/10** | reject **4/24** | yes | written |
+| C.4 | 0.1250 | 0/24 | reject | **9/10** | reject 2/24 | yes | written |
 
-| resource | ceiling | spent | left |
-|---|---|---|---|
-| EmpirioLabs attempts | 30,000 | 7,313 | 22,687 |
-| EmpirioLabs charge | $16.00 | $4.9441 | $11.0559 |
-| DeepSeek calls | 260 | 67 | 193 |
-| DeepSeek charge | $8.00 | $2.2324 | $5.7676 |
-| CPU core-hours | 40 | 19.95 | 20.05 |
-| GPUs | 0 | 0 | — |
+**ONLY ARM B UPDATED ITS SKILL.** Its epoch-2 candidate measured 5/24 against the incumbent's 4/24 — a
+one-question margin — and every candidate after it was rejected, so arm B's selected skill and its last skill
+are the same document.
 
-Two things to know about those numbers. The enforced **optimizer cap is $7.95 / 259, not $8.00 / 260**: the
-slow-update size probe (job 66271290) spent 1 request and $0.0411 outside the ledger, and a cap that covers
-the whole campaign has to be set net of that. And **CPU has two readings** — 9.98 hours of wall time summed
-over jobs, 19.95 core-hours, because every job asked for 2 CPUs. **Planning uses the larger one.**
+| arm | validation-selected | size | last skill | note |
+|---|---|---|---|---|
+| A | **S0** `9d377d1c2906` | 887 B | `5bd17ea109bc` 940 B | the last skill is S0 + an EMPTY placeholder |
+| B | **step 2** `95989ce5ebad` | 3,603 B | `95989ce5ebad` | selected and last are the same document |
+| C | **S0** `9d377d1c2906` | 887 B | `5bd17ea109bc` 940 B | same as arm A |
 
-## THE ACCOUNTING FIX IS FINISHED, and the campaign ledger is RECONCILED
+**7 skills requested, 3 distinct by digest, 2 BY ADVICE.** Arms A's and C's last skills carry advice digest
+`3e70328ffb65`, identical to S0's: they differ only by two HTML comment lines.
+`$CAMP/heldout/SKILLS_FROZEN.json`, record digest `f26ba852b9e59dc4`.
 
-The defect: the cap was enforced on **claimed** money and nothing was ever released, so the optimizer's claims
-reached $4.00 with $2.19 actually paid and every further request was refused. Four arm-epochs made zero
-optimizer calls.
+**C.3's slow update scored exactly 4/24 — tying S0's baseline** and rejected only because the gate requires
+STRICT improvement. That is the concrete case behind the "accept on a tie" option, which is NOT authorized.
 
-Fixed in three parts, all tested:
+### Pair counts and the prompt-size fallback: 6 of 9 sent 10/10
 
-1. **Release on clean exit** (`771b3f0`), with USD claim blocks cut from $0.25 to $0.05 — at $0.25 against a
-   $4.00 cap each process stranded 6 per cent.
-2. **Retain the reserve for UNRESOLVED requests.** A request that was sent and whose reply never arrived has no
-   usage record, so it looks unspent, but the provider may have billed it. The ledger now counts *resolved*
-   attempts and holds back one `reserve_usd` per unresolved one.
-3. **Post-hoc reconciliation** (`oqa_ledger_reconcile.py`, rule OQA-REC-1) for a ledger whose processes have
-   already exited. **Applied:** optimizer net claims $4.0000 → $2.1913 and 100 → 66 attempts, target $7.0000 →
-   $4.9441 and 7,700 → 7,313; 52 release records; **zero unresolved requests** in this campaign. A second run
-   finds nothing left. Record: `recovery/LEDGER_RECONCILE.json`.
+Rule OQA-PB-1, limit 225,000 tokens. Trimmed: A.4 10→8 (261,376→205,051), C.3 10→7 (252,996→207,927),
+C.4 10→9 (235,924→221,772). Every one of the 9 slow updates from epoch 2 on produced usable guidance, and
+every one was rejected by the gate.
 
-**Verified across all four conditions the user asked about:** concurrent jobs at one cap (forked processes),
-clean exits (release written, headroom reaches the next process), **interruption** (a SIGKILLed process runs no
-atexit hook and keeps its whole claim — the safe direction, with the reconciler as the remedy), and restarts
-(a requeued process does not get the authorization again; the body also refuses `SLURM_RESTART_COUNT != 0`).
+**Proof that the four `no_content` results were the LEDGER and not the prompt size:** the original B.e4 sent
+10 pairs at 181,849 tokens — far inside the limit — and got no guidance, while B.e2 sent 10 at 223,815 and
+did. The recovery reproduced **identical** pair and token counts for every affected epoch and got guidance
+every time, which also shows the rollout reuse was faithful.
 
-**A disagreement the reconciliation exposed.** `oqa_ledger_read.py` then reported FAIL — "$4.9441 spent against
-$4.9441 claimed". The two are not the same number: the ledger adds `int(round(usd * 1e6))` per record and that
-integer is what the cap is enforced on, while the audit summed raw floats, which over 7,313 records came out
-**26 microdollars higher**. The audit now checks the invariant in micros and reports the float sum beside it;
-the reconciler retains the larger of the two.
+## THE STATISTICS over all 21 gates (`$CAMP/GATE_STATS.json`, `oqa_gate_stats.py`)
 
-## THE AUDIT: exactly four arm-epochs, and two things that only looked wrong
+**21 gate evaluations — 12 ordinary + 9 slow-update — and 1 acceptance.** (Earlier I reported 9 gates and an
+expected 2.99; both were wrong, and they did not even agree with each other. See
+`OFFICEQA_GATE_RESOLUTION.md` §CORRECTION.)
 
-`oqa_recover.py audit` reads the artifacts **and** the ledger's per-process refusal records, because neither
-alone distinguishes a starved stage from a quiet one. All **24 refusals** sit in four jobs — 66273861 (C.e3),
-66273862 (A.e4), 66273863 (B.e4), 66273864 (C.e4) — six each: 4 analyst, 1 slow update, 1 meta skill.
-**No other stage was masked.** Record: `recovery/RECOVERY_AUDIT.json`.
+```
+candidate scores /24   0 0 0 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 3 4 5
+mean candidate 1.571/24   against mean incumbent 4.238/24
+uniform null  (21 x 0.371)      expected 7.78 acceptances
+per-gate null (own incumbent)   expected 7.85,  P(at most 1) = 0.001
+pooled over 21 x 24 = 504 question-level observations
+    observed correct  33      null predicts  89      P(total <= 33) = 2.1e-13
+```
 
-Two shapes that look like failures and are not (the tool explains rather than flags them):
+**The null that every candidate was as good as its incumbent is strongly disfavoured, in the direction that
+the optimizer's edits made this actor WORSE on the selection set — in all three arms alike, Original SkillOpt
+included.** It does NOT separate the arms, and it does NOT turn arm B's acceptance into noise.
 
-* **arm B epoch 3 made 3 analyst calls, not 4.** No refusal in that job; it scored **0/24**, so there was no
-  success group to reflect on.
-* **arm C epoch 1 made no ranking call.** Its 4 merged edits already fit the edit budget of 4.
+Caveat applied to both tails: all gates in an arm share the same 24 questions, so 0.001 could be several times
+larger; a 56-question pooled deficit is far too large for within-arm correlation to explain.
 
-## THE RECOVERY: what was reused, and what settles it
+## THE AUTHORIZATION, AS AMENDED 2026-11-17, and what is left
 
-Every starved arm-epoch still held its paid 24-question training rollout and both 10-question slow-update
-rollouts; only the refused optimizer calls and the gate passes were missing. `run_batch` resumes by id, so a
-saved rollout left in place returns the identical trajectories for nothing.
+TOTALS including everything already spent. `docs/research/OFFICEQA_AUTHORIZATION.md` is authoritative;
+`oqa_budget.py --headroom` prints it from measured figures.
 
-**That mechanism ignores the skill for a row it already has**, which is the hazard: if a recovered gate accepts,
-some saved rollouts were produced by a skill no longer in force, and which ones cannot be known in advance. So
-every recovery job sets **`SKILLOPT_ROLLOUT_PROVENANCE_GUARD=1`**: a stored row is reused only when its
-recorded system prompt is the one the current call would build, anything else is re-rolled, the superseded
-`results.jsonl` is preserved and the live one kept canonical so no id appears twice.
+| resource | ceiling | spent | left | used |
+|---|---|---|---|---|
+| EmpirioLabs attempts | 30,000 | 8,394 | 21,606 | 28% |
+| EmpirioLabs charge | $16.00 | $5.6241 | $10.3759 | 35% |
+| DeepSeek calls | 260 | 103 | 157 | 40% |
+| DeepSeek charge | $8.00 | $3.5016 | $4.4984 | 44% |
+| CPU core-hours | 40 | 23.47 | 16.53 | 59% |
+| GPUs | 0 | 0 | — | — |
 
-Plan (`recovery/RECOVERY_PLAN.json`): **192 question-rollouts certain** ($1.26, 1,981 attempts), **266 worst
-case** ($1.75, 2,745), plus about 36 optimizer calls and $1.44.
+**These do not yet include the three held-out jobs** (~$1.18 and ~1,900 attempts projected). The enforced
+optimizer cap is **$7.95 / 259**, one request below the grant, because the size probe (job 66271290) spent
+$0.0411 outside the ledger. CPU has two readings — 23.47 core-hours or ~11.7 wall-clock job-hours — because
+every job asked for 2 CPUs; **planning uses the larger**.
 
-**The rewound states**, which are what a wrong recovery would get wrong:
+## THE ACCOUNTING FIX IS FINISHED AND PROVEN IN PRODUCTION
 
-| arm | last_completed_step | incumbent the recovered gate must beat | best |
-|---|---|---|---|
-| A | 3 | 0.1667 (4/24) | S0, step 0 |
-| B | 3 | **0.2083 (5/24)** — its epoch-2 acceptance is preserved | step 2 |
-| C | 2 | 0.1667 (4/24) | S0, step 0 |
+Ledger verdict **PASS**: after reconciliation net claims equal recorded spend exactly in both roles
+(optimizer $3.460519 / 102 attempts, target $5.624077 / 8,394), **zero unresolved requests**, **zero reserve
+breaches**. Released across the campaign: optimizer 46 attempts / $2.2395, target 456 / $2.2259 — and the four
+recovery jobs released their own unspent claims on clean exit, which is the fix working for real rather than
+in a test.
 
-**51 original records archived** to `recovery/original/20261117-recovery` (4.2 MB): each arm's
-`runtime_state`, `history`, `summary`, `best_skill` and `skills/`, the step records and slow/meta results from
-the first recovered epoch on, and both contract arms' model files. Record: `recovery/RECOVERY_RECORD.json`.
+Three parts: release on clean exit with $0.05 blocks (`771b3f0`); **retain one `reserve_usd` per UNRESOLVED
+request** — one that was sent and whose reply never arrived, which may still have been billed; and
+`oqa_ledger_reconcile.py` (rule OQA-REC-1) for a ledger whose processes have already exited, which refuses any
+owner it cannot show has finished and consults `squeue` every time.
 
-### Four hazards found by reading the code paths, none visible in the artifacts
+**Verified across all four conditions the user named:** concurrent jobs at one cap, clean exits, interruption
+(a SIGKILLed process runs no atexit hook and keeps its whole claim — the safe direction), and restarts.
 
-1. `run_batch` resumes by id and never consults the skill for a row it has → the provenance guard.
-2. The slow update and the meta skill resume on the **existence** of their result file → a `no_content` left in
-   place would skip the work a second time, silently and for free.
-3. `history.json` is loaded whole and appended to with no trimming → `summary.json` counts straight out of it,
-   so the readout would double-count exactly the epochs under repair → `prepare` trims it.
-4. `oqa_lc_ir.freeze()` refuses to overwrite a frozen model with different content and the body only **warns**
-   → a model for an epoch whose traces can change would stop the evolution and leave a stale file under a name
-   that no longer described its epoch → `prepare` keeps the first recovered epoch's model (its rollout is
-   reused, so re-freezing is a no-op) and moves the later ones aside.
+The 24 refusal records remain in the ledger as history; the audit now reports those stages as **repaired**.
 
-## THE STATISTICS, CORRECTED (`oqa_gate_stats.py`, and `OFFICEQA_GATE_RESOLUTION.md` §CORRECTION)
+## WHERE THE TRACES ARE (for an audit of existing traces)
 
-**13 gate evaluations, not the 9 I reported** — 8 ordinary plus 5 gated slow updates. My 2.99 did not even
-match my own count of 9: that is 8 × 0.371, and 9 × 0.371 is **3.34**. The threshold also moved: arm B's
-incumbent rose to 5/24 after epoch 2, so its later gates faced 0.383. Expected acceptances against each gate's
-own incumbent: **4.86**; P(at most 1) = **0.020**.
+Campaign root `$PROJECT_ROOT/runs/20261117-officeqa-3arm-campaign`, **252 MB**. 18 `predictions/` directories
+per arm plus 2 shared:
 
-**And the conclusion reverses.** "Nothing separates harmful from neutral" was right about four candidates and
-wrong about thirteen. Pooling the scores instead of the accept/reject bits: the candidates got **23 of 312**
-questions right where the null of "as good as its incumbent" predicts **55**, P(total ≤ 23) = **1.3e-07**. The
-null is strongly disfavoured, in the direction that **the optimizer's edits made this actor worse on the
-selection set — in all three arms alike, Original SkillOpt included.** It does not separate the arms, and it
-does not turn arm B's acceptance into noise: 5/24 against 4/24 is a one-question margin this set cannot
-resolve.
+```
+shared/epoch1/predictions/<UID>/          the 24 training questions all three arms reflected on (epoch 1)
+shared/val_baseline/predictions/<UID>/    S0 on the 24 gate questions
+arm_<X>/steps/step_000<N>/rollout/predictions/<UID>/          24 training questions, epoch N
+arm_<X>/steps/step_000<N>/selection_eval/predictions/<UID>/   24 gate questions for that step's candidate
+arm_<X>/slow_update/epoch_0<N>/rollout_prev|rollout_curr/predictions/<UID>/   10 paired questions each
+arm_<X>/slow_update/epoch_0<N>/selection_eval/predictions/<UID>/              24 gate questions, slow candidate
+arm_<X>/selection_eval_baseline/predictions/<UID>/            injected copy of the shared gate baseline
+arm_<B|C>/stage_reports/UID<id>.<trace digest>.md             96+ contract reports, content-addressed
+arm_<B|C>/stage_reports/GENERATED.jsonl                       one record per report, append-only
+contracts/{model_M0.json, arm_B/, arm_C/, MODEL_EVOLUTION.jsonl}
+heldout/{S0.md, SKILLS_FROZEN.json, S0/, primary_B_selected/, exploratory_A_last/}
+recovery/{RECOVERY_AUDIT.json, RECOVERY_AUDIT_AFTER.json, RECOVERY_PLAN.json, RECOVERY_RECORD.json,
+          RECOVERY_VERIFY.json, LEDGER_RECONCILE.json, LEDGER_RECONCILE_AFTER.json, original/20261117-recovery/}
+ledger/{claims/, spend/, release/}        spend/<job>r<restart>p<pid>.jsonl is the per-process record
+```
 
-Caveat, stated once and applied to both tails: all gates in an arm share the same 24 questions, so 0.020 could
-plausibly be several times larger; a 32-question pooled deficit is far too large for within-arm correlation.
+Each `predictions/<UID>/` holds `conversation.json` and `target_user_prompt.txt` (which is what
+`oqa_reports.trace_digest` hashes), plus `target_system_prompt.txt`. Each `results.jsonl` row carries
+`target_system_prompt`, `target_user_prompt`, `response`, `predicted_answer`, `ground_truth`, `hard`, `soft`,
+`n_turns`, `last_finish_reason`, `fail_reason`, `oracle_parsed_pages_*`, `resolved_source_paths` and (on rows
+written from commit `4b60132` on) `rollout_settings_fingerprint`.
 
-## THE RELEASE PROTOCOL is now written down: `docs/research/OFFICEQA_RELEASE_PROTOCOL.md`
+**Tools already written for reading traces** (all `python3 -I`, run from an extracted bundle tree):
 
-Read once and nothing tuned on it; **PRIMARY** = S0 against each arm's `best_skill.md`, pre-registered; a last
-skill is **EXPLORATORY** and labelled so; the set is **frozen by digest** before submission
-(`oqa_freeze_skills.py`, verified by the submitter, which refuses on a mismatch because the recovery rewrote
-exactly those files); each distinct skill scored once with an identical evaluation reused by digest **and**
-settings; **job 66234927 stays sealed and unread**.
+| tool | what it does |
+|---|---|
+| `oqa_trace.py` | renders one trace: turns, tool calls, what the actor saw |
+| `oqa_inventory.py` | per-item inventory of a rollout directory: turns, tools, outcomes |
+| `oqa_reports.py` | builds a contract report from a trace; `trace_digest`, `verify_report_provenance` |
+| `oqa_report_audit.py` | audits stage reports from the FILES: marker leakage, boundary audit, provenance |
+| `oqa_optimizer_input_audit.py` | what the optimizer was actually shown |
+| `oqa_rollout_checkpoint.py` | sanity-checks a rollout directory mid-run |
+| `oqa_campaign_summary.py` | the whole-campaign readout, including arm-B-in-arm-C containment |
+| `oqa_gate_stats.py` | enumerates every gate and does the binomial arithmetic |
+| `oqa_cases.py` | hand-picked case material |
+| `oqa_parser_replay.py` | replays the answer parser over saved responses |
 
 ## STILL NOT AUTHORIZED
 
-1. **Pushing** this branch. Deployment is by pinned `git archive` bundle with an in-job manifest check.
+1. **Pushing** this branch. Deployment is by pinned `git archive` bundle with an in-job manifest check
+   (`research/cluster/oqa_bundle.sh`).
 2. **GPUs**, in any quantity.
-3. **Weakening the validation gate** (accepting on a tie) — `OFFICEQA_GATE_RESOLUTION.md` lists it as an
-   option, not a recommendation; `CLAUDE.md` §7 forbids it without explicit approval.
-4. **Unsealing** job 66234927.
+3. **Weakening the validation gate** — accepting on a tie would have changed C.3's slow update from reject to
+   accept. `CLAUDE.md` §7 forbids it without explicit approval; `OFFICEQA_GATE_RESOLUTION.md` lists it as an
+   option, not a recommendation.
+4. **Unsealing** the held-out outcome of job 66234927, which remains deliberately UNREAD.
 5. The one remaining paid DeepSeek attempt from the original probe grant stays unspent.
 
 ## Tests
 
-**2,182 passed, 9 skipped, 368 subtests** on the cluster from the pinned bundle (job 66322989, commit
-`37c78ec`). Earlier cycles: 66321514 FAILED (my own test asserted the provenance guard catches a changed
-`max_tool_turns`; it does not — in offline mode the turn budget is in the user prompt, not the system prompt),
-then 66321887 / 66322478 / 66322746 green.
+**2,190 passed, 9 skipped, 368 subtests** on the cluster from the pinned bundle (job 66331956, commit
+`251e951`). Four of my own tests failed along the way and each was my error, not the code's: the provenance
+guard does not see a changed `max_tool_turns` (offline mode puts the turn budget in the user prompt); `prepare`
+deliberately removes the resume markers it archives; I dropped an `import re`; and I wrote a second
+advice-stripper with guessed markers that stripped nothing.
 
 ---
 
