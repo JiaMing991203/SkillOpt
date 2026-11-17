@@ -976,3 +976,108 @@ Everything expensive from the starved epochs survived — each still holds its 2
 both 10-question slow-update rollouts, and the contract-model evolution ran regardless because it is offline. So
 completing them costs $1.26 of actor and $1.32 of optimizer against $3.06 and $1.81 remaining, which fits. That
 is the user's call and I have not submitted it.
+
+## 2026-11-17 (later) — the recovery: amendment, accounting fix, and four corrections to my own readout
+
+The user raised the campaign's **total** ceilings to EmpirioLabs $16 / 30,000 attempts, DeepSeek $8 / 260
+attempts, CPU 40 job-hours, 0 GPUs, *including everything already spent*, and authorized the recovery and the
+planned evaluations without further approval. `docs/research/OFFICEQA_AUTHORIZATION.md` is now the single
+record of the grants, the inclusion rule and the measured spend.
+
+**The enforced optimizer cap is deliberately $7.95 / 259, not $8.00 / 260.** The slow-update size probe (job
+66271290) spent 1 DeepSeek request and $0.0411 before the campaign ledger existed. A ceiling that covers the
+whole campaign has to be enforced net of what did not pass through the ledger, or the cap enforces a subtotal.
+There is no matching subtraction for the actor: the preflight that ran outside the ledger was key-free by
+construction and `oqa_ledger_check.py` has no HTTP client at all.
+
+### The accounting fix, finished
+
+Releasing on clean exit was not enough. A request that was **sent** and whose reply never arrived has no usage
+record, so it looks unspent — but the provider may have billed it, and handing that money back lets the next
+process spend money that is already gone. The ledger now counts *resolved* attempts and retains one
+`reserve_usd` per unresolved request. `oqa_ledger_reconcile.py` applies the same rule (OQA-REC-1) to a ledger
+whose processes have already exited, which is the state the campaign's own ledger was in; it refuses any owner
+it cannot show has finished, and `squeue` is consulted every time.
+
+Applied: optimizer net claims **$4.0000 → $2.1913** and 100 → 66 attempts, target **$7.0000 → $4.9441** and
+7,700 → 7,313. 52 release records. **Zero unresolved requests** in this campaign — every attempt has a
+matching usage record — so nothing was retained on that account. A second run finds nothing left.
+
+**And the reconciliation immediately exposed a disagreement I had not seen.** `oqa_ledger_read.py` then
+reported FAIL: "target: $4.9441 spent against $4.9441 claimed". The two are not the same number. The ledger
+adds `int(round(usd * 1e6))` per usage record, and that integer is what `reserve()` compares against the
+claims; the audit summed raw floats, which over 7,313 records came out **26 microdollars higher**. So a
+reconciliation that released down to the ledger's own figure looked like an overspend. The audit now checks the
+invariant in micros and reports the float sum beside it; the reconciler retains the larger of the two, so no
+reader can see spent > claimed whichever way it sums.
+
+### Confirmed remaining, measured rather than assumed
+
+`oqa_budget.py --headroom`: actor **22,687 attempts / $11.0559** left, optimizer **193 calls / $5.7676**,
+**20.05 CPU core-hours of 40**. CPU has two readings and they differ by 2x because every job asked for 2 CPUs
+— 9.98 hours of wall time summed over jobs, 19.95 core-hours. **Planning uses the larger one.**
+
+### The audit: exactly four arm-epochs, and two things that only looked wrong
+
+`oqa_recover.py audit` reads the artifacts *and* the ledger's per-process refusal records, because neither
+alone can tell a starved stage from a quiet one. All 24 refusals sit in four jobs — 66273861 (C.e3), 66273862
+(A.e4), 66273863 (B.e4), 66273864 (C.e4) — six each: 4 analyst, 1 slow update, 1 meta skill. **No other stage
+was masked.**
+
+Two shapes I checked by hand before writing the classifier, and the classifier now explains rather than flags:
+
+* **arm B epoch 3 made 3 analyst calls, not 4.** No refusal in that job. It scored **0/24**, so there was no
+  success group to reflect on. Legitimate control flow.
+* **arm C epoch 1 made no ranking call.** Its 4 merged edits already fit the edit budget of 4, so there was
+  nothing to rank. Legitimate control flow.
+
+### Four hazards found by reading the code paths the recovery would take
+
+Each would have gone unnoticed until the readout, and none was visible from the artifacts:
+
+1. **`run_batch` resumes by id and never consults the skill for a row it already has.** That is what makes a
+   saved rollout reusable — and it is how a recovery could reflect on traces produced by a superseded skill.
+   `SKILLOPT_ROLLOUT_PROVENANCE_GUARD=1` now reuses a row only when its recorded system prompt is the one this
+   call would build, re-rolls the rest, preserves the superseded `results.jsonl` and keeps the live one
+   canonical so no id appears twice. This is what lets "epoch 4's paired rollout is stale if and only if epoch
+   3's gate accepted" be settled at run time instead of guessed.
+2. **The slow update and the meta skill resume on the EXISTENCE of their result file.** A `no_content` left in
+   place would have skipped the work a second time, silently, and charged nothing.
+3. **`history.json` is loaded whole and appended to, with no trimming on resume.** `summary.json` counts
+   accepts, rejects and skips straight out of it, so the readout would have double-counted exactly the epochs
+   under repair.
+4. **`oqa_lc_ir.freeze()` refuses to overwrite a frozen model with different content, and the body only
+   warns.** A model file for an epoch whose traces can change would have stopped the evolution and left a file
+   standing under a name that no longer described its epoch.
+
+**And one I corrected in my own tool.** I first wrote `prepare` to take the rewind state from the previous
+step's record. An epoch does not end with its ordinary step: the gated slow update runs after it and can
+accept, and then that record's `current_score` is stale — which would hand the recovered gate the wrong
+incumbent to beat. Every slow gate here rejected, so no number moved; the reconstruction is in because a tool
+that is accidentally right is not right.
+
+**Also corrected in my own test.** I asserted that the provenance guard would catch a changed
+`max_tool_turns`. It failed, correctly: in offline mode the turn budget is in the per-round and user prompts,
+not the system prompt. New rows now carry a settings fingerprint and the guard checks it when present; the
+test states the real coverage instead of the coverage I assumed.
+
+### The statistics: three corrections, one of which reverses a conclusion
+
+`oqa_gate_stats.py` enumerates every gate from the artifacts so these figures cannot come from memory again.
+
+* **13 gate evaluations, not 9** — 8 ordinary plus 5 gated slow updates. My count came from counting
+  arm-epochs. My stated expectation of 2.99 did not even match my stated count: that is 8 x 0.371, and
+  9 x 0.371 is **3.34**, as the user pointed out.
+* **The threshold moved.** After arm B accepted at epoch 2 its incumbent rose to 5/24, so its two later gates
+  needed 6/24 and faced P(accept | null) = 0.383, not 0.371. Expected acceptances against each gate's own
+  incumbent: **4.86**. P(at most 1) = **0.020**.
+* **"Nothing separates harmful from neutral" was right about four candidates and wrong about thirteen.** The
+  acceptance count throws away all but one bit per gate. The scores do not: the candidates got **23 of 312**
+  questions right where the null predicts **55**, P(total ≤ 23) = **1.3e-07**. The null is strongly
+  disfavoured, in the direction that **the optimizer's edits made this actor worse on the selection set** — in
+  all three arms alike, Original SkillOpt included. It does not separate the arms, and it does not turn arm
+  B's acceptance into noise: 5/24 against 4/24 is a one-question margin this set cannot resolve.
+
+The non-independence caveat applies to both tails and is stated once: all gates in an arm share the same 24
+questions, so 0.020 could plausibly be several times larger, while a 32-question pooled deficit is far too
+large for within-arm correlation to explain.

@@ -67,3 +67,12 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T09:45:00Z	66273862	oqa_campaign	arm A epoch 4	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273861
 2026-11-17T09:45:00Z	66273863	oqa_campaign	arm B epoch 4	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273862
 2026-11-17T09:45:00Z	66273864	oqa_campaign	arm C epoch 4	797846e1723954c312f4155f82b3e186022fea73	RESUBMITTED after the race fix; bundle oqa_campaign_20261117b; standard 2cpu 8G 120min; afterok:66273863
+2026-11-17T21:20:49Z	66321514	oqa_tests	test suite from the bundle	6a6b1ea799a390855e5833dccf43ff25c3588e13	FAILED: my own test asserted the provenance guard catches a changed max_tool_turns; it does not (offline mode puts the turn budget in the user prompt)
+2026-11-17T21:20:49Z	66321887	oqa_tests	test suite from the bundle	4b60132ee3048bae9b901b4ef64112959de0d0df	2173 passed 9 skipped
+2026-11-17T21:20:49Z	66322478	oqa_tests	test suite from the bundle	16eb5aa	2176 passed 9 skipped
+2026-11-17T21:20:49Z	66322746	oqa_tests	test suite from the bundle	707910a	2179 passed 9 skipped
+2026-11-17T21:20:49Z	66322989	oqa_tests	test suite from the bundle	37c78ec683d53f656c0aceed9fde413b4ce1f941	2182 passed 9 skipped; the commit the recovery runs from
+2026-11-17T21:20:49Z	66323200	oqa_recovery	arm A epoch 4 (recovered)	37c78ec683d53f656c0aceed9fde413b4ce1f941	bundle oqa_campaign_20261117c; standard 2cpu 8G 90min; no dependency (head of the chain); SKILLOPT_ROLLOUT_PROVENANCE_GUARD=1
+2026-11-17T21:20:49Z	66323201	oqa_recovery	arm B epoch 4 (recovered)	37c78ec683d53f656c0aceed9fde413b4ce1f941	bundle oqa_campaign_20261117c; standard 2cpu 8G 90min; afterok:66323200; model model_armB_epoch03.json
+2026-11-17T21:20:49Z	66323202	oqa_recovery	arm C epoch 3 (recovered)	37c78ec683d53f656c0aceed9fde413b4ce1f941	bundle oqa_campaign_20261117c; standard 2cpu 8G 90min; afterok:66323201; model model_armC_epoch02.json
+2026-11-17T21:20:49Z	66323203	oqa_recovery	arm C epoch 4 (recovered)	37c78ec683d53f656c0aceed9fde413b4ce1f941	bundle oqa_campaign_20261117c; standard 2cpu 8G 90min; afterok:66323202; model model_armC_epoch03.json; its rollouts are CONDITIONAL on epoch 3 rejecting again
