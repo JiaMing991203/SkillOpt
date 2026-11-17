@@ -1731,3 +1731,45 @@ def test_verify_resolves_archived_paths_for_both_record_shapes(tmp_path):
     assert {r["path"]: (r["exists"], r["unchanged"]) for r in out2["unchanged_after_recovery"]} == \
            {r["path"]: (r["exists"], r["unchanged"]) for r in out["unchanged_after_recovery"]}, \
         "the fallback must resolve exactly what live_path resolves"
+
+
+def test_a_refused_stage_that_has_since_been_recovered_reads_as_repaired(tmp_path):
+    """A refusal record is permanent history; the ledger keeps it after the stage is fixed.
+
+    The first version of the audit keyed only on "was there a refusal", so after the recovery ran it still
+    called all four arm-epochs starved - leaving the record claiming the arms were broken when they were not.
+    """
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    # The epoch now has real output, while its refusal records remain in the ledger.
+    rec = json.load(open(os.path.join(arm, "steps/step_0002/step_record.json")))
+    rec.update({"n_patches": 4, "n_edits_merged": 5, "n_edits_ranked": 2, "edit_budget": 2,
+                "action": "reject", "candidate_gate_score": 0.0417,
+                "tokens": {"analyst": {"calls": 4}, "merge": {"calls": 2}, "ranking": {"calls": 1}}})
+    json.dump(rec, open(os.path.join(arm, "steps/step_0002/step_record.json"), "w"))
+    json.dump({"action": "reject", "selection_hard": 0.0, "slow_update_content": "guidance"},
+              open(os.path.join(arm, "slow_update/epoch_02/slow_result.json"), "w"))
+    json.dump({"action": "write_meta_skill", "meta_skill_content": "memory"},
+              open(os.path.join(arm, "meta_skill/epoch_02/meta_skill_result.json"), "w"))
+
+    doc = REC.audit(str(tmp_path), [bundle])
+    row = {r["key"]: r for r in doc["rows"]}["A.2"]
+    assert row["affected"] is False, "a repaired epoch is not still starved"
+    assert row["recovered"] is True
+    assert row["stages"]["analyst"]["status"] == "repaired"
+    assert row["stages"]["slow_update"]["status"] == "repaired"
+    assert row["stages"]["meta_skill"]["status"] == "repaired"
+    assert doc["affected"] == [] and doc["recovered"] == ["A.2"]
+    # And the refusals are still reported, because they happened.
+    assert row["refusals_by_stage"]["analyst"] == 4
+
+
+def test_a_stage_with_refusals_and_still_no_output_is_still_starved(tmp_path):
+    """The contrast: `repaired` must require real output, not merely the passage of time."""
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    doc = REC.audit(str(tmp_path), [bundle])
+    row = {r["key"]: r for r in doc["rows"]}["A.2"]
+    assert row["affected"] is True and row["recovered"] is False
+    assert row["stages"]["analyst"]["status"] == "starved"

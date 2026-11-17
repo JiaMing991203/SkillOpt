@@ -166,7 +166,18 @@ def audit(campaign: str, bundles: list[str]) -> dict:
                 "note": "the paid training rollout; present even in a starved epoch",
             }
             n_patches = step.get("n_patches")
-            if ref.get("analyst"):
+            if ref.get("analyst") and analyst_calls > 0:
+                # A refusal record is permanent history: the ledger keeps it after the stage is repaired. So
+                # a stage with refusals AND real analyst output has been RECOVERED, not starved, and saying
+                # otherwise would leave the record claiming the arms are still broken.
+                findings["analyst"] = {
+                    "status": "repaired", "calls": analyst_calls,
+                    "refusals": ref["analyst"],
+                    "note": f"{ref['analyst']} analyst request(s) were refused when this epoch first ran; it "
+                            f"has since been recovered and made {analyst_calls} analyst call(s). The refusal "
+                            f"records remain in the ledger as history.",
+                }
+            elif ref.get("analyst"):
                 findings["analyst"] = {
                     "status": "starved", "calls": analyst_calls,
                     "refusals": ref["analyst"],
@@ -197,7 +208,8 @@ def audit(campaign: str, bundles: list[str]) -> dict:
                 else:
                     findings["analyst"] = {"status": "ok", "calls": analyst_calls}
 
-            findings["merge"] = ({"status": "ok", "calls": merge_calls,
+            findings["merge"] = ({"status": "repaired" if ref.get("analyst") else "ok",
+                                  "calls": merge_calls,
                                   "n_edits_merged": step.get("n_edits_merged")}
                                  if merge_calls else
                                  {"status": "starved" if ref.get("analyst") else "missing",
@@ -206,7 +218,8 @@ def audit(campaign: str, bundles: list[str]) -> dict:
 
             merged, budget = step.get("n_edits_merged"), step.get("edit_budget")
             if ranking_calls:
-                findings["ranking"] = {"status": "ok", "calls": ranking_calls,
+                findings["ranking"] = {"status": "repaired" if ref.get("analyst") else "ok",
+                                       "calls": ranking_calls,
                                        "n_edits_ranked": step.get("n_edits_ranked")}
             elif merged is not None and budget is not None and merged <= budget:
                 findings["ranking"] = {
@@ -246,7 +259,16 @@ def audit(campaign: str, bundles: list[str]) -> dict:
                 findings["meta_skill"] = {"status": "ok", "action": meta.get("action"),
                                           "note": "epoch 1 has no previous epoch to remember, by design"}
             else:
-                if sa == "no_content" and ref.get("slow_update"):
+                if ref.get("slow_update") and sa in ("reject", "accept_new_best", "accept"):
+                    findings["slow_update"] = {
+                        "status": "repaired", "action": sa, "n_pairs": n_pairs,
+                        "refusals": ref["slow_update"],
+                        "gate_score": slow.get("selection_hard"),
+                        "guidance_chars": len(slow.get("slow_update_content") or ""),
+                        "note": "the slow-update request was refused when this epoch first ran and has since "
+                                "been recovered; the refusal record remains in the ledger as history",
+                    }
+                elif sa == "no_content" and ref.get("slow_update"):
                     findings["slow_update"] = {
                         "status": "starved", "action": sa, "n_pairs": n_pairs,
                         "refusals": ref["slow_update"],
@@ -266,7 +288,13 @@ def audit(campaign: str, bundles: list[str]) -> dict:
                     findings["slow_update"] = {"status": "missing", "action": sa, "n_pairs": n_pairs}
 
                 ma = meta.get("action")
-                if ma == "no_content" and ref.get("meta_skill"):
+                if ref.get("meta_skill") and ma and ma != "no_content":
+                    findings["meta_skill"] = {
+                        "status": "repaired", "action": ma, "refusals": ref["meta_skill"],
+                        "note": "the meta-skill request was refused when this epoch first ran and has since "
+                                "been recovered; the refusal record remains in the ledger as history",
+                    }
+                elif ma == "no_content" and ref.get("meta_skill"):
                     findings["meta_skill"] = {"status": "starved", "action": ma,
                                               "refusals": ref["meta_skill"],
                                               "note": "the meta-skill request was refused by the ledger"}
@@ -278,13 +306,17 @@ def audit(campaign: str, bundles: list[str]) -> dict:
                     findings["meta_skill"] = {"status": "missing", "action": ma}
 
             starved = sorted(k for k, v in findings.items() if v["status"] == "starved")
+            repaired = sorted(k for k, v in findings.items() if v["status"] == "repaired")
             rows.append({
                 "key": key, "arm": arm, "epoch": epoch, "jobs": jobs.get(key, []),
-                "refusals_by_stage": ref, "stages": findings, "starved_stages": starved,
+                "refusals_by_stage": ref, "stages": findings,
+                "starved_stages": starved, "repaired_stages": repaired,
                 "affected": bool(starved),
+                "recovered": bool(repaired) and not starved,
             })
 
     affected = [r["key"] for r in rows if r["affected"]]
+    recovered = [r["key"] for r in rows if r["recovered"]]
     unexplained = [(r["key"], s) for r in rows for s, v in r["stages"].items()
                    if v["status"] in ("missing", "short", "genuine_no_content")]
     # The earliest affected epoch per arm is where that arm's recovery has to start.
@@ -293,7 +325,7 @@ def audit(campaign: str, bundles: list[str]) -> dict:
         if r["affected"]:
             earliest[r["arm"]] = min(earliest.get(r["arm"], 99), r["epoch"])
     return {"rule": RULE, "utc": _utc(), "campaign": campaign, "bundles": bundles,
-            "job_map": jobs, "rows": rows, "affected": affected,
+            "job_map": jobs, "rows": rows, "affected": affected, "recovered": recovered,
             "earliest_affected_epoch_per_arm": earliest,
             "unexplained": [{"key": k, "stage": s} for k, s in unexplained],
             "total_refusals": sum(sum(d.values()) for d in refusals.values())}
@@ -787,20 +819,24 @@ def verify(campaign: str, record: dict) -> dict:
 def _print_audit(doc: dict) -> None:
     print(f"rule {doc['rule']}   {doc['total_refusals']} budget refusal(s) in the ledger")
     print("\n%-6s %-9s %-7s %-16s %-14s %-16s %s" % (
-        "epoch", "analyst", "gate", "ordinary", "slow update", "meta skill", "starved"))
+        "epoch", "analyst", "gate", "ordinary", "slow update", "meta skill", "starved/repaired"))
     for r in doc["rows"]:
         s = r["stages"]
         print("%-6s %-9s %-7s %-16s %-14s %-16s %s" % (
             r["key"],
-            f"{s['analyst'].get('calls', 0)} {s['analyst']['status'][:5]}",
+            f"{s['analyst'].get('calls', 0)} {s['analyst']['status'][:8]}",
             s["gate"]["status"][:7],
             str(s["gate"].get("action"))[:16],
             f"{s['slow_update'].get('action') or '-'}"[:14],
             f"{s['meta_skill'].get('action') or '-'}"[:16],
-            ",".join(r["starved_stages"]) or "-"))
-    print(f"\naffected arm-epochs: {', '.join(doc['affected']) or 'none'}")
-    print(f"recovery starts at:  " + ", ".join(
-        f"arm {a} epoch {e}" for a, e in sorted(doc["earliest_affected_epoch_per_arm"].items())))
+            (("STARVED " + ",".join(r["starved_stages"])) if r["starved_stages"]
+             else ("repaired " + ",".join(r["repaired_stages"])) if r["repaired_stages"]
+             else "-")))
+    print(f"\nstill starved:       {', '.join(doc['affected']) or 'none'}")
+    print(f"recovered:           {', '.join(doc['recovered']) or 'none'}")
+    if doc["earliest_affected_epoch_per_arm"]:
+        print("recovery starts at:  " + ", ".join(
+            f"arm {a} epoch {e}" for a, e in sorted(doc["earliest_affected_epoch_per_arm"].items())))
     notes = [(r["key"], st, v["note"]) for r in doc["rows"] for st, v in r["stages"].items()
              if v.get("note") and "Legitimate control flow" in v["note"]]
     if notes:
