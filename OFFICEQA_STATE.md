@@ -1,6 +1,6 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-16 17:14 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-16 21:14 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
 **Nothing is running or queued. 0 GPUs held.** Both arms and the held-out evaluation are COMPLETE.
 **The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
@@ -23,6 +23,43 @@ deliberately UNREAD/SEALED.**
 2026-11-15 ~23:00 replaced per-job ACKs; a peer's ACK coordinates capacity, never authorizes work.
 
 ---
+
+## A0. NEXT TASK (user, 2026-11-16 21:14): import design from the ALFWorld branch
+
+The user will give the instruction after this compaction. **Do not start importing before they do.** What the
+next session needs to know:
+
+**Where the sources are** (sibling worktrees of the same repo, both at `4a9914a` on their own branches):
+| Path | Branch | Holds |
+|---|---|---|
+| `~/dev/lean_skillopt/SkillOpt-learned-contract` | `contract/learned-contract` | the learned-contract line: `docs/LEARNED_CONTRACT_DESIGN.md` + amendments **A1-A4**, `LEARNED_CONTRACT_PILOT_REPORT.md`, `LEARNED_CONTRACT_INFO_STUDY_REPORT.md`, and its own `docs/research/STATE.md` |
+| `~/dev/lean_skillopt/SkillOpt` | `research/alfworld-baseline` | the ALFWorld baseline line |
+| `~/dev/lean_skillopt/SkillOpt-officeqa` | `officeqa-contracts` | **this** worktree |
+
+**What was already imported** (2026-11-15), into `research/officeqa/transferred/` (tracked, reference only - NOT
+imported by the report path): `fu_budget.py`, `ir.py`, `lc_llm.py`, `plain_v4.py`, `score_v4.py`,
+`stage_contracts.py`. Provenance is in `OFFICEQA_TRANSFER_MANIFEST.json` (untracked).
+
+**PROVENANCE GAP to fix on the next import:** that manifest records `source_branch` and `created` but its
+`source_commit` and per-file `source` paths are **null**. Do not invent them retroactively. Any new transfer must
+record the source branch, the exact source commit, the source path and a digest per file, and
+`research/officeqa/transfer.py` is the script that does it - check it writes those fields before relying on it.
+
+**What an import should be aimed at.** This session's audits found the report's problem is NOT the rules'
+content but the bookkeeping around them (section C6): the checker collects the fact that discharges an obligation
+(`state["computed"]`, a row's month) and never consults it when deciding whether to complain. So when reading the
+ALFWorld design, the questions worth answering are:
+1. Does the learned-contract design have an **obligation-resolution** notion (discharged / outstanding / unknown)
+   that OfficeQA's `oqa_check.py` lacks? That is defect #1 and #5 in section C6.
+2. How does it keep **assumption bookkeeping** (`score_v4.py`, `plain_v4.py` are already transferred and carry the
+   P-vs-C scoring and the containment invariant)?
+3. Is the **learner** (`lc_llm.py`, `ir.py`) worth wiring in at all? OfficeQA's rule set is currently fixed and
+   hand-written, and section C6 shows 8 of 14 rules never fire while 2 produce most of the false positives.
+4. `fu_budget.py` - the follow-up budget notion, relevant because the OfficeQA actor's dominant failure is
+   non-termination (5 of 7 epoch-1 failures produced no `<answer>`).
+
+**Hard constraints that carry over:** keep any import additive and opt-in; never derive contracts from the skill;
+arm A must stay byte-identical to upstream; no secrets or cluster paths in tracked files; the fork is public.
 
 ## A. The authorized task
 
@@ -263,6 +300,7 @@ ARM=B OQA_SHARED_DIR="$SHARED" OFFICEQA_SPLIT_DIR="$D/split_cmp" \
 | Split / docs / frozen record | `$PROJECT_ROOT/officeqa_data/{split_cmp,treasury_bulletins_parsed,oqa_frozen_sets.json,oqa_evidence.json}` |
 | Config (BOTH arms) | `configs/research/officeqa_cmp.yaml` - the only difference between arms is `OFFICEQA_STAGE_REPORT_DIR` |
 | Job script | `research/cluster/officeqa.sbatch`, `STAGE=tools|check3|pilot12|epoch1|shared|arm|heldout` |
+| This session's audit evidence | `~/dev/lean_skillopt/runs/20261116-160952_officeqa_arm_66228142/audit_evidence/` - 44 files, 208 KB: the 16 paired reviews, the 8 blind adjudications + the de-anonymisation key, the corrected epoch-2 reports, the 3 success reports, the success-selection rule, the old-vs-corrected classification and the rule-firing tally. Copied out of the session scratchpad, which is cleared on reboot |
 | Local test venv | `/private/tmp/claude-501/-Users-yaojiaming-dev-lean-skillopt-SkillOpt-officeqa/82390561-79e4-43e9-b247-03526392e651/scratchpad/venv312` (workstation python is 3.9 and cannot import SkillOpt) |
 | Tests | `tests/test_officeqa_{contracts,tool_probe,answer_key_isolation,freeze_sets,optimizer_precheck}.py` - 70 pass |
 
