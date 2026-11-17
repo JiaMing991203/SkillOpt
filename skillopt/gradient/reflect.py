@@ -142,6 +142,29 @@ def _officeqa_report_builder_locked():
     return _OFFICEQA_REPORTS_MODULE
 
 
+def _officeqa_lc_model_path() -> str:
+    """The frozen learned-contract model for the treatment arm, or "" when the arm is not running."""
+    return os.environ.get("OFFICEQA_LC_MODEL", "").strip()
+
+
+_OFFICEQA_LC_DIGEST: dict = {}
+
+
+def _officeqa_lc_model_digest() -> str:
+    """The frozen model's verified digest, read once. Empty when no model is configured."""
+    path = _officeqa_lc_model_path()
+    if not path:
+        return ""
+    if path not in _OFFICEQA_LC_DIGEST:
+        try:
+            _OFFICEQA_LC_DIGEST[path] = _officeqa_report_builder().lc_model_digest(path)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"OFFICEQA_LC_MODEL={path!r} could not be verified: {type(exc).__name__}: {exc}. The treatment "
+                f"arm refuses to build reports under an unverifiable model version.") from exc
+    return _OFFICEQA_LC_DIGEST[path]
+
+
 def _officeqa_report_cache_key(prediction_dir: str, tid: str, question: str, condition: str) -> str:
     """A digest of everything that can change the report, so a cached file can never describe another trace.
 
@@ -155,6 +178,13 @@ def _officeqa_report_cache_key(prediction_dir: str, tid: str, question: str, con
     h.update(condition.encode())
     h.update(b"\x00")
     h.update(question.encode())
+    # The learned-contract report also depends on the frozen MODEL VERSION: the same trace yields different
+    # bindings under a model that assumes `index_alignment` and one that has dropped it. Keying on the trace
+    # alone would let a report survive a model repair and be attributed to a version that did not produce it.
+    h.update(b"\x00model\x00")
+    h.update(_officeqa_lc_model_path().encode())
+    h.update(b"\x00")
+    h.update(_officeqa_lc_model_digest().encode())
     for name in ("conversation.json", "target_user_prompt.txt"):
         path = os.path.join(prediction_dir, tid, name)
         h.update(b"\x00" + name.encode() + b"\x00")
@@ -177,8 +207,12 @@ def _officeqa_stage_report(report_dir: str, prediction_dir: str, tid: str, item:
         with open(path, encoding="utf-8") as f:
             return f.read().strip()
     results_path = os.path.join(os.path.dirname(os.path.abspath(prediction_dir)), "results.jsonl")
+    model_path = _officeqa_lc_model_path()
     try:
-        text, record = reports.build_one(prediction_dir, tid, question, results_path, condition)
+        if model_path:
+            text, record = reports.build_one_lc(prediction_dir, tid, question, results_path, model_path)
+        else:
+            text, record = reports.build_one(prediction_dir, tid, question, results_path, condition)
     except reports.AnswerKeyLeak:
         raise
     except Exception as exc:  # noqa: BLE001 - one unparsable trace must not end a run

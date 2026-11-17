@@ -28,6 +28,54 @@ of job 66234927 remains deliberately UNREAD/SEALED.**
 
 ---
 
+## A-API. NEXT: OfficeQA on a HOSTED ACTOR (user, 2026-11-16) -> `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`
+
+**BLOCKED on one credential; everything else is built, tested and ready. Nothing spent: 0 API calls, 0 GPU,
+0 CPU jobs.**
+
+**THE BLOCKER.** `EMPIRIOLABS_API_KEY` does not exist on either machine - every occurrence of the name is code
+READING it, there is no assignment anywhere, the cluster secrets file has `DEEPSEEK_API_KEY` only, and the
+`lc_site.env` the ALFWorld pilot read `ACTOR_PILOT_SECRETS` from is gone from both machines. **To unblock: add
+`EMPIRIOLABS_API_KEY=<key>` to the cluster secrets file named by `SECRETS_FILE` in the private site settings,
+mode 600.** Until then `research/cluster/oqa_api_smoke.sbatch` runs the (key-free) preflight and exits 4.
+
+**VERIFIED FREE OF CHARGE.** `GET /v1/models/qwen3-5-4b` (unauthenticated, 200 in 0.67 s): id `qwen3-5-4b`,
+alias `qwen3.5-4b`, `hugging_face_id` **Qwen/Qwen3.5-4B** (the A40's weights), features include
+**`function_calling`**, `structured_output: json_schema`, context 262144, max output 32768, **FP8 weights + FP8
+KV**, 50 RPM, $0.04/$0.02/$0.07 per M in/cached/out. Login-node reachability 200 in 0.245 s; the sbatch re-checks
+from the COMPUTE node.
+
+**THE TOOL LOOP IS PROVED END TO END** against a local OpenAI-compatible server (`tests/test_officeqa_api_smoke.py`,
+16 pass): unmodified SkillOpt advertised all three schemas, parsed a `tool_calls` reply, resolved the candidate
+path, ran `run_tool` against a real parsed bulletin, fed the observation back as `role: "tool"`, and the actor
+took a further turn quoting it. **The only untested variable left is the provider's own behaviour.**
+
+**TWO WIRING FACTS found offline (both would have cost a long run to discover):**
+1. `target_backend: openai_chat` means **AZURE** OpenAI. `skillopt/model` dispatches on the COMBINED backend name
+   and separates roles by env prefix, so BOTH `optimizer_backend` and `target_backend` must be `openai_compatible`.
+2. The backend keeps a module-level config per role, so env vars alone are not enough once anything has called
+   `configure_openai_compatible`. Configure the target role explicitly.
+
+**TREATMENT ARM WIRED to the compiled prototype, with provenance.** Arm B now emits the obligation-form report
+(`oqa_lc_report.render`) under a frozen model whose digest is verified first; the report-cache key covers the
+MODEL VERSION as well as the trace, and every report records `trace_sha256` + `model_sha256`.
+**Verified on the saved A40 traces:** 12 epoch-1 and 12 epoch-2 reports PASS against their own attempts; epoch-1
+reports checked against epoch-2 attempts **FAIL** (the A40 integrity failure, now caught); a report built under
+the early model v5 checked against the final v7 **FAIL** (`607f3a138090` vs `059c110ae6c7`).
+
+**MEASURED ESTIMATE for the 4-epoch comparison** (from the A40's 128 tool calls / 12 questions = 11.7 requests
+per question): 264 question-rollouts, ~3,100 actor requests, ~4.2 h wall. **Allowances it NEEDS, as a SEPARATE
+request** (the old allowance has 8 DeepSeek calls left and no CPU or actor budget): **12 CPU job-hours** (<=4
+concurrent, each <=60 min, 2 CPUs + 8 GB), **0 GPUs**, **4,000 actor HTTP attempts**, **$4.00 actor charges**,
+**56 DeepSeek calls**, **$1.50 DeepSeek charges**. Rationale per line in the plan doc section 4.4.
+
+**THREE THINGS TO DECIDE BEFORE IT RUNS** (plan doc 4.5): the FP8 confound means S0 must be re-measured on the API
+actor and this is a NEW baseline, not a continuation; four epochs still gives NO cross-epoch memory
+(`step_buffer` is epoch-scoped with one step per epoch), so it is four independent attempts; and arm B's frozen
+model (v7) has a known counterexample on the confirmation collection, which must be recorded if it is used.
+
+Local suite after all of this: **2032 passed, 11 skipped**.
+
 ## A0. DONE: the learned-contract port (user, 2026-11-16) -> `docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md`
 
 **The full loop ran, offline, 0 GPU jobs and 0 paid calls.** Learn -> freeze by digest -> commit a prediction ->

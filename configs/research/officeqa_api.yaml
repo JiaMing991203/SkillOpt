@@ -1,0 +1,72 @@
+# OfficeQA with the ACTOR ON A HOSTED API instead of a job-local vLLM on an A40.
+#
+#   target    = Qwen3.5-4B served by EmpirioLabs (openai_chat backend, role prefix TARGET_)
+#   optimizer = DeepSeek V4.1 Flash (openai_chat backend, role prefix OPTIMIZER_) - unchanged
+#   tools     = OfficeQA's own document tools, executed locally in the rollout process
+#
+# Why this file exists. With the actor behind an API the rollout needs no GPU at all: `run_tool` reads the parsed
+# bulletins from disk, so a rollout is HTTP plus local file I/O and runs as a CPU job. Everything that defines the
+# experiment - splits, gate, scoring, edit budget, optimizer call schedule - is inherited unchanged, so the only
+# difference from configs/research/officeqa_cmp.yaml is where the actor runs.
+#
+# Supplied at runtime, never stored here:
+#   TARGET_OPENAI_COMPATIBLE_API_KEY      the EmpirioLabs key (env, from the cluster secrets file)
+#   OPTIMIZER_OPENAI_COMPATIBLE_API_KEY   the DeepSeek key (env, from the cluster secrets file)
+#   --optimizer_model                     resolved DeepSeek model id (OPTIMIZER_MODEL)
+#   env.split_dir / env.data_dirs         machine paths chosen per run
+#
+# WHAT IS NOT MATCHED to the A40 pilot, and cannot be. Recorded here because it is the one real confound:
+#   * weights are FP8 + FP8 KV cache on this endpoint; the A40 pilot served bfloat16. Same `hugging_face_id`
+#     (Qwen/Qwen3.5-4B), different numerics, so outputs are not expected to be identical.
+#   * top_k / min_p / repetition_penalty cannot be sent through the OpenAI-compatible chat schema the backend
+#     uses. The A40 pilot left them at vLLM's defaults (top_k 0, min_p 0.0, repetition_penalty 1.0); this endpoint
+#     documents its own defaults and top_p is pinned explicitly below. oqa_api_smoke.py records which parameters
+#     were actually accepted.
+#   * the endpoint's context window is 262144 against the A40's --max-model-len 65536. Larger, so no OfficeQA
+#     prompt that fitted before can fail here; it is not a restriction, only a difference.
+# Both arms of the comparison use this one file, so every one of these differences is applied identically to both.
+_base_: ../officeqa/default.yaml
+
+model:
+  optimizer_backend: openai_compatible
+  target_backend: openai_compatible
+  # Left blank on purpose: the backend would otherwise fall back silently to "gpt-4o-mini".
+  optimizer: ""
+  target: qwen3-5-4b
+
+  optimizer_openai_compatible_base_url: https://api.deepseek.com
+  optimizer_openai_compatible_max_tokens: 16384
+
+  # Matched to the A40 pilot where the schema allows: same temperature and the same output cap.
+  target_openai_compatible_base_url: https://api.empiriolabs.ai/v1
+  target_openai_compatible_model: qwen3-5-4b
+  target_openai_compatible_temperature: 0.7
+  target_openai_compatible_max_tokens: 8000
+  # 300 s matches the pilot's provider timeout; a tool-loop turn that hangs must not stall a whole rollout.
+  target_openai_compatible_timeout_seconds: 300
+
+env:
+  split_mode: split_dir
+  split_dir: ""               # supplied at submit time (OFFICEQA_SPLIT_DIR)
+  data_dirs: []               # supplied at submit time (OFFICEQA_DOCS_DIR)
+  search_mode: offline        # no outbound search; the supplied pages and the local document tools only
+  use_local_tools: true
+  # 4 concurrent rollouts against a 50 RPM account limit. A rollout turn is one request, so four in flight is at
+  # most ~4 requests per turn-time; with turn latencies of seconds this stays well inside 50 RPM. The smoke test
+  # measures the real rate before the comparison fixes this number.
+  workers: 4
+  max_tool_turns: 24          # upstream, and what the A40 comparison used
+  max_completion_tokens: 16384
+  limit: 0
+
+train:
+  num_epochs: 4               # the comparison the user asked for: 12 training questions x 4 epochs
+
+gradient:
+  analyst_workers: 2
+
+optimizer:
+  # Same deviation as the A40 comparison, applied identically to both arms: one skill update per epoch.
+  # See configs/research/officeqa_cmp.yaml for the full reasoning.
+  use_slow_update: false
+  use_meta_skill: false

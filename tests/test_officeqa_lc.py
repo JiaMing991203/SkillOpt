@@ -494,3 +494,71 @@ def test_parse_results_fails_on_an_error_or_an_unexpected_axiom():
     assert LEAN.parse_results(1, "OqaContracts.lean:3:0: error: boom", 10)["ok"] is False
     bad = LEAN.parse_results(0, "'axiom' uses 'sorryAx'", 10)
     assert bad["ok"] is False or bad["unexpected_axioms"]
+
+
+# ── report provenance: the right attempt AND the right model version ───────────
+
+def _mk_pred(tmp_path, tid, conv, prompt="## Question\nq\n"):
+    d = tmp_path / "predictions" / tid
+    d.mkdir(parents=True)
+    (d / "conversation.json").write_text(__import__("json").dumps(conv), encoding="utf-8")
+    (d / "target_user_prompt.txt").write_text(prompt, encoding="utf-8")
+    (tmp_path / "results.jsonl").write_text(
+        __import__("json").dumps({"id": tid, "ground_truth": "30,442"}) + "\n", encoding="utf-8")
+    return str(tmp_path / "predictions")
+
+
+def _frozen(tmp_path, name, assumptions):
+    path = str(tmp_path / name)
+    IR.freeze(dict(IR.empty_model(), assumptions=sorted(assumptions)), path)
+    return path
+
+
+def test_report_provenance_binds_a_report_to_its_attempt_and_model_version(tmp_path):
+    """The A40 run handed eight epoch-2 failures reports built from their epoch-1 trajectories. A report must
+    therefore carry BOTH the trace it came from and the model version that produced it, and a check must reject
+    either mismatch."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "oqa_reports", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    "research", "officeqa", "oqa_reports.py"))
+    RP = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("oqa_reports", RP)
+    spec.loader.exec_module(RP)
+
+    conv_a = [{"type": "message", "content": "From the table: 30,442 for December 1960."}]
+    conv_b = [{"type": "message", "content": "A different attempt entirely: 29,385."}]
+    pred_a = _mk_pred(tmp_path / "a", "UID0026", conv_a)
+    pred_b = _mk_pred(tmp_path / "b", "UID0026", conv_b)
+    m1 = _frozen(tmp_path, "m1.json", ALL_ASSUMPTIONS)
+    m2 = _frozen(tmp_path, "m2.json", ALL_ASSUMPTIONS - {"index_alignment"})
+
+    _, rec_a = RP.build_one_lc(pred_a, "UID0026", "q", str(tmp_path / "a" / "results.jsonl"), m1)
+    assert rec_a["model_sha256"] and rec_a["trace_sha256"]
+    # against its own attempt and model: PASS
+    assert RP.verify_report_provenance([rec_a], pred_a, m1)["verdict"] == "PASS"
+    # the same report against a DIFFERENT attempt: FAIL, naming the trace
+    bad_trace = RP.verify_report_provenance([rec_a], pred_b, m1)
+    assert bad_trace["verdict"] == "FAIL" and "trace" in bad_trace["problems"][0]
+    # and against a different MODEL VERSION: FAIL, naming the model
+    bad_model = RP.verify_report_provenance([rec_a], pred_a, m2)
+    assert bad_model["verdict"] == "FAIL" and "model" in bad_model["problems"][0]
+
+
+def test_the_frozen_model_digest_is_verified_before_a_report_is_built(tmp_path):
+    """A model file edited after freezing must not silently produce reports attributed to its old digest."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "oqa_reports2", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                     "research", "officeqa", "oqa_reports.py"))
+    RP = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(RP)
+    path = _frozen(tmp_path, "m.json", ALL_ASSUMPTIONS)
+    assert RP.lc_model_digest(path)
+    import json as _json
+    os.chmod(path, 0o644)
+    blob = _json.loads(open(path).read())
+    blob["assumptions"] = ["year_inheritance"]          # tamper, keep the recorded sha256
+    open(path, "w").write(_json.dumps(blob))
+    with pytest.raises(RuntimeError, match="does not match its frozen digest"):
+        RP.lc_model_digest(path)

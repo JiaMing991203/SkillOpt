@@ -33,6 +33,108 @@ class AnswerKeyLeak(RuntimeError):
     """The packet a report would be built from carries evaluator-only information. Never continue past this."""
 
 
+LC_CONDITION = "LC"
+
+
+def lc_model_digest(model_path: str) -> str:
+    """The frozen learned-contract model's own digest, verified against its content before it is used.
+
+    `oqa_lc_ir.load_frozen` refuses a file whose content does not match the digest it carries, so a report keyed
+    by this value cannot be attributed to a model version that was edited after freezing.
+    """
+    _, IR, _, _ = _lc_modules()
+    return str(IR.load_frozen(model_path).get("sha256") or "")
+
+
+def _lc_modules():
+    """Import the learned-contract modules by path (research instrumentation, not a package)."""
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    mods = []
+    for name in ("oqa_lc_ir", "oqa_lc_chain", "oqa_lc_report"):
+        spec = importlib.util.spec_from_file_location(name, os.path.join(here, f"{name}.py"))
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules.setdefault(name, mod)
+        spec.loader.exec_module(mod)
+        mods.append(mod)
+    IR, CHAIN, REPORT = mods
+    return None, IR, CHAIN, REPORT
+
+
+def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
+                 model_path: str) -> tuple[str, dict]:
+    """The LEARNED-CONTRACT report for one item: obligations with a resolution, under a frozen model.
+
+    This is the treatment arm's report for the API comparison. It differs from `build_one` in what it says, not in
+    what it may read: the same packet, the same answer-key audit, no skill and no held-out data. Two things are
+    recorded that the old report had no notion of, and both are what makes a report attributable:
+      * `trace_sha256`  the conversation and user prompt the report was derived from;
+      * `model_sha256`  the frozen model whose assumptions licensed its bindings.
+    A report is valid only for that (attempt, model version) pair, and `verify_report_provenance` checks it.
+    """
+    _, IR, CHAIN, REPORT = _lc_modules()
+    packet = TR.build_packet(pred_root, item_id, question=question)
+    if not packet.get("steps"):
+        raise ValueError(f"{item_id}: no conversation events were recorded at {pred_root}")
+    audit = TR.audit_no_gold(packet, results_path)
+    if audit["verdict"] != "PASS":
+        raise AnswerKeyLeak(f"{item_id}: {audit.get('problems')}")
+    model = IR.load_frozen(model_path)
+    chain = CHAIN.build(packet, model)
+    text = REPORT.render(chain, model)
+    ledger = CHAIN.summary(chain["ledger"])
+    record = {
+        "id": item_id,
+        "condition": LC_CONDITION,
+        "report_chars": len(text),
+        "report_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "trace_sha256": trace_digest(pred_root, item_id),
+        "model_sha256": str(model.get("sha256") or ""),
+        "model_version": model.get("version"),
+        "model_assumptions": list(model.get("assumptions") or []),
+        "boundary_audit": audit["verdict"],
+        "boundary_problems": audit.get("problems", []),
+        "obligations": ledger,
+        "n_distinct_diagnoses": len(REPORT.group(chain["ledger"])),
+    }
+    return text, record
+
+
+def trace_digest(pred_root: str, item_id: str) -> str:
+    """Digest of the exact attempt a report must describe: its conversation plus the prompt the actor was given."""
+    h = hashlib.sha256()
+    for name in ("conversation.json", "target_user_prompt.txt"):
+        h.update(b"\x00" + name.encode() + b"\x00")
+        try:
+            with open(os.path.join(pred_root, item_id, name), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b"<missing>")
+    return h.hexdigest()
+
+
+def verify_report_provenance(records: list, pred_root: str, model_path: str) -> dict:
+    """Every report must come from the attempt it claims and from the frozen model version in force.
+
+    Returns {"verdict", "checked", "problems"}. This is the check the stale-report failure of the A40 run would
+    have caught: there, eight epoch-2 failures were handed reports built from their epoch-1 trajectories.
+    """
+    _, IR, _, _ = _lc_modules()
+    want_model = str(IR.load_frozen(model_path).get("sha256") or "")
+    problems = []
+    for rec in records:
+        tid = str(rec.get("id"))
+        actual = trace_digest(pred_root, tid)
+        if rec.get("trace_sha256") != actual:
+            problems.append(f"{tid}: report was built from trace {str(rec.get('trace_sha256'))[:12]} but the "
+                            f"attempt on disk is {actual[:12]}")
+        if rec.get("model_sha256") != want_model:
+            problems.append(f"{tid}: report was built under model {str(rec.get('model_sha256'))[:12]} but the "
+                            f"frozen model in force is {want_model[:12]}")
+    return {"verdict": "FAIL" if problems else "PASS", "checked": len(records), "problems": problems,
+            "model_sha256": want_model}
+
+
 def build_one(pred_root: str, item_id: str, question: str, results_path: str,
               condition: str = "C") -> tuple[str, dict]:
     """Build one item's report text plus its record. Raises AnswerKeyLeak if the packet fails the audit.
