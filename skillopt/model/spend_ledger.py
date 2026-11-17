@@ -300,7 +300,11 @@ def _init(role: str) -> dict:
             raise LedgerUnusable(f"cannot create {os.path.join(root, sub)}: {exc}") from exc
     cfg = config(role)
     st = {"cfg": cfg, "claimed_attempts": 0, "used_attempts": 0,
-          "claimed_usdmicro": 0, "used_usdmicro": 0, "reserve_exceeded": 0}
+          "claimed_usdmicro": 0, "used_usdmicro": 0, "reserve_exceeded": 0,
+          # An attempt is RESOLVED once its usage has been recorded. `used_attempts - resolved_attempts` is
+          # the number of requests this process sent whose cost it never learned: they may have been billed,
+          # so their reserve is NOT released. See `release`.
+          "resolved_attempts": 0}
     _state[role] = st
     _install_atexit()
     _record({"schema": SCHEMA, "kind": "open", "role": role, "owner": _owner_token(),
@@ -385,6 +389,7 @@ def record_usage(role: str, stage: str, prompt_tokens: int, completion_tokens: i
         st = _init(role)
         micro = int(round(usd * 1_000_000))
         st["used_usdmicro"] += micro
+        st["resolved_attempts"] += 1
         over = st["used_usdmicro"] > st["claimed_usdmicro"]
         if over:
             st["reserve_exceeded"] += 1
@@ -407,15 +412,32 @@ def release(reason: str = "clean exit") -> dict:
 
     A process that dies without reaching this keeps its claim. That is the conservative direction and it is
     why a claim BLOCK must be small against the cap, not merely small in absolute terms.
+
+    What is NOT released: one `reserve_usd` for every request this process sent and never got a reply for.
+    Those may have been billed by the provider, so the money is treated as spent even though no usage record
+    exists. `research/officeqa/oqa_ledger_reconcile.py` applies the same rule to a ledger whose processes have
+    already exited without releasing.
     """
     if not active():
         return {"active": False}
     given: dict = {}
+    retained: dict = {}
     with _lock:
         for role, st in list(_state.items()):
+            # Requests this process sent and never saw a reply for. The provider may have billed them, so
+            # their reserve stays claimed: releasing it would let another process spend money that is
+            # already gone. Attempts themselves are always resolved in this sense - the attempt was made -
+            # so only the money is held back.
+            unresolved = max(0, int(st.get("used_attempts", 0)) - int(st.get("resolved_attempts", 0)))
+            reserve_usdmicro = int(round(float(st["cfg"]["reserve_usd"]) * 1_000_000))
+            hold = {"attempts": 0, "usdmicro": unresolved * reserve_usdmicro}
+            if unresolved:
+                retained[role] = {"unresolved_requests": unresolved,
+                                  "usd_held": round(hold["usdmicro"] / 1e6, 6)}
             for resource, used_key, claimed_key in (("attempts", "used_attempts", "claimed_attempts"),
                                                     ("usdmicro", "used_usdmicro", "claimed_usdmicro")):
-                unused = int(st.get(claimed_key, 0)) - int(st.get(used_key, 0))
+                unused = (int(st.get(claimed_key, 0)) - int(st.get(used_key, 0))
+                          - int(hold.get(resource, 0)))
                 if unused <= 0:
                     continue
                 try:
@@ -423,16 +445,16 @@ def release(reason: str = "clean exit") -> dict:
                 except Exception as exc:  # noqa: BLE001 - a release must never fail a finishing process
                     given[f"{role}/{resource}"] = f"error: {type(exc).__name__}"
                     continue
-                st[claimed_key] = st[used_key]
+                st[claimed_key] = int(st[claimed_key]) - unused
                 given[f"{role}/{resource}"] = unused
-        if given:
+        if given or retained:
             try:
                 _record({"schema": SCHEMA, "kind": "release", "owner": _owner_token(), "reason": reason,
-                         "given_back": given,
+                         "given_back": given, "retained_for_unresolved": retained,
                          "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()})
             except Exception:  # noqa: BLE001
                 pass
-    return {"active": True, "given_back": given}
+    return {"active": True, "given_back": given, "retained_for_unresolved": retained}
 
 
 def _write_release(role: str, resource: str, amount: int, reason: str) -> None:
@@ -489,6 +511,8 @@ def snapshot() -> dict:
             "used_attempts_this_process": st.get("used_attempts", 0),
             "used_usd_this_process": round(st.get("used_usdmicro", 0) / 1e6, 6),
             "reserve_exceeded_this_process": st.get("reserve_exceeded", 0),
+            "unresolved_requests_this_process": max(
+                0, int(st.get("used_attempts", 0)) - int(st.get("resolved_attempts", 0))),
         }
     return out
 
@@ -499,8 +523,9 @@ def observed() -> dict:
     This is the audit view, independent of the claims. ``claimed >= observed`` must hold.
     """
     root = os.path.join(directory(), "spend")
-    out: dict[str, dict] = {r: {"attempts": 0, "usd": 0.0, "refusals": 0, "reserve_exceeded": 0,
-                                "prompt_tokens": 0, "completion_tokens": 0} for r in ROLES}
+    out: dict[str, dict] = {r: {"attempts": 0, "resolved": 0, "usd": 0.0, "refusals": 0,
+                                "reserve_exceeded": 0, "prompt_tokens": 0, "completion_tokens": 0}
+                            for r in ROLES}
     owners: dict[str, dict] = {}
     try:
         names = sorted(os.listdir(root))
@@ -518,13 +543,15 @@ def observed() -> dict:
                 role = str(rec.get("role") or "")
                 if role not in out:
                     continue
-                own = owners.setdefault(name[:-6], {"attempts": 0, "usd": 0.0, "restart": rec.get(
-                    "slurm_restart_count", "")})
+                own = owners.setdefault(name[:-6], {"attempts": 0, "resolved": 0, "usd": 0.0,
+                                                    "restart": rec.get("slurm_restart_count", "")})
                 kind = rec.get("kind")
                 if kind == "attempt":
                     out[role]["attempts"] += 1
                     own["attempts"] += 1
                 elif kind == "usage":
+                    out[role]["resolved"] += 1
+                    own["resolved"] += 1
                     out[role]["usd"] += float(rec.get("usd") or 0.0)
                     out[role]["prompt_tokens"] += int(rec.get("prompt_tokens") or 0)
                     out[role]["completion_tokens"] += int(rec.get("completion_tokens") or 0)
@@ -535,8 +562,10 @@ def observed() -> dict:
                     out[role]["refusals"] += 1
     for role in out:
         out[role]["usd"] = round(out[role]["usd"], 6)
+        out[role]["unresolved"] = max(0, out[role]["attempts"] - out[role]["resolved"])
     for own in owners.values():
         own["usd"] = round(own["usd"], 6)
+        own["unresolved"] = max(0, own["attempts"] - own["resolved"])
     return {"by_role": out, "by_owner": owners}
 
 

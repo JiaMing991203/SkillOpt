@@ -713,3 +713,614 @@ def test_a_usd_block_must_be_small_against_the_cap():
     """The defect was not that the block existed but that it was LARGE relative to the authorization."""
     for role, block in LEDGER._DEFAULT_BLOCK_USD.items():
         assert block <= 0.05, f"{role}: a {block} block against a single-digit cap wastes too much per process"
+
+
+# ── the accounting fix: an unresolved request keeps its reserve ────────────────
+#
+# `release` hands back claimed-but-unspent money. The subtlety the first version missed: a request that was
+# SENT and whose reply never arrived has no usage record, so it looks unspent - but the provider may well have
+# billed it. Handing that money back would let the next process spend money that is already gone.
+
+def test_an_unresolved_request_keeps_its_reserve_when_the_process_exits(tmp_path, monkeypatch):
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    LEDGER.reserve("target", "test")          # sent
+    # ... and no record_usage: the reply never came back.
+    out = LEDGER.release("clean exit")
+    assert out["retained_for_unresolved"]["target"]["unresolved_requests"] == 1
+    assert out["retained_for_unresolved"]["target"]["usd_held"] == pytest.approx(0.02)
+    net = LEDGER._granted()[("target", "usdmicro")]
+    assert net == 20_000, f"the reserve for the one unresolved request must stay claimed, got {net}"
+
+
+def test_a_resolved_request_releases_everything_above_its_charge(tmp_path, monkeypatch):
+    """The contrast: once the reply is accounted for, only the real charge is retained."""
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    LEDGER.reserve("target", "test")
+    LEDGER.record_usage("target", "test", 100_000, 0)     # $0.004
+    out = LEDGER.release("clean exit")
+    assert not out["retained_for_unresolved"]
+    assert LEDGER._granted()[("target", "usdmicro")] == 4_000
+
+
+def test_several_unresolved_requests_each_keep_one_reserve(tmp_path, monkeypatch):
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    for _ in range(3):
+        LEDGER.reserve("target", "test")
+    LEDGER.record_usage("target", "test", 50_000, 0)      # $0.002; one of the three resolved
+    LEDGER.release("clean exit")
+    # two unresolved x $0.02 reserve + the $0.002 actually charged
+    assert LEDGER._granted()[("target", "usdmicro")] == 2 * 20_000 + 2_000
+
+
+def test_the_snapshot_shows_a_running_job_its_unresolved_count(tmp_path, monkeypatch):
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0), monkeypatch)
+    LEDGER.reserve("target", "test")
+    LEDGER.reserve("target", "test")
+    LEDGER.record_usage("target", "test", 1_000, 0)
+    role = LEDGER.snapshot()["roles"]["target"]
+    assert role["unresolved_requests_this_process"] == 1
+
+
+# ── interruption: a process that is killed cannot release, and must not ────────
+
+_KILL_CHILD = textwrap.dedent(
+    """
+    import os, sys, signal
+    sys.path.insert(0, {root!r})
+    from skillopt.model import spend_ledger as L
+    L.reserve("target", "test")
+    L.record_usage("target", "test", 100_000, 0)
+    sys.stdout.write("claimed\\n")
+    sys.stdout.flush()
+    os.kill(os.getpid(), signal.SIGKILL)
+    """
+)
+
+
+def test_a_process_killed_without_warning_keeps_its_whole_claim(tmp_path):
+    """SIGKILL runs no atexit hook, so nothing is released. That is the SAFE direction and it is deliberate.
+
+    The guarantee the ledger makes is `spent <= claimed <= cap`. A killed process strands its claim, which
+    errs towards refusing work rather than towards overspending; the operational answer is the post-hoc
+    reconciler, not a release the dying process cannot be trusted to perform.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = dict(os.environ)
+    env.update(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02))
+    proc = subprocess.run([sys.executable, "-c", _KILL_CHILD.format(root=root)],
+                          capture_output=True, text=True, env=env, timeout=120)
+    assert "claimed" in proc.stdout
+    assert proc.returncode != 0, "the child was meant to die from SIGKILL"
+    assert not os.path.isdir(os.path.join(str(tmp_path), "release")) or not os.listdir(
+        os.path.join(str(tmp_path), "release")), "a killed process must not have released anything"
+
+    os.environ.update(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02))
+    LEDGER._state.clear()
+    LEDGER._owner = ""
+    net = LEDGER._granted()[("target", "usdmicro")]
+    spent = LEDGER.observed()["by_role"]["target"]["usd"]
+    assert net == 50_000, f"the whole $0.05 block should still be claimed, got {net}"
+    assert spent == pytest.approx(0.004), spent
+    assert net / 1e6 >= spent, "spent <= claimed must survive a kill"
+
+
+# ── the post-hoc reconciler ───────────────────────────────────────────────────
+
+def _reconciler():
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "research", "officeqa", "oqa_ledger_reconcile.py")
+    spec = importlib.util.spec_from_file_location("oqa_ledger_reconcile_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _dead_process(ledger: str, *, owner: str, attempts: int, resolve: int, prompt_tokens: int,
+                  monkeypatch) -> None:
+    """Run one short-lived ledger client that exits WITHOUT releasing, as the campaign's jobs did."""
+    LEDGER._state.clear()
+    LEDGER._owner = owner
+    for i in range(attempts):
+        LEDGER.reserve("target", "test")
+        if i < resolve:
+            LEDGER.record_usage("target", "test", prompt_tokens, 0)
+    LEDGER._state.clear()        # the process is gone; no atexit, no release
+
+
+def test_the_reconciler_releases_only_what_an_exited_process_did_not_spend(tmp_path, monkeypatch):
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    _dead_process(str(tmp_path), owner="111r0p1", attempts=4, resolve=4, prompt_tokens=100_000,
+                  monkeypatch=monkeypatch)
+    spent = LEDGER.observed()["by_role"]["target"]["usd"]          # 4 x $0.004 = $0.016
+    before = LEDGER._granted()[("target", "usdmicro")]
+    assert before > int(spent * 1e6), "the dead process stranded headroom"
+
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    plan = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert not plan["problems"], plan["problems"]
+    R.apply_plan(plan, reason="test")
+
+    after = LEDGER._granted()[("target", "usdmicro")]
+    assert after == int(round(spent * 1e6)), f"net claims should fall to the real spend, got {after}"
+    assert LEDGER._granted()[("target", "attempts")] == 4
+
+
+def test_the_reconciler_retains_the_reserve_of_an_unresolved_request(tmp_path, monkeypatch):
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    # three sent, two accounted for: one request's cost was never learned
+    _dead_process(str(tmp_path), owner="222r0p1", attempts=3, resolve=2, prompt_tokens=100_000,
+                  monkeypatch=monkeypatch)
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    plan = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert plan["by_role"]["target"]["unresolved_requests"] == 1
+    assert plan["by_role"]["target"]["retained_usd_for_unresolved"] == pytest.approx(0.02)
+    R.apply_plan(plan, reason="test")
+    # $0.008 really charged + $0.02 held for the unresolved one
+    assert LEDGER._granted()[("target", "usdmicro")] == 8_000 + 20_000
+
+
+def test_the_reconciler_never_releases_an_actual_charge(tmp_path, monkeypatch):
+    """The property that matters: whatever the arithmetic, recorded spend stays claimed."""
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    for n, owner in ((7, "333r0p1"), (3, "333r0p2"), (11, "444r0p9")):
+        _dead_process(str(tmp_path), owner=owner, attempts=n, resolve=n, prompt_tokens=250_000,
+                      monkeypatch=monkeypatch)
+    spent_usd = LEDGER.observed()["by_role"]["target"]["usd"]
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    plan = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    R.apply_plan(plan, reason="test")
+    net = LEDGER._granted()[("target", "usdmicro")] / 1e6
+    assert net >= spent_usd - 1e-9, f"net claims {net} fell below real spend {spent_usd}"
+    assert net == pytest.approx(spent_usd, abs=1e-6)
+
+
+def test_the_reconciler_is_idempotent(tmp_path, monkeypatch):
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    _dead_process(str(tmp_path), owner="555r0p1", attempts=5, resolve=5, prompt_tokens=100_000,
+                  monkeypatch=monkeypatch)
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    first = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    R.apply_plan(first, reason="test")
+    net = LEDGER._granted()[("target", "usdmicro")]
+    second = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert second["entries"] == [], "a second reconciliation must find nothing left to release"
+    R.apply_plan(second, reason="test")
+    assert LEDGER._granted()[("target", "usdmicro")] == net
+
+
+def test_the_reconciler_leaves_a_live_job_alone(tmp_path, monkeypatch):
+    """Releasing a running process's claim would break the invariant the ledger exists to hold."""
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    _dead_process(str(tmp_path), owner="666r0p1", attempts=4, resolve=4, prompt_tokens=100_000,
+                  monkeypatch=monkeypatch)
+    before = LEDGER._granted()[("target", "usdmicro")]
+    monkeypatch.setattr(R, "_live_jobs", lambda: {"666"})
+    plan = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert plan["entries"] == []
+    assert plan["skipped"] and "queue" in plan["skipped"][0]["reason"]
+    R.apply_plan(plan, reason="test")
+    assert LEDGER._granted()[("target", "usdmicro")] == before, "a live job's claim must be untouched"
+
+
+def test_the_reconciler_requires_evidence_that_the_owner_exited(tmp_path, monkeypatch):
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    _dead_process(str(tmp_path), owner="777r0p1", attempts=4, resolve=4, prompt_tokens=100_000,
+                  monkeypatch=monkeypatch)
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    bare = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=False)
+    assert bare["entries"] == [] and bare["skipped"], "without evidence nothing may be released"
+    named = R.plan(str(tmp_path), exited_jobs={"777"}, assume_all_exited=False)
+    assert named["entries"], "an owner named as exited is reconciled"
+
+
+def test_the_reconciler_agrees_with_the_ledgers_own_accounting(tmp_path, monkeypatch):
+    """Two independent readers of the same files: the ledger's `observed()` and the stdlib-only reconciler."""
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    _dead_process(str(tmp_path), owner="888r0p1", attempts=6, resolve=5, prompt_tokens=120_000,
+                  monkeypatch=monkeypatch)
+    mine = LEDGER.observed()["by_role"]["target"]
+    theirs = R.read_ledger(str(tmp_path))["owners"]["888r0p1"]["roles"]["target"]
+    assert theirs["attempts"] == mine["attempts"] == 6
+    assert theirs["resolved"] == mine["resolved"] == 5
+    assert theirs["usdmicro"] == pytest.approx(mine["usd"] * 1e6, abs=2)
+    assert mine["unresolved"] == 1
+
+
+# ── the rollout provenance guard ──────────────────────────────────────────────
+#
+# `run_batch` resumes by id: a row already in results.jsonl is returned as it stands and `skill_content` is
+# never consulted for it. That is what makes a saved rollout reusable, and it is also how a recovery could
+# silently reflect on traces produced by a skill that is no longer in force.
+
+def _rollout_module():
+    from skillopt.envs.officeqa import rollout as RO
+    return RO
+
+
+def _seed_results(dirpath: str, skill: str, ids=("q1", "q2")) -> None:
+    RO = _rollout_module()
+    system = RO._build_system(skill, search_mode="offline", use_local_tools=True,
+                              max_tool_turns=24, max_queries_per_turn=4)
+    os.makedirs(dirpath, exist_ok=True)
+    with open(os.path.join(dirpath, "results.jsonl"), "w", encoding="utf-8") as f:
+        for i in ids:
+            f.write(json.dumps({"id": i, "hard": 1, "soft": 1.0, "target_system_prompt": system}) + "\n")
+
+
+def test_without_the_guard_a_saved_rollout_is_reused_whatever_the_skill(tmp_path, monkeypatch):
+    """The pre-existing behaviour, stated as a test so a change to it cannot pass unnoticed."""
+    RO = _rollout_module()
+    monkeypatch.delenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", raising=False)
+    d = str(tmp_path / "r")
+    _seed_results(d, "SKILL ONE")
+    items = [{"id": "q1"}, {"id": "q2"}]
+    out = RO.run_batch(items, d, "A COMPLETELY DIFFERENT SKILL", search_mode="offline",
+                       use_local_tools=True, max_tool_turns=24)
+    assert [r["id"] for r in out] == ["q1", "q2"], "both rows are reused and nothing is sent"
+
+
+def test_the_guard_reuses_a_rollout_whose_producing_skill_still_matches(tmp_path, monkeypatch):
+    RO = _rollout_module()
+    monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
+    d = str(tmp_path / "r")
+    _seed_results(d, "SKILL ONE")
+    out = RO.run_batch([{"id": "q1"}, {"id": "q2"}], d, "SKILL ONE", search_mode="offline",
+                       use_local_tools=True, max_tool_turns=24)
+    assert [r["id"] for r in out] == ["q1", "q2"], "a matching rollout must still be free"
+    assert not glob_superseded(d), "nothing was superseded, so no backup should exist"
+
+
+def glob_superseded(d: str) -> list[str]:
+    import glob as _g
+    return _g.glob(os.path.join(d, "results.jsonl.superseded-*"))
+
+
+def test_the_guard_refuses_a_rollout_produced_by_a_different_skill(tmp_path, monkeypatch):
+    """The recovery case: epoch 4's paired rollout is stale exactly when epoch 3's gate accepted."""
+    RO = _rollout_module()
+    monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
+    d = str(tmp_path / "r")
+    _seed_results(d, "THE OLD SKILL")
+    sent: list[str] = []
+
+    def fake_process_one(item, out_root, skill_content, **kwargs):
+        sent.append(str(item["id"]))
+        return {"id": item["id"], "hard": 0, "soft": 0.0, "target_system_prompt": "rerolled"}
+
+    monkeypatch.setattr(RO, "process_one", fake_process_one)
+    out = RO.run_batch([{"id": "q1"}, {"id": "q2"}], d, "THE NEW SKILL", search_mode="offline",
+                       use_local_tools=True, max_tool_turns=24)
+    assert sorted(sent) == ["q1", "q2"], "both stale rows must be re-rolled"
+    assert len(out) == 2
+
+
+def test_the_guard_keeps_results_jsonl_canonical_and_preserves_the_original(tmp_path, monkeypatch):
+    """A re-rolled id must not end up in the file twice: every downstream reader keys on id."""
+    RO = _rollout_module()
+    monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
+    d = str(tmp_path / "r")
+    _seed_results(d, "THE OLD SKILL", ids=("q1", "q2", "q3"))
+    monkeypatch.setattr(RO, "process_one", lambda item, out_root, skill_content, **kw: {
+        "id": item["id"], "hard": 0, "soft": 0.0, "target_system_prompt": "rerolled"})
+    RO.run_batch([{"id": "q1"}, {"id": "q2"}, {"id": "q3"}], d, "THE NEW SKILL",
+                 search_mode="offline", use_local_tools=True, max_tool_turns=24)
+    rows = [json.loads(l) for l in open(os.path.join(d, "results.jsonl"), encoding="utf-8")]
+    ids = [r["id"] for r in rows]
+    assert sorted(ids) == ["q1", "q2", "q3"], f"ids must appear once each, got {ids}"
+    assert all(r["target_system_prompt"] == "rerolled" for r in rows)
+    backups = glob_superseded(d)
+    assert len(backups) == 1, "the superseded rollout must be preserved, not deleted"
+    old = [json.loads(l) for l in open(backups[0], encoding="utf-8")]
+    assert len(old) == 3 and all("THE OLD SKILL" in r["target_system_prompt"] for r in old)
+
+
+def test_the_guard_re_rolls_only_the_rows_that_changed(tmp_path, monkeypatch):
+    """Partial staleness: a directory half-written under one skill and half under another."""
+    RO = _rollout_module()
+    monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
+    d = str(tmp_path / "r")
+    os.makedirs(d, exist_ok=True)
+    good = RO._build_system("THE NEW SKILL", search_mode="offline", use_local_tools=True,
+                            max_tool_turns=24, max_queries_per_turn=4)
+    bad = RO._build_system("THE OLD SKILL", search_mode="offline", use_local_tools=True,
+                           max_tool_turns=24, max_queries_per_turn=4)
+    with open(os.path.join(d, "results.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"id": "keep", "hard": 1, "target_system_prompt": good}) + "\n")
+        f.write(json.dumps({"id": "drop", "hard": 1, "target_system_prompt": bad}) + "\n")
+    sent: list[str] = []
+    monkeypatch.setattr(RO, "process_one", lambda item, out_root, skill_content, **kw: (
+        sent.append(str(item["id"])), {"id": item["id"], "hard": 0, "target_system_prompt": good})[1])
+    RO.run_batch([{"id": "keep"}, {"id": "drop"}], d, "THE NEW SKILL",
+                 search_mode="offline", use_local_tools=True, max_tool_turns=24)
+    assert sent == ["drop"], f"only the stale row should be paid for again, re-rolled: {sent}"
+
+
+def test_the_guard_notices_a_changed_turn_limit_not_only_a_changed_skill(tmp_path, monkeypatch):
+    """`settings match` means the whole prompt, not just the skill: the turn budget is in the system prompt."""
+    RO = _rollout_module()
+    monkeypatch.setenv("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "1")
+    d = str(tmp_path / "r")
+    RO_system = RO._build_system("S", search_mode="offline", use_local_tools=True,
+                                 max_tool_turns=12, max_queries_per_turn=4)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "results.jsonl"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"id": "q1", "hard": 1, "target_system_prompt": RO_system}) + "\n")
+    sent: list[str] = []
+    monkeypatch.setattr(RO, "process_one", lambda item, out_root, skill_content, **kw: (
+        sent.append("q1"), {"id": "q1", "hard": 0, "target_system_prompt": "x"})[1])
+    RO.run_batch([{"id": "q1"}], d, "S", search_mode="offline", use_local_tools=True,
+                 max_tool_turns=24)
+    assert sent == ["q1"], "a different max_tool_turns is a different prompt and must not be reused"
+
+
+# ── the recovery tool ─────────────────────────────────────────────────────────
+
+def _recover():
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "research", "officeqa", "oqa_recover.py")
+    spec = importlib.util.spec_from_file_location("oqa_recover_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _fake_campaign(root: str, *, refuse_job: str = "900") -> str:
+    """A two-epoch arm whose epoch 2 was starved, plus the ledger records that prove it."""
+    os.makedirs(os.path.join(root, "ledger", "spend"), exist_ok=True)
+    os.makedirs(os.path.join(root, "ledger", "claims"), exist_ok=True)
+    arm = os.path.join(root, "arm_A")
+    for sub in ("skills", "steps/step_0001", "steps/step_0002",
+                "slow_update/epoch_01", "slow_update/epoch_02",
+                "meta_skill/epoch_01", "meta_skill/epoch_02"):
+        os.makedirs(os.path.join(arm, sub), exist_ok=True)
+    for i, text in enumerate(("S0 ADVICE", "S0 ADVICE", "S0 ADVICE")):
+        with open(os.path.join(arm, "skills", f"skill_v{i:04d}.md"), "w", encoding="utf-8") as f:
+            f.write(text)
+    with open(os.path.join(arm, "best_skill.md"), "w", encoding="utf-8") as f:
+        f.write("S0 ADVICE")
+
+    RO = _rollout_module()
+    def seed(d, skill, n):
+        system = RO._build_system(skill, search_mode="offline", use_local_tools=True,
+                                  max_tool_turns=24, max_queries_per_turn=4)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "results.jsonl"), "w", encoding="utf-8") as f:
+            for k in range(n):
+                f.write(json.dumps({"id": f"q{k}", "hard": 0,
+                                    "target_system_prompt": system}) + "\n")
+
+    seed(os.path.join(arm, "steps/step_0001/rollout"), "S0 ADVICE", 24)
+    seed(os.path.join(arm, "steps/step_0002/rollout"), "S0 ADVICE", 24)
+    seed(os.path.join(arm, "slow_update/epoch_02/rollout_prev"), "S0 ADVICE", 10)
+    seed(os.path.join(arm, "slow_update/epoch_02/rollout_curr"), "S0 ADVICE", 10)
+
+    with open(os.path.join(arm, "steps/step_0001/step_record.json"), "w", encoding="utf-8") as f:
+        json.dump({"step": 1, "epoch": 1, "rollout_n": 24, "rollout_hard": 0.125, "n_patches": 3,
+                   "n_edits_merged": 7, "n_edits_ranked": 4, "edit_budget": 4, "action": "reject",
+                   "candidate_gate_score": 0.04, "current_score": 0.1667, "best_score": 0.1667,
+                   "best_step": 0, "current_origin": "initial_skill", "best_origin": "initial_skill",
+                   "tokens": {"analyst": {"calls": 4}, "merge": {"calls": 2}, "ranking": {"calls": 1}}},
+                  f)
+    with open(os.path.join(arm, "steps/step_0002/step_record.json"), "w", encoding="utf-8") as f:
+        json.dump({"step": 2, "epoch": 2, "rollout_n": 24, "rollout_hard": 0.25, "n_patches": 0,
+                   "action": "skip_no_patches", "current_score": 0.1667, "best_score": 0.1667,
+                   "best_step": 0, "tokens": {}}, f)
+    with open(os.path.join(arm, "slow_update/epoch_01/slow_result.json"), "w", encoding="utf-8") as f:
+        json.dump({"action": "inject_placeholder"}, f)
+    with open(os.path.join(arm, "meta_skill/epoch_01/meta_skill_result.json"), "w", encoding="utf-8") as f:
+        json.dump({"action": "skip_first_epoch"}, f)
+    with open(os.path.join(arm, "slow_update/epoch_02/slow_result.json"), "w", encoding="utf-8") as f:
+        json.dump({"action": "no_content", "time_s": 1.0}, f)
+    with open(os.path.join(arm, "meta_skill/epoch_02/meta_skill_result.json"), "w", encoding="utf-8") as f:
+        json.dump({"action": "no_content", "time_s": 0.0}, f)
+    with open(os.path.join(arm, "slow_update/epoch_02/comparison_pairs.json"), "w", encoding="utf-8") as f:
+        json.dump([{"id": f"q{k}"} for k in range(10)], f)
+    with open(os.path.join(arm, "runtime_state.json"), "w", encoding="utf-8") as f:
+        json.dump({"last_completed_step": 2, "current_skill_path": "x", "current_score": 0.1667,
+                   "best_skill_path": "y", "best_score": 0.1667, "best_step": 0,
+                   "current_origin": "initial_skill", "best_origin": "initial_skill"}, f)
+
+    with open(os.path.join(root, "ledger", "spend", f"{refuse_job}r0p1.jsonl"), "w",
+              encoding="utf-8") as f:
+        for stage, n in (("analyst", 4), ("slow_update", 1), ("meta_skill", 1)):
+            for _ in range(n):
+                f.write(json.dumps({"kind": "refused", "role": "optimizer", "stage": stage,
+                                    "reason": "usd cap reached"}) + "\n")
+    bundle = os.path.join(root, "bundle")
+    os.makedirs(os.path.join(bundle, f"run_{refuse_job}_arm_A_e2"), exist_ok=True)
+    os.makedirs(os.path.join(bundle, "run_800_arm_A_e1"), exist_ok=True)
+    return bundle
+
+
+def test_the_audit_calls_a_refused_stage_starved_and_a_quiet_one_ok(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    doc = REC.audit(str(tmp_path), [bundle])
+    by = {r["key"]: r for r in doc["rows"]}
+    assert by["A.1"]["affected"] is False
+    assert by["A.2"]["affected"] is True
+    assert "analyst" in by["A.2"]["starved_stages"]
+    assert "gate" in by["A.2"]["starved_stages"], "skip_no_patches with a refusal is the masked failure"
+    assert "slow_update" in by["A.2"]["starved_stages"]
+    assert "meta_skill" in by["A.2"]["starved_stages"]
+    assert doc["earliest_affected_epoch_per_arm"] == {"A": 2}
+    assert doc["total_refusals"] == 6
+
+
+def test_the_audit_does_not_call_a_genuinely_quiet_epoch_starved(tmp_path):
+    """Without the ledger's refusal records, the same artifacts must NOT be read as a budget failure."""
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    os.remove(os.path.join(str(tmp_path), "ledger", "spend", "900r0p1.jsonl"))
+    doc = REC.audit(str(tmp_path), [bundle])
+    by = {r["key"]: r for r in doc["rows"]}
+    assert by["A.2"]["affected"] is False, "no refusal means no evidence of starvation"
+    assert by["A.2"]["stages"]["slow_update"]["status"] == "genuine_no_content"
+    assert any(u["key"] == "A.2" for u in doc["unexplained"]), \
+        "it should still be reported as needing an explanation"
+
+
+def test_the_audit_explains_a_missing_ranking_call_that_is_legitimate(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    rec = json.load(open(os.path.join(arm, "steps/step_0001/step_record.json")))
+    rec["n_edits_merged"], rec["edit_budget"] = 4, 4
+    rec["tokens"]["ranking"] = {"calls": 0}
+    json.dump(rec, open(os.path.join(arm, "steps/step_0001/step_record.json"), "w"))
+    doc = REC.audit(str(tmp_path), [bundle])
+    s = {r["key"]: r for r in doc["rows"]}["A.1"]["stages"]["ranking"]
+    assert s["status"] == "ok" and "already fit the edit budget" in s["note"]
+
+
+def test_the_audit_explains_one_fewer_analyst_call_in_an_epoch_that_scored_zero(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    rec = json.load(open(os.path.join(arm, "steps/step_0001/step_record.json")))
+    rec["rollout_hard"] = 0.0
+    rec["tokens"]["analyst"] = {"calls": 3}
+    json.dump(rec, open(os.path.join(arm, "steps/step_0001/step_record.json"), "w"))
+    doc = REC.audit(str(tmp_path), [bundle])
+    s = {r["key"]: r for r in doc["rows"]}["A.1"]["stages"]["analyst"]
+    assert s["status"] == "ok" and "no SUCCESS group" in s["note"]
+
+
+def test_a_short_analyst_in_an_epoch_that_did_score_is_flagged_not_excused(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    rec = json.load(open(os.path.join(arm, "steps/step_0001/step_record.json")))
+    rec["tokens"]["analyst"] = {"calls": 2}
+    json.dump(rec, open(os.path.join(arm, "steps/step_0001/step_record.json"), "w"))
+    doc = REC.audit(str(tmp_path), [bundle])
+    assert {r["key"]: r for r in doc["rows"]}["A.1"]["stages"]["analyst"]["status"] == "short"
+
+
+def test_the_plan_identifies_the_producing_skill_from_the_trace(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    doc = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                   usd_per_question=0.00656, requests_per_question=10.32)
+    item = doc["items"][0]
+    train = next(a for a in item["artifacts"] if a["kind"] == "training rollout")
+    assert train["identification"]["status"] == "identified"
+    assert train["decision"] == "reuse", train
+    curr = next(a for a in item["artifacts"] if a["kind"] == "slow-update rollout_curr")
+    assert curr["decision"] == "reuse_if_provenance_holds" and curr["conditional"] is True
+
+
+def test_the_plan_refuses_to_reuse_a_rollout_it_cannot_attribute(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    d = os.path.join(str(tmp_path), "arm_A", "steps/step_0002/rollout", "results.jsonl")
+    with open(d, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"id": "q0", "target_system_prompt": "SOMETHING ELSE ENTIRELY"}) + "\n")
+    doc = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                   usd_per_question=0.00656, requests_per_question=10.32)
+    train = next(a for a in doc["items"][0]["artifacts"] if a["kind"] == "training rollout")
+    assert train["decision"] == "regenerate"
+    assert train["identification"]["status"] == "unidentified"
+    assert doc["problems"]
+
+
+def test_the_plan_refuses_to_reuse_a_rollout_with_mixed_provenance(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    RO = _rollout_module()
+    p = os.path.join(str(tmp_path), "arm_A", "steps/step_0002/rollout", "results.jsonl")
+    a = RO._build_system("S0 ADVICE", search_mode="offline", use_local_tools=True,
+                         max_tool_turns=24, max_queries_per_turn=4)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"id": "q0", "target_system_prompt": a}) + "\n")
+        f.write(json.dumps({"id": "q1", "target_system_prompt": a + " EXTRA"}) + "\n")
+    doc = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                   usd_per_question=0.00656, requests_per_question=10.32)
+    train = next(a for a in doc["items"][0]["artifacts"] if a["kind"] == "training rollout")
+    assert train["identification"]["status"] == "mixed"
+    assert train["decision"] == "regenerate"
+
+
+def test_prepare_rewinds_the_runtime_state_to_the_last_sound_step(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    assert not rec["refused"], rec["refused"]
+    state = json.load(open(os.path.join(str(tmp_path), "arm_A", "runtime_state.json")))
+    assert state["last_completed_step"] == 1, "epoch 2 must be re-run, so step 1 is the last completed one"
+    assert state["current_skill_path"].endswith("skill_v0001.md")
+    assert state["best_score"] == 0.1667 and state["best_step"] == 0
+
+
+def test_prepare_removes_the_resume_markers_that_would_skip_the_work_again(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    arm = os.path.join(str(tmp_path), "arm_A")
+    assert not os.path.exists(os.path.join(arm, "slow_update/epoch_02/slow_result.json")), \
+        "the trainer resumes a slow update on the EXISTENCE of this file, so a no_content must go"
+    assert not os.path.exists(os.path.join(arm, "meta_skill/epoch_02/meta_skill_result.json"))
+    assert os.path.exists(os.path.join(arm, "slow_update/epoch_01/slow_result.json")), \
+        "a sound earlier epoch must keep its marker, or it would be re-run and re-charged"
+
+
+def test_prepare_keeps_the_paid_rollouts_in_place_so_they_are_reused(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    before = os.path.getsize(os.path.join(str(tmp_path), "arm_A/steps/step_0002/rollout/results.jsonl"))
+    REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    after = os.path.join(str(tmp_path), "arm_A/steps/step_0002/rollout/results.jsonl")
+    assert os.path.exists(after) and os.path.getsize(after) == before
+
+
+def test_prepare_archives_the_originals_before_changing_anything(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    arch = os.path.join(str(tmp_path), rec["archive"])
+    saved = json.load(open(os.path.join(arch, "arm_A", "slow_update/epoch_02/slow_result.json")))
+    assert saved["action"] == "no_content", "the original record must survive the recovery"
+    assert json.load(open(os.path.join(arch, "arm_A", "runtime_state.json")))[
+        "last_completed_step"] == 2, "the pre-rewind state must survive"
+    assert os.path.exists(os.path.join(arch, "arm_A", "skills", "skill_v0002.md"))
+
+
+def test_prepare_changes_nothing_on_a_dry_run(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=False, stamp="TEST")
+    assert all(str(a.get("status", "")).startswith(("would", "")) for a in rec["actions"])
+    state = json.load(open(os.path.join(str(tmp_path), "arm_A", "runtime_state.json")))
+    assert state["last_completed_step"] == 2, "a dry run must not touch the state"
+    assert os.path.exists(os.path.join(str(tmp_path), "arm_A/slow_update/epoch_02/slow_result.json"))
+    assert not os.path.exists(os.path.join(str(tmp_path), "recovery"))
+
+
+def test_prepare_refuses_when_the_previous_step_record_cannot_supply_the_state(tmp_path):
+    """Rewinding to a step whose record is missing would invent a gate baseline. It must refuse instead."""
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    os.remove(os.path.join(str(tmp_path), "arm_A", "steps/step_0001/step_record.json"))
+    rec = REC.prepare(str(tmp_path), plan, apply=False, stamp="TEST")
+    assert rec["refused"], "a rewind it cannot substantiate must be refused"

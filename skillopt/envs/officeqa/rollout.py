@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from skillopt.envs.officeqa.evaluator import evaluate
@@ -750,8 +751,34 @@ def run_batch(
 ) -> list[dict]:
     results_path = os.path.join(out_root, "results.jsonl")
     os.makedirs(out_root, exist_ok=True)
+
+    # PROVENANCE GUARD (off unless SKILLOPT_ROLLOUT_PROVENANCE_GUARD is set to 1/true/yes).
+    #
+    # This function resumes by id: a row already in results.jsonl is returned as it stands and
+    # `skill_content` is never consulted for it. That is exactly what makes a saved rollout reusable - the
+    # three arms of the OfficeQA campaign reflected on byte-identical epoch-1 traces that way, and the
+    # recovery of the starved arm-epochs reuses the training rollouts the same way. It is also a silent
+    # hazard: if the skill has CHANGED since those rows were written, resume reuses traces produced by a
+    # skill that is no longer in force, and nothing in the output says so.
+    #
+    # With the guard on, a stored row is reused only when the system prompt it recorded is the one this call
+    # would build - that is, only when the producing skill and the prompt-shaping settings (search mode,
+    # local tools, turn and query limits) all match. A row that fails the check is re-rolled, and the count
+    # is printed, so the only cost of being wrong about reuse is paying for the rollouts that genuinely
+    # changed.
+    guard = str(os.environ.get("SKILLOPT_ROLLOUT_PROVENANCE_GUARD", "")).strip().lower() in {
+        "1", "true", "yes", "on"}
+    expected_system = _build_system(
+        skill_content,
+        search_mode=search_mode,
+        use_local_tools=use_local_tools,
+        max_tool_turns=max_tool_turns,
+        max_queries_per_turn=max_queries_per_turn,
+    ) if guard else ""
+
     done_ids: set[str] = set()
     existing: list[dict] = []
+    stale: list[str] = []
     if os.path.exists(results_path):
         with open(results_path, encoding="utf-8") as f:
             for line in f:
@@ -759,8 +786,35 @@ def run_batch(
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if guard and str(row.get("target_system_prompt") or "") != expected_system:
+                    stale.append(str(row.get("id")))
+                    continue
                 done_ids.add(str(row.get("id")))
                 existing.append(row)
+    if stale:
+        # results.jsonl is append-only, so the re-rolled rows would otherwise land BESIDE the superseded ones
+        # and every downstream reader - the scorer, the contract replay, the inventory - would see the same id
+        # twice. Keep the file canonical instead: preserve the original beside it under a timestamp, then
+        # rewrite it with the rows that passed. The re-rolls append to that.
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        keep_path = f"{results_path}.superseded-{stamp}"
+        try:
+            os.replace(results_path, keep_path)
+            with open(results_path, "w", encoding="utf-8") as f:
+                for row in existing:
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            raise RuntimeError(
+                f"the provenance guard found {len(stale)} stale row(s) in {results_path} but could not "
+                f"rewrite the file ({exc}); refusing to continue, because appending would duplicate ids"
+            ) from exc
+        print(
+            f"    [rollout] provenance guard: {len(stale)} saved row(s) were produced under a DIFFERENT "
+            f"skill or prompt setting and will be re-rolled: {', '.join(sorted(stale)[:8])}"
+            f"{' ...' if len(stale) > 8 else ''}\n"
+            f"    [rollout] the original results.jsonl is preserved at {os.path.basename(keep_path)}",
+            flush=True,
+        )
     pending = [item for item in items if str(item["id"]) not in done_ids]
     if not pending:
         return existing

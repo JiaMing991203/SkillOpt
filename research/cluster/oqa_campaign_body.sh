@@ -76,22 +76,43 @@ tar -xzf "$B"/oqa_tree_*.tar.gz -C "$WORK" || die "extract failed"
 log "extracted $(find "$WORK" -type f | wc -l) files to node-local storage"
 
 # ── the shared authorization ledger, on shared storage so concurrency and restarts cannot reset it ───────────
-mkdir -p "$OQA_LEDGER_DIR/claims" "$OQA_LEDGER_DIR/spend" || die "cannot create the ledger at $OQA_LEDGER_DIR"
+mkdir -p "$OQA_LEDGER_DIR/claims" "$OQA_LEDGER_DIR/spend" "$OQA_LEDGER_DIR/release" \
+    || die "cannot create the ledger at $OQA_LEDGER_DIR"
 export SKILLOPT_SPEND_LEDGER_DIR="$OQA_LEDGER_DIR"
-# The authorization of 2026-11-17: 15,000 EmpirioLabs attempts and $8; 130 DeepSeek calls and $4.
-export SKILLOPT_LEDGER_MAX_ATTEMPTS_TARGET="${OQA_CAP_ACTOR_ATTEMPTS:-15000}"
-export SKILLOPT_LEDGER_MAX_USD_TARGET="${OQA_CAP_ACTOR_USD:-8.00}"
-export SKILLOPT_LEDGER_MAX_ATTEMPTS_OPTIMIZER="${OQA_CAP_OPT_CALLS:-130}"
-export SKILLOPT_LEDGER_MAX_USD_OPTIMIZER="${OQA_CAP_OPT_USD:-4.00}"
+# ── THE AUTHORIZATION, AS AMENDED ON 2026-11-17 ─────────────────────────────────────────────────────────────
+# The user raised the TOTAL campaign ceilings, "including everything already spent", to:
+#
+#     EmpirioLabs  $16   and 30,000 HTTP attempts      (was $8  and 15,000)
+#     DeepSeek     $8    and    260 HTTP attempts      (was $4  and     130)
+#     CPU          40 job-hours                        (was 20)
+#     GPUs         zero                                (unchanged)
+#
+# The caps BELOW ARE SMALLER THAN THOSE NUMBERS, on purpose. The ceiling covers the whole campaign, but this
+# ledger only sees what passed through it, and one paid call for this campaign did not: the slow-update size
+# probe of job 66271290 spent 1 DeepSeek attempt and $0.0411 before the ledger existed. Subtracting it here
+# is what makes the cap the enforcement of the TOTAL rather than of the ledger's own subtotal. There is no
+# equivalent subtraction for the actor: the preflight that ran outside the ledger was key-free by
+# construction (research/officeqa/oqa_avail3.py) and oqa_ledger_check.py makes no HTTP call at all.
+#
+#     docs/research/OFFICEQA_AUTHORIZATION.md records the amendment and this arithmetic.
+export SKILLOPT_LEDGER_MAX_ATTEMPTS_TARGET="${OQA_CAP_ACTOR_ATTEMPTS:-30000}"
+export SKILLOPT_LEDGER_MAX_USD_TARGET="${OQA_CAP_ACTOR_USD:-16.00}"
+export SKILLOPT_LEDGER_MAX_ATTEMPTS_OPTIMIZER="${OQA_CAP_OPT_CALLS:-259}"
+export SKILLOPT_LEDGER_MAX_USD_OPTIMIZER="${OQA_CAP_OPT_USD:-7.95}"
 # EmpirioLabs published prices (GET /v1/models/qwen3-5-4b, 2026-11-16): prompt, completion, cached prompt.
 export SKILLOPT_LEDGER_PRICE_TARGET="0.04,0.07,0.02"
 # DeepSeek at PEAK prices on purpose: the ledger's dollar figure is then an upper bound on the real charge, so
 # the cap binds early rather than late. Off-peak is exactly half.
 export SKILLOPT_LEDGER_PRICE_OPTIMIZER="0.30,1.20,0.006"
+# CLAIM BLOCK SIZES. A claim is taken before the request is sent, which is what makes `spent <= claimed <= cap`
+# hold across concurrent processes and restarts; the price is that a process which dies without releasing
+# strands up to one block. The $0.25 blocks used on the first run were 6 per cent of the $4.00 optimizer cap
+# EACH, and with no release path at all that is how 45 per cent of the optimizer's authorization became
+# unreachable and starved four arm-epochs. Blocks are now $0.05: 0.6 per cent of the amended optimizer cap.
 export SKILLOPT_LEDGER_BLOCK_ATTEMPTS_TARGET=50
-export SKILLOPT_LEDGER_BLOCK_USD_TARGET=0.25
+export SKILLOPT_LEDGER_BLOCK_USD_TARGET=0.05
 export SKILLOPT_LEDGER_BLOCK_ATTEMPTS_OPTIMIZER=4
-export SKILLOPT_LEDGER_BLOCK_USD_OPTIMIZER=0.25
+export SKILLOPT_LEDGER_BLOCK_USD_OPTIMIZER=0.05
 export SKILLOPT_LEDGER_RESERVE_USD_TARGET=0.02
 export SKILLOPT_LEDGER_RESERVE_USD_OPTIMIZER=0.15
 # A second ceiling on THIS job, so one runaway arm-epoch cannot consume what the other arms still need.
