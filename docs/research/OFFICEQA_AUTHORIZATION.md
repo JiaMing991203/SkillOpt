@@ -58,29 +58,45 @@ no HTTP client at all.
 
 ## 3. Spent against the total — measured
 
-### 3a. API, from the ledger's own per-process records, after reconciliation
+Figures below are read from the campaign ledger after reconciliation and from `sacct`. They include the
+original chain, the four recovery jobs, and the test jobs.
+
+### 3a. API, from the ledger's own per-process records
 
 | | attempts | charged | of the amended ceiling |
 |---|---|---|---|
-| EmpirioLabs, the campaign run | 7,313 | $4.9441 | |
+| EmpirioLabs, original chain | 7,313 | $4.9441 | |
+| EmpirioLabs, recovery chain | 1,081 | $0.6800 | |
 | EmpirioLabs, outside the ledger | 0 | $0.0000 | |
-| **EmpirioLabs total** | **7,313 of 30,000** | **$4.9441 of $16.00** | 24% / 31% |
-| DeepSeek, the campaign run | 66 | $2.1913 | |
-| DeepSeek, the size probe (66271290) | 1 | $0.0411 | |
-| **DeepSeek total** | **67 of 260** | **$2.2324 of $8.00** | 26% / 28% |
+| **EmpirioLabs total** | **8,394 of 30,000** | **$5.6241 of $16.00** | 28% / 35% |
+| DeepSeek, original chain | 66 | $2.1913 | |
+| DeepSeek, recovery chain | 36 | $1.2692 | |
+| DeepSeek, size probe (job 66271290) | 1 | $0.0411 | |
+| **DeepSeek total** | **103 of 260** | **$3.5016 of $8.00** | 40% / 44% |
 
-DeepSeek is charged at **peak** prices in the ledger on purpose (`0.30,1.20,0.006` per million), so its dollar
-figure is an upper bound on the real invoice; off-peak is exactly half.
+DeepSeek is charged at **peak** prices in the ledger on purpose, so its dollar figure is an upper bound on the
+real invoice; off-peak is exactly half.
+
+**The ledger's own verdict is PASS.** After reconciliation, net claims equal recorded spend exactly in both
+roles — optimizer $3.460519 against 102 attempts, target $5.624077 against 8,394 — with **zero unresolved
+requests** and **zero reserve breaches**. Released back to the authorization across the campaign: optimizer
+46 attempts / $2.2395, target 456 attempts / $2.2259. The four recovery jobs released their own unspent claims
+on clean exit, which is the fix working in production rather than in a test.
+
+The 24 refusal records remain in the ledger. They are history: every stage they refused has since been
+recovered, and `oqa_recover.py audit` reports those stages as `repaired`, not `starved`.
 
 ### 3b. CPU, from `sacct`
 
-The grant says "CPU job-hours", which can be read two ways, and the two differ by a factor of two here because
-every job asked for 2 CPUs. Both are recorded; **planning uses the larger, conservative reading**:
+"CPU job-hours" reads two ways and the two differ by a factor of two here, because every job asked for 2 CPUs.
+Both are recorded; **planning uses the larger, conservative reading**:
 
-| reading | spent | of 40 |
+| reading | spent (32 OfficeQA jobs) | of 40 |
 |---|---|---|
-| wall-clock hours summed over jobs (`Elapsed`) | **9.98** | 25% |
-| CPU-core-hours (`CPUTimeRAW`, = Elapsed x AllocCPUS) | **19.95** | 50% |
+| wall-clock hours summed over jobs (`Elapsed`) | ~11.7 | 29% |
+| CPU-core-hours (`CPUTimeRAW`) | **23.47** | 59% |
+
+The recovery chain itself was cheap: 26:20 + 20:14 + 24:52 + 27:01 of wall time, **3.28 core-hours** in total.
 
 GPUs: **zero**, as required. No OfficeQA job has ever requested one.
 

@@ -259,17 +259,20 @@ def budget(slow_samples: int, heldout_skills: int) -> dict:
 # below is what is really left, not what a plan assumed. docs/research/OFFICEQA_AUTHORIZATION.md carries the
 # grant's wording, the inclusion rule and the arithmetic.
 CEILINGS = {
-    "actor_attempts": {"ceiling": 30_000, "spent": 7_313,
-                       "source": "campaign ledger, 7,313 target attempts; nothing paid outside it"},
-    "actor_usd": {"ceiling": 16.00, "spent": 4.9441,
-                  "source": "campaign ledger, $4.9441 target"},
-    "optimizer_attempts": {"ceiling": 260, "spent": 67,
-                           "source": "66 in the campaign ledger + 1 for the size probe, job 66271290"},
-    "optimizer_usd": {"ceiling": 8.00, "spent": 2.2324,
-                      "source": "$2.1913 in the ledger at PEAK prices + $0.0411 for the size probe"},
-    "cpu_core_hours": {"ceiling": 40.0, "spent": 19.95,
-                       "source": "sacct CPUTimeRAW over all 18 OfficeQA jobs; the conservative reading, "
-                                 "since every job asked for 2 CPUs. Summing Elapsed instead gives 9.98."},
+    "actor_attempts": {"ceiling": 30_000, "spent": 8_394,
+                       "source": "campaign ledger after the recovery: 7,313 original + 1,081 recovery; "
+                                 "nothing paid outside it"},
+    "actor_usd": {"ceiling": 16.00, "spent": 5.6241,
+                  "source": "campaign ledger: $4.9441 original + $0.6800 recovery"},
+    "optimizer_attempts": {"ceiling": 260, "spent": 103,
+                           "source": "66 original + 36 recovery in the ledger + 1 for the size probe "
+                                     "(job 66271290)"},
+    "optimizer_usd": {"ceiling": 8.00, "spent": 3.5016,
+                      "source": "$2.1913 + $1.2692 in the ledger at PEAK prices + $0.0411 for the size "
+                                "probe"},
+    "cpu_core_hours": {"ceiling": 40.0, "spent": 23.47,
+                       "source": "sacct CPUTimeRAW over all 32 OfficeQA jobs; the conservative reading, "
+                                 "since every job asked for 2 CPUs. Summing Elapsed instead gives ~11.7."},
     "gpus": {"ceiling": 0, "spent": 0, "source": "no OfficeQA job has ever requested one"},
 }
 
