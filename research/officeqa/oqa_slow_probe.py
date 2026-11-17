@@ -37,6 +37,7 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, REPO)
 
+from skillopt.model.backend_config import get_optimizer_backend, set_optimizer_backend  # noqa: E402
 from skillopt.model.openai_compatible_backend import configure_openai_compatible  # noqa: E402
 from skillopt.optimizer import meta_skill as META  # noqa: E402
 from skillopt.optimizer import slow_update as SLOW  # noqa: E402
@@ -163,28 +164,72 @@ class PreflightFailed(RuntimeError):
 
 
 def preflight(base_url: str, model: str, max_tokens: int, timeout_s: float) -> dict:
-    """Pin the endpoint, the model and the generation settings BEFORE anything is sent, and fail closed.
+    """Pin the BACKEND, the endpoint, the model and the generation settings before anything is sent. Fail closed.
 
-    No library default is allowed to stand in for any of these: an unset base URL would send this prompt to
-    api.openai.com and an unset model would silently become "gpt-4o-mini". The resolved config is read back and
-    compared with what was asked for, so a cached per-role config object from an earlier import cannot win.
+    Three separate things have to be right and the first version of this checked only the second:
+
+      1. THE SELECTED BACKEND. `skillopt.model.chat_optimizer` is a router, and `OPTIMIZER_BACKEND` defaults to
+         "openai_chat", which means AZURE. Job 66271190 configured the openai-compatible endpoint perfectly and
+         then dispatched to Azure, which raised; `run_slow_update` swallowed the exception and returned None, so
+         the probe reported `no_content` after sending nothing. Zero attempts were spent and nothing was charged,
+         but the result said nothing about DeepSeek. `set_optimizer_backend` is now called and read back.
+      2. THE RESOLVED CONFIG. No library default may stand in: an unset base URL would send this prompt to
+         api.openai.com and an unset model would silently become "gpt-4o-mini". The config is read back and
+         compared, and the cached per-role client is reset so it is rebuilt from what was just set.
+      3. THE DISPATCH PATH ITSELF, proven by `dispatch_check` below without sending anything.
     """
     key = os.environ.get("OPTIMIZER_OPENAI_COMPATIBLE_API_KEY", "").strip()
     if not key:
         raise PreflightFailed("OPTIMIZER_OPENAI_COMPATIBLE_API_KEY is empty; load_secrets must run first")
     if not base_url or not model:
         raise PreflightFailed("--base-url and --model are required: no library default may stand in for them")
+    set_optimizer_backend("openai_compatible")
+    if get_optimizer_backend() != "openai_compatible":
+        raise PreflightFailed(f"the optimizer backend is {get_optimizer_backend()!r}, not 'openai_compatible'")
     configure_openai_compatible(optimizer_base_url=base_url, optimizer_api_key=key, optimizer_model=model,
                                 optimizer_max_tokens=max_tokens, optimizer_timeout_seconds=timeout_s)
     import skillopt.model.openai_compatible_backend as B
+    B._reset_clients()
     cfg = B._config_for("optimizer")
-    got = {"base_url": cfg.base_url, "model": cfg.deployment, "max_tokens": cfg.max_tokens,
-           "temperature": cfg.temperature, "api_key_len": len(key)}
+    got = {"optimizer_backend": get_optimizer_backend(), "base_url": cfg.base_url, "model": cfg.deployment,
+           "max_tokens": cfg.max_tokens, "temperature": cfg.temperature, "api_key_len": len(key),
+           "timeout_seconds": timeout_s}
     if got["base_url"].rstrip("/") != base_url.rstrip("/") or got["model"] != model:
         raise PreflightFailed(f"the resolved optimizer config is not the one asked for: {got}")
     if got["max_tokens"] != max_tokens:
         raise PreflightFailed(f"max_tokens resolved to {got['max_tokens']}, not {max_tokens}")
+    got["dispatch_check"] = dispatch_check()
     return got
+
+
+_MARKER = "oqa-slow-probe-dispatch-marker"
+
+
+def dispatch_check() -> str:
+    """Prove the optimizer call reaches the openai-compatible backend, WITHOUT sending anything.
+
+    `_chat_messages_impl` is the function that builds the request and calls the client, so replacing it with one
+    that raises a unique marker and then making one call through the same wrapper chain the probe will use shows
+    that the call arrives there. It raises before any client is touched, so no HTTP attempt is consumed.
+    """
+    import skillopt.model.openai_compatible_backend as B
+
+    def raiser(*_a, **_k):
+        raise RuntimeError(_MARKER)
+
+    real = B._chat_messages_impl
+    B._chat_messages_impl = raiser
+    try:
+        SLOW.chat_optimizer(system="probe", user="probe", max_completion_tokens=16, retries=1, stage="preflight")
+    except Exception as exc:  # noqa: BLE001 - the marker is the expected outcome
+        if _MARKER not in str(exc):
+            raise PreflightFailed(
+                f"an optimizer call did NOT reach the openai-compatible backend: {type(exc).__name__}: "
+                f"{str(exc)[:300]}") from exc
+        return "PASS: the call reaches the openai-compatible backend"
+    finally:
+        B._chat_messages_impl = real
+    raise PreflightFailed("an optimizer call returned without reaching the openai-compatible backend at all")
 
 
 class Guard:
@@ -245,14 +290,20 @@ class Guard:
         return self
 
 
-def one_attempt(retries_forced: int = 1):
-    """Force every optimizer call made under this context to ask for exactly ONE HTTP attempt."""
+def one_attempt(retries_forced: int = 1, timeout_s: float | None = None):
+    """Force every optimizer call made under this context to ask for exactly ONE HTTP attempt.
+
+    `_chat_messages_impl` treats `retries=N` as N TOTAL attempts, so 1 is one attempt. The timeout is forwarded
+    explicitly because a 240,000-token prompt takes far longer than a short one and a default must not decide it.
+    """
     real_slow, real_meta = SLOW.chat_optimizer, META.chat_optimizer
 
     def wrap(real):
         def inner(system: str = "", user: str = "", max_completion_tokens: int = 16384, retries: int = 3,
                   stage: str = "", **kw):
             del retries
+            if timeout_s is not None:
+                kw["timeout"] = timeout_s
             return real(system=system, user=user, max_completion_tokens=max_completion_tokens,
                         retries=retries_forced, stage=stage, **kw)
         return inner
@@ -334,8 +385,9 @@ def main() -> int:
         print(json.dumps(rec["preflight"], indent=1))
         return 3
     rec["preflight"] = {"verdict": "PASS", "resolved": resolved}
+    print(json.dumps({"preflight": rec["preflight"]}, indent=1), flush=True)
     guard = Guard(args.max_attempts).install()
-    one_attempt(1)
+    one_attempt(1, args.timeout_seconds)
 
     results: dict = {}
     order = [("slow_update", lambda: SLOW.run_slow_update(

@@ -40,3 +40,4 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T05:00:42Z	66264572	oqa_api_smoke	smoke	27ea88d75fcfbd09c3c60a7b92c6784fb7affaa9	3rd attempt: --wrap + node-local /tmp after 2x NODE_FAIL loops
 2026-11-17T05:02:12Z	66264701	oqa_api_smoke	smoke	bf6671ed189fd74a356c235337c98a86cbd6b7b2	4th attempt: python -I PYTHONPATH fix
 2026-11-17T05:04:01Z	66264849	oqa_api_smoke	smoke	07d4bb5e9985dcfc30eb81106976c6963e90f1fd	5th attempt: backend configured in-driver
+2026-11-17T07:26:30Z	66271190	oqa_slow_probe	send	ee5aeb8ebcd789e02606def25452afc925ce8197	10-pair slow-update size probe; HARD cap 2 paid HTTP attempts; 1 CPU 4G 20min; refuses on requeue
