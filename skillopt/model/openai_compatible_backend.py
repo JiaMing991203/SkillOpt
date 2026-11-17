@@ -40,6 +40,7 @@ from skillopt.model.common import (
     default_model_for_backend,
     usage_from_openai_usage,
 )
+from skillopt.model import spend_ledger
 
 BACKEND_NAME = "openai_compatible"
 
@@ -279,6 +280,11 @@ def _chat_messages_impl(
     call_log = _role_env(role, "CALL_LOG", "")
     last_err: Exception | None = None
     for attempt in range(retries):
+        # Authorization BEFORE the request, not accounting after it. `reserve` raises
+        # BudgetExhausted / LedgerUnusable, and it is called outside the try below so that a
+        # refusal stops the loop instead of consuming the remaining retries. With
+        # SKILLOPT_SPEND_LEDGER_DIR unset it is a no-op and this loop is upstream's.
+        spend_ledger.reserve(role, stage)
         started = time.time()
         try:
             resp = client.chat.completions.create(**kwargs)
@@ -289,11 +295,18 @@ def _chat_messages_impl(
                 )
             message = choices[0].message
             text = message.content or ""
-            usage_info = usage_from_openai_usage(getattr(resp, "usage", None))
+            raw_usage = getattr(resp, "usage", None)
+            usage_info = usage_from_openai_usage(raw_usage)
             tracker.record(
                 stage,
                 usage_info["prompt_tokens"],
                 usage_info["completion_tokens"],
+            )
+            spend_ledger.record_usage(
+                role, stage,
+                usage_info["prompt_tokens"],
+                usage_info["completion_tokens"],
+                cached_tokens=int(getattr(raw_usage, "prompt_cache_hit_tokens", 0) or 0),
             )
             if call_log:
                 _log_call(call_log, role=role, stage=stage, attempt=attempt, retries=retries,

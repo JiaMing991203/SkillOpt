@@ -79,6 +79,15 @@ M = {
                   "number of calls in it, and 173,060 was the largest prompt sent before this probe existed "
                   "(arm B's second analyst call of step 2). Neither was a limit - only the largest thing tried.",
     },
+    "prompt_guard_limit_tokens": {
+        "value": 225000,
+        "source": "the conservative pre-send limit the campaign runs with "
+                  "(SKILLOPT_OPTIMIZER_PROMPT_TOKEN_LIMIT, skillopt/optimizer/prompt_budget.py). Chosen so that "
+                  "225,000 prompt + the full 16,384-token completion allowance = 241,384 stays inside the "
+                  "251,548 tokens job 66271290 demonstrably processed (243,986 prompt + 7,562 completion). A "
+                  "draw above it is not sent as-is: comparison pairs are dropped by rule OQA-PB-1 until it "
+                  "fits, and the pair count actually sent is logged.",
+    },
     "deepseek_accepted_prompt_tokens": {
         "value": 243986,
         "source": "job 66271290. This is a DEMONSTRATED acceptance, not a provider limit: the real ceiling is "
@@ -187,11 +196,22 @@ def budget(slow_samples: int, heldout_skills: int) -> dict:
                         else "inside on the measured category mix but OVER in the worst case"
                         if slow_prompt_each <= v("largest_prompt_this_project_has_sent")
                         else "LARGER than any optimizer prompt this project has sent successfully"),
-            "what_happens_if_it_is_too_large": "run_slow_update catches the provider error and returns None, so "
-                                               "the trainer records action 'no_content' and carries on. The "
-                                               "failure is symmetric across arms and costs nothing, but the run "
-                                               "would then report gated slow updates that produced no guidance. "
-                                               "Check slow_update/epoch_NN/slow_result.json for 'no_content'.",
+            "pre_send_guard_limit_tokens": v("prompt_guard_limit_tokens"),
+            "typical_mix_needs_trimming": slow_prompt_each > v("prompt_guard_limit_tokens"),
+            "worst_case_needs_trimming": slow_prompt_worst > v("prompt_guard_limit_tokens"),
+            "pairs_that_fit_the_guard_in_the_worst_case": max(
+                1, int(v("prompt_guard_limit_tokens") // v("slow_update_prompt_tokens_per_showing_pair"))),
+            "what_happens_if_a_draw_is_too_large": "it is NOT sent as drawn. prompt_budget.fit renders the "
+                                                   "prompt, measures it, and drops comparison pairs by rule "
+                                                   "OQA-PB-1 (stable_success -> improved -> persistent_fail -> "
+                                                   "regressed, later-sampled first) until it fits, recording "
+                                                   "the pair count actually sent. Only if even the single "
+                                                   "highest-priority pair is over the limit is no call made, "
+                                                   "and that is logged too. The old failure mode - the provider "
+                                                   "rejects the request, run_slow_update swallows the error and "
+                                                   "the trainer records action 'no_content' - is now the last "
+                                                   "resort rather than the first. Check the prompt-budget log "
+                                                   "and slow_update/epoch_NN/slow_result.json in every arm.",
         },
     }
 

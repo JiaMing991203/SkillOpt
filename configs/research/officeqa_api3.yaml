@@ -72,34 +72,42 @@ optimizer:
   use_slow_update: true
   slow_update_gate_with_selection: true
   use_meta_skill: true
-  # DEVIATION FROM UPSTREAM'S 20, applied identically to all three arms. This is the one setting that decides
-  # whether the gated slow update works at all, and the numbers below are MEASURED on the pre-launch dry run.
+  # TEN PAIRS PER GATED SLOW UPDATE, against upstream's 20. Set by the user on 2026-11-17 after the size
+  # question was settled by measurement rather than estimate.
   #
-  # This repo DISABLES per-trajectory truncation in the slow update on purpose
+  # Why the number is not free. This repo DISABLES per-trajectory truncation in the slow update on purpose
   # (skillopt/optimizer/slow_update.py: "Truncation disabled: return the full text"), so the longitudinal prompt
-  # carries BOTH trajectories of every comparison pair at full length. Measured: 12 pairs came to 846,563
-  # characters = 262,257 tokens, of which 8 pairs were in the trajectory-showing categories (regressed,
-  # persistent_fail, improved) - about 32,800 tokens per showing pair.
+  # carries BOTH trajectories of every comparison pair at full length. The size therefore depends on which pairs
+  # the sampler happens to draw, not on the configuration alone.
   #
-  #   samples   prompt, measured mix   prompt, every pair showing   against the 173,060-token envelope
-  #     4             87,000                   131,000              inside even in the worst case
-  #     6            131,000                   197,000              inside on the measured mix, over at worst
-  #    20            437,000                   656,000              far over
+  # WHAT IS PROVEN. Job 66271290, 2026-11-17: a realistic ten-pair request rendered by this very code from saved
+  # training traces was ACCEPTED by the configured endpoint - prompt_tokens 243,986, finish_reason "stop", 7,562
+  # completion tokens, 3,235 characters of parsed guidance, $0.041 off-peak.
   #
-  # The envelope is the largest optimizer prompt this project has sent successfully: 173,060 tokens, arm B's
-  # second analyst call of step 2 (optimizer_calls_summary.json). A prompt over the provider's real limit is not
-  # fatal - run_slow_update catches the error and the trainer records action "no_content" - but the run would
-  # then report a gated slow update that produced no guidance, which is worse than a small sample.
+  #   pairs   prompt, measured mix        every pair showing a trajectory   against the 243,986 proven
+  #     4            92,230                        138,276                  inside always
+  #     6           138,345                        207,414                  inside even at worst
+  #    10     230,575 (MEASURED 243,986)            345,690                  measured mix proven; worst unproven
+  #    20           461,150                        691,380                  far beyond anything tried
   #
-  # Four samples cost a thin longitudinal view: 4 of the 24 training questions per epoch. That is symmetric
-  # across the arms, so it cannot affect which arm wins; what it affects is how much the slow update has to work
-  # from. TO RAISE IT, confirm the optimizer's real context window first (a free GET /models against the
-  # configured base URL settles it; the published figures for the DeepSeek chat family disagree, 128k for the V3
-  # era against 1M for the current ones, and none of the sources is DeepSeek's own documentation).
+  # The earlier "173,060-token envelope" in this file's history was never a limit - only the largest prompt this
+  # project had happened to send. DeepSeek accepted 1.41x it. The real ceiling remains unknown.
   #
-  # AFTER THE RUN, check slow_update/epoch_NN/slow_result.json in every arm for action "no_content" before
-  # reporting that the slow update ran.
-  slow_update_samples: 4
+  # THEREFORE THE SIZE IS CHECKED BEFORE EACH SEND, not assumed. skillopt/optimizer/prompt_budget.py renders the
+  # slow-update and meta-skill prompts, measures them, and if a draw lands above the conservative limit drops
+  # comparison pairs by rule OQA-PB-1 (stable_success -> improved -> persistent_fail -> regressed, later-sampled
+  # first) until it fits. The limit and the log are set by the job, identically in every arm:
+  #
+  #   SKILLOPT_OPTIMIZER_PROMPT_TOKEN_LIMIT=225000   225,000 + the full 16,384-token completion allowance
+  #                                                  = 241,384, inside the 251,548 tokens job 66271290 processed
+  #   SKILLOPT_OPTIMIZER_PROMPT_BUDGET_LOG=<file>    one line per checked prompt: pairs offered, pairs actually
+  #                                                  sent, which were dropped, estimated size, and whether
+  #                                                  guidance came back
+  #
+  # AFTER THE RUN, read that log and slow_update/epoch_NN/slow_result.json in every arm before reporting that a
+  # gated slow update produced guidance. An over-large prompt is not fatal - run_slow_update catches the provider
+  # error and the trainer records action "no_content" - but it would be reported, not hidden.
+  slow_update_samples: 10
   # Upstream's default: keep every comparison pair, which also means `_build_longitudinal_pairs` never runs the
   # extra per-item top-up rollouts that policy "changed" would.
   longitudinal_pair_policy: mixed

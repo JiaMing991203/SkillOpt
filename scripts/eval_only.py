@@ -728,6 +728,11 @@ def main() -> None:
     )
     set_reasoning_effort(cfg.get("reasoning_effort", "") or None)
 
+    # Opt-in: prove the LIVE route of each role before any rollout request is sent. Off unless
+    # SKILLOPT_REQUIRE_ROUTE is set (skillopt/model/route_guard.py).
+    from skillopt.model.route_guard import verify_or_die as _verify_route
+    _verify_route()
+
     # Build adapter
     adapter = get_adapter(cfg)
     adapter.setup(cfg)

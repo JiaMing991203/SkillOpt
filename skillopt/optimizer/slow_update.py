@@ -28,6 +28,7 @@ from skillopt.envs.task_output import (
     task_output_segment,
 )
 from skillopt.model import chat_optimizer
+from skillopt.optimizer import prompt_budget
 from skillopt.prompts import load_prompt
 from skillopt.utils import extract_json
 
@@ -404,24 +405,38 @@ def run_slow_update(
             prev_rollout_dir=prev_rollout_dir,
             curr_rollout_dir=curr_rollout_dir,
         )
-    comparison_text = format_comparison_text(pairs)
-
     prev_guidance_section = (
         prev_slow_update_content.strip()
         if prev_slow_update_content and prev_slow_update_content.strip()
         else "(No previous guidance — this is the first slow update.)"
     )
 
-    user = (
-        f"## Previous Epoch's Skill\n{prev_skill}\n\n"
-        f"## Current Epoch's Skill\n{skill_content}\n\n"
-        f"## Previous Slow Update Guidance\n"
-        f"The following guidance was active during the current epoch. "
-        f"Reflect on its effectiveness before writing the new version.\n\n"
-        f"{prev_guidance_section}\n\n"
-        f"## Longitudinal Comparison (same 20 tasks, two skill versions)\n"
-        f"{comparison_text}"
+    def _build_user(selected: list[dict]) -> str:
+        return (
+            f"## Previous Epoch's Skill\n{prev_skill}\n\n"
+            f"## Current Epoch's Skill\n{skill_content}\n\n"
+            f"## Previous Slow Update Guidance\n"
+            f"The following guidance was active during the current epoch. "
+            f"Reflect on its effectiveness before writing the new version.\n\n"
+            f"{prev_guidance_section}\n\n"
+            f"## Longitudinal Comparison (same 20 tasks, two skill versions)\n"
+            f"{format_comparison_text(selected)}"
+        )
+
+    # Size check before the send. Inert unless SKILLOPT_OPTIMIZER_PROMPT_TOKEN_LIMIT is set, in which case
+    # comparison pairs are dropped by rule OQA-PB-1 until the rendered prompt fits, and the pair count actually
+    # sent is written to the prompt-budget log together with whether guidance came back.
+    user, pairs, budget_record = prompt_budget.fit(
+        actual_system, list(pairs), _build_user, stage="slow_update",
     )
+    if budget_record.get("skip"):
+        print(f"    [slow update] NOT SENT: {budget_record.get('skip_reason', 'over the prompt size limit')}")
+        prompt_budget.log(budget_record, guidance_produced=False, note="no call was made")
+        return None
+    if budget_record.get("checked"):
+        print(f"    [slow update] prompt check: {budget_record['pairs_sent']}/"
+              f"{budget_record['pairs_offered']} pairs, ~{budget_record.get('estimated_tokens_sent')} tokens "
+              f"against a {budget_record['limit_tokens']}-token limit")
 
     try:
         response, _ = chat_optimizer(
@@ -433,11 +448,16 @@ def run_slow_update(
         )
         result = extract_json(response)
         if result and result.get("slow_update_content"):
+            prompt_budget.log(budget_record, guidance_produced=True)
             return {
                 "reasoning": str(result.get("reasoning", "")).strip(),
                 "slow_update_content": str(result["slow_update_content"]).strip(),
             }
-    except Exception:  # noqa: BLE001
+        prompt_budget.log(budget_record, guidance_produced=False,
+                          note="the optimizer replied but the reply carried no slow_update_content")
+        return None
+    except Exception as exc:  # noqa: BLE001
         traceback.print_exc()
+        prompt_budget.log(budget_record, guidance_produced=False, note=f"{type(exc).__name__}: {str(exc)[:400]}")
 
     return None

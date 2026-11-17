@@ -878,6 +878,12 @@ class ReflACTTrainer:
             f"reasoning={reasoning or 'off'}"
         )
 
+        # Opt-in: prove the LIVE route of each role before anything is sent. Off unless
+        # SKILLOPT_REQUIRE_ROUTE is set; see skillopt/model/route_guard.py for why a separate process
+        # cannot establish this.
+        from skillopt.model.route_guard import verify_or_die as _verify_route
+        _verify_route()
+
         # ── Initialize Ray ───────────────────────────────────────────────
         if adapter.requires_ray():
             try:

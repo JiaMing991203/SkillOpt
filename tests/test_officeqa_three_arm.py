@@ -304,19 +304,43 @@ def test_the_heldout_plan_reports_a_missing_skill_instead_of_guessing(tmp_path):
 
 # ── the budget ──────────────────────────────────────────────────────────────────
 
-def test_the_budget_flags_the_slow_update_prompt_as_the_binding_risk():
+def test_the_budget_reports_the_slow_update_prompt_against_what_was_actually_proven():
+    """Rewritten 2026-11-17 after job 66271290. The assertions it used to make encoded the superseded
+    "173,060-token envelope", which was never a limit - only the largest prompt this project had tried."""
     import oqa_budget as B
-    chosen, borderline, upstream = B.budget(4, 7), B.budget(6, 7), B.budget(20, 7)
-    # 4 samples must be safe even if every comparison pair lands in a trajectory-showing category.
-    assert chosen["context_risk"]["verdict"].startswith("INSIDE")
-    assert chosen["context_risk"]["slow_update_prompt_tokens_worst_case"] <= \
-        chosen["context_risk"]["largest_prompt_this_project_has_sent"]
-    # 6 fits the measured category mix but not the worst case, and 20 does not fit at all.
-    assert borderline["context_risk"]["ratio_typical"] < 1.0 < borderline["context_risk"]["ratio_worst_case"]
+    four, chosen, upstream = B.budget(4, 7), B.budget(10, 7), B.budget(20, 7)
+    proven = four["context_risk"]["largest_prompt_this_project_has_sent"]
+    assert proven == 243986, "the proven acceptance is job 66271290's reported prompt_tokens"
+
+    # 4 pairs stay inside the proven point even if every comparison pair shows a trajectory.
+    assert four["context_risk"]["verdict"].startswith("INSIDE")
+    assert four["context_risk"]["worst_case_needs_trimming"] is False
+
+    # 10 pairs - the campaign's setting - sit AT the proven point on the measured mix and above it at worst,
+    # which is exactly why the pre-send guard exists rather than being optional.
+    assert chosen["context_risk"]["worst_case_needs_trimming"] is True
+    assert chosen["context_risk"]["pairs_that_fit_the_guard_in_the_worst_case"] >= 6
+
+    # 20 is beyond anything demonstrated.
     assert upstream["context_risk"]["verdict"].startswith("LARGER")
-    assert upstream["question_rollouts"]["total"] > chosen["question_rollouts"]["total"]
+    assert upstream["question_rollouts"]["total"] > chosen["question_rollouts"]["total"] \
+        > four["question_rollouts"]["total"]
+
+    # The guard's limit must leave room for the whole completion allowance inside the proven total.
+    limit = chosen["context_risk"]["pre_send_guard_limit_tokens"]
+    assert limit + 16384 <= 243986 + 7562
+
     # The account rate limit, not latency, must be named as the constraint at this scale.
     assert chosen["actor"]["binding_constraint"] == "the 50 RPM ACCOUNT limit"
+
+
+def test_the_budget_and_the_running_code_agree_on_the_prompt_limit():
+    """A constant that disagrees with the module that enforces it is worse than no constant."""
+    import oqa_budget as B
+    from skillopt.optimizer import prompt_budget as PB
+    assert B.measured_constants()["prompt_guard_limit_tokens"]["value"] == 225000
+    assert PB.PROVEN["prompt_tokens"] == \
+        B.measured_constants()["deepseek_accepted_prompt_tokens"]["value"]
 
 
 def test_every_budget_constant_says_where_it_came_from():

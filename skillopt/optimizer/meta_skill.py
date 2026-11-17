@@ -10,6 +10,7 @@ from __future__ import annotations
 import traceback
 
 from skillopt.model import chat_optimizer
+from skillopt.optimizer import prompt_budget
 from skillopt.optimizer.slow_update import format_comparison_text
 from skillopt.prompts import load_prompt
 from skillopt.utils import extract_json
@@ -47,17 +48,31 @@ def run_meta_skill(
         else "(No previous optimizer meta skill — this is the first update.)"
     )
 
-    comparison_text = format_comparison_text(comparison_pairs)
-    user = (
-        f"## Previous Epoch Last-Step Skill\n{prev_skill}\n\n"
-        f"## Current Epoch Last-Step Skill\n{curr_skill}\n\n"
-        f"## Previous Optimizer Meta Skill\n"
-        f"The following optimizer memory was available during the current epoch. "
-        f"Reflect on whether it improved or harmed the quality of edits.\n\n"
-        f"{prev_meta_section}\n\n"
-        f"## Longitudinal Comparison (same tasks, two last-step skills)\n"
-        f"{comparison_text}"
+    def _build_user(selected: list[dict]) -> str:
+        return (
+            f"## Previous Epoch Last-Step Skill\n{prev_skill}\n\n"
+            f"## Current Epoch Last-Step Skill\n{curr_skill}\n\n"
+            f"## Previous Optimizer Meta Skill\n"
+            f"The following optimizer memory was available during the current epoch. "
+            f"Reflect on whether it improved or harmed the quality of edits.\n\n"
+            f"{prev_meta_section}\n\n"
+            f"## Longitudinal Comparison (same tasks, two last-step skills)\n"
+            f"{format_comparison_text(selected)}"
+        )
+
+    # The same pre-send size check and the same drop rule as the slow update. The meta skill reuses the slow
+    # update's comparison pairs, so its prompt is nearly the same size, and it must obey the same limit.
+    user, _sent_pairs, budget_record = prompt_budget.fit(
+        actual_system, list(comparison_pairs), _build_user, stage="meta_skill",
     )
+    if budget_record.get("skip"):
+        print(f"    [meta skill] NOT SENT: {budget_record.get('skip_reason', 'over the prompt size limit')}")
+        prompt_budget.log(budget_record, guidance_produced=False, note="no call was made")
+        return None
+    if budget_record.get("checked"):
+        print(f"    [meta skill] prompt check: {budget_record['pairs_sent']}/"
+              f"{budget_record['pairs_offered']} pairs, ~{budget_record.get('estimated_tokens_sent')} tokens "
+              f"against a {budget_record['limit_tokens']}-token limit")
 
     try:
         response, _ = chat_optimizer(
@@ -69,11 +84,16 @@ def run_meta_skill(
         )
         result = extract_json(response)
         if result and result.get("meta_skill_content"):
+            prompt_budget.log(budget_record, guidance_produced=True)
             return {
                 "reasoning": str(result.get("reasoning", "")).strip(),
                 "meta_skill_content": str(result["meta_skill_content"]).strip(),
             }
-    except Exception:  # noqa: BLE001
+        prompt_budget.log(budget_record, guidance_produced=False,
+                          note="the optimizer replied but the reply carried no meta_skill_content")
+        return None
+    except Exception as exc:  # noqa: BLE001
         traceback.print_exc()
+        prompt_budget.log(budget_record, guidance_produced=False, note=f"{type(exc).__name__}: {str(exc)[:400]}")
 
     return None
