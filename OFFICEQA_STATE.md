@@ -1,39 +1,179 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-17 02:35 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-17 03:28 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
-**Nothing is running or queued. 0 GPUs held. Nothing has been submitted.** The A40 two-arm comparison, the
-held-out evaluation, the learned-contract port, the Lean compile (job 66259448) and the hosted-actor smoke test
-(job 66264849) are all COMPLETE. **The current step is the THREE-ARM campaign: the offline preparation is done
-and checked (verdict PASS), and it needs a budget and two decisions - see section A0-NEXT.** The slow-update
-size question is now SETTLED BY MEASUREMENT - see section **A0-PROBE** (job 66271290: a 10-pair request of
-243,986 tokens was accepted and returned usable guidance; one authorized paid attempt remains unspent).
-**The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
-`docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`. Correcting the eight stale reports changes the diagnosis for
-5 of 8 items but NOT the advice, so **no replay was run**; its exact cost is scoped in section 6 of that
-document should the user want it anyway.
-**A further offline probe (0 GPU, 0 paid calls) answers the research question directly** ->
-`docs/research/OFFICEQA_REPORT_VALUE_PROBE.md`: paired blind review of the same eight attempts, with and without
-the corrected report. **0 of 8 cases gained a valid diagnosis attributable to the report; 1 of 8 gained a
-misleading one.** See section C5.
-**A contract/check audit (offline) says what to change to make the report accurate** ->
-`docs/research/OFFICEQA_CONTRACT_AUDIT.md`. The TWO-ARM RUN's rule set is FIXED and hand-written; no learner ran
-in it and no Lean was involved anywhere in it. See section C6. Those implementation changes are deliberately NOT
-applied to `oqa_check.py`.
-**The learned-contract port is DONE (offline, 0 GPU, 0 paid calls)** -> section **A0** and
-`docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md`. It adds a separate, opt-in module set with a learner, a frozen
-model, prefix replay, obligation resolution and a GENERATED (not compiled) Lean file.
-**Still with the USER:** the three items in section A0, plus whether to restructure as one epoch of two steps so
-the optimizer sees its rejected edits (section C3) and whether to apply the C6 changes 1-4. **The held-out outcome
-of job 66234927 remains deliberately UNREAD/SEALED.**
+**THE THREE-ARM CAMPAIGN IS RUNNING.** 13 CPU jobs are queued as one `afterok` chain, **66272737 -> 66272749**;
+0 GPUs held and 0 requested. See section **A0-RUN** for the chain, the guards in force and what to check when it
+finishes. The user authorized it on 2026-11-17: 20 CPU job-hours, zero GPUs, 15,000 EmpirioLabs attempts and
+$8.00, 130 DeepSeek calls and $4.00, inside the shared 50 RPM account limit.
+
+**The preflight the user required is COMPLETE** (jobs 66272358 and 66272499, both free) -> section **A0-PREP**.
+It closed a real blocker: the 108 questions reference 153 parsed bulletins and only 78 were on the cluster, so
+33 items - 8 of the 24 training questions - had no document at all. 150 files were fetched and all 108 items are
+now answerable.
+
+Everything before this campaign is COMPLETE: the A40 two-arm comparison, the held-out evaluation, the
+learned-contract port, the Lean compile (66259448), the hosted-actor smoke test (66264849) and the slow-update
+size probe (66271290, section **A0-PROBE**). **The report-cache defect is FIXED (`c353b99`)** and the follow-up
+audit is done (`docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`): correcting the eight stale reports changes the
+diagnosis for 5 of 8 items but NOT the advice, so no replay was run.
+**The offline value probe answers the research question directly** ->
+`docs/research/OFFICEQA_REPORT_VALUE_PROBE.md`: **0 of 8 cases gained a valid diagnosis attributable to the
+report; 1 of 8 gained a misleading one.** That finding stands and this campaign is what tests it at scale.
+**A contract/check audit** (`docs/research/OFFICEQA_CONTRACT_AUDIT.md`, section C6) says what to change to make
+the report accurate; those changes are deliberately NOT applied.
+
+**Still with the USER:** whether to apply the C6 changes 1-4, and whether to restructure as one epoch of four
+steps so the optimizer sees its rejected edits (section C3). **One paid DeepSeek attempt from the probe
+authorization remains UNSPENT.** **The held-out outcome of job 66234927 remains deliberately UNREAD/SEALED.**
 
 **This session owns** the OfficeQA track only. Write only `from: "officeqa"` records in
-`/Users/yaojiaming/dev/lean_skillopt/coordination/reservations.jsonl`. Standing authorization since
-2026-11-15 ~23:00 replaced per-job ACKs; a peer's ACK coordinates capacity, never authorizes work.
+`/Users/yaojiaming/dev/lean_skillopt/coordination/reservations.jsonl`; the latest is
+`OQA-13:THREE-ARM-CAMPAIGN-SUBMITTED`. Standing authorization since 2026-11-15 ~23:00 replaced per-job ACKs; a
+peer's ACK coordinates capacity, never authorizes work.
 
 ---
 
-## A0-NEXT. THE THREE-ARM CAMPAIGN: offline prep COMPLETE and CHECKED, awaiting a BUDGET (user, 2026-11-17)
+## A0-RUN. THE THREE-ARM CAMPAIGN, SUBMITTED 2026-11-17 03:26 EST (user-authorized)
+
+**Commit `91b249449a48fb850b82a3d0d62457bfe1ca291a`, deployed as a `git archive` bundle at
+`$PROJECT_ROOT/oqa_campaign_20261117` (pushing is still not authorized). Campaign root
+`$PROJECT_ROOT/runs/20261117-officeqa-3arm-campaign`.**
+
+ONE `afterok` chain, so a single failure stops everything downstream instead of spending the authorization on a
+chain whose earlier step is broken:
+
+```
+66272737 shared   ->  66272738 A.e1 -> 66272739 B.e1 -> 66272740 C.e1
+                  ->  66272741 A.e2 -> 66272742 B.e2 -> 66272743 C.e2
+                  ->  66272744 A.e3 -> 66272745 B.e3 -> 66272746 C.e3
+                  ->  66272747 A.e4 -> 66272748 B.e4 -> 66272749 C.e4
+```
+
+**Why a chain and not concurrent arms.** The 50 RPM limit is ACCOUNT-WIDE, and one job with `workers: 4` at the
+measured 3.41 s median latency already offers about 70 RPM - so a single job is rate-limited on its own.
+Concurrency cannot raise throughput; it divides the same quota and roughly triples the CPU job-hours for the
+same wall time. The chain also gives a checkpoint between every job. Original SkillOpt has first launch
+priority after the shared rollout, which is what the user asked for.
+
+**Which contract model each epoch runs under** (epochs 1 and 2 both use M0, so the first evolution follows
+epoch 2; the arm job evolves the model at the END of each epoch from 2 on):
+
+| epoch | arms B and C run under | reports are |
+|---|---|---|
+| 1 | `contracts/model_M0.json` | **IN-SAMPLE** - M0 was learned on this very rollout, and each report says so in its own text |
+| 2 | `contracts/model_M0.json` | out-of-sample |
+| 3 | `contracts/arm_<X>/model_arm<X>_epoch02.json` | out-of-sample |
+| 4 | `contracts/arm_<X>/model_arm<X>_epoch03.json` | out-of-sample |
+
+**Verified offline before launch:** all 24 reports whose item is in M0's evidence carry "The forecasts below are
+in-sample: they were induced to hold of these very observations, so a confirmation here is not a successful
+prediction." That is in the report the optimizer reads, not only in a record beside it.
+
+**The budget, computed at `slow_update_samples: 10`** (`research/officeqa/oqa_budget.py --slow-samples 10`):
+
+| resource | computed need | authorized | used of the ceiling |
+|---|---|---|---|
+| actor HTTP requests | 12,763 | 15,000 | 85% |
+| actor charges | $6.22 | $8.00 | 78% |
+| DeepSeek calls | 102 | 130 | 78% |
+| DeepSeek charges | $3.49 **if every call lands at peak** ($1.75 off-peak) | $4.00 | 87% |
+| CPU job time | ~5 job-hours | 20 | 25% |
+| GPUs | 0 | 0 | - |
+
+Wall time floor 255 min from the account rate limit. **Nothing exceeds a ceiling.**
+
+**FOUR GUARDS ARE IN FORCE, each because of a recorded failure. All four are inert unless their environment
+variables are set, so no other track's behaviour changes.**
+
+1. **A durable shared spend ledger** (`skillopt/model/spend_ledger.py`) on `/nfs/turbo`. Attempts are CLAIMED in
+   blocks before the request is sent, with `O_CREAT|O_EXCL` for atomicity, so `spent <= claimed <= cap` holds
+   across concurrent processes AND across restarts. Per-job ceilings sit beside the account caps so one runaway
+   arm-epoch cannot eat what the other arms need. **Verified on NFS** by job 66272499.
+2. **A pre-send prompt size check** (`skillopt/optimizer/prompt_budget.py`), rule **OQA-PB-1**, limit **225,000**
+   estimated tokens. A draw over it drops comparison pairs - `stable_success` -> `improved` ->
+   `persistent_fail` -> `regressed`, later-sampled first - until it fits. **EXPECT SOME SLOW UPDATES TO SEND 9
+   PAIRS RATHER THAN 10**: the typical 10-pair mix estimates to ~230,000 tokens, above the limit. The log
+   (`prompt_budget.jsonl` in each job's run dir) records the pair count actually sent and whether guidance came
+   back, for every arm.
+3. **An in-process route guard** (`skillopt/model/route_guard.py`), called by the trainer and by `eval_only`. It
+   reads back each role's live backend, base URL and model and proves the dispatch path at zero HTTP cost. The
+   actor-only stages additionally require the optimizer role to be UNUSABLE (no key loaded).
+4. **The body refuses to run on a Slurm restart** (`SLURM_RESTART_COUNT != 0`, exit 6), and every job is
+   `--no-requeue`.
+
+**WHAT TO CHECK WHEN IT FINISHES, before reporting any result:**
+
+* `LEDGER_AFTER.json` in the last job's run dir - `verdict` must be PASS and `observed` must be inside the caps.
+* `prompt_budget.jsonl` in every arm-epoch run dir - the actual pair count per slow update and per meta skill,
+  and `guidance_produced`.
+* `slow_update/epoch_NN/slow_result.json` in every arm for `action: "no_content"`.
+* `route_guard.json` in every run dir - one line per role, with the resolved base URL and model.
+* The **validation-selected** skill (`best_skill.md`) is the PRIMARY comparison. A last-skill evaluation is
+  **EXPLORATORY** and must be labelled so.
+* The held-out evaluation is NOT in the chain. Run `research/officeqa/oqa_heldout.py --plan` over the three arm
+  directories afterwards: it deduplicates S0 plus each arm's selected and last skill BY DIGEST, so at most 7
+  rollouts of the 60 questions and fewer whenever skills coincide. 420 of the 12,763 budgeted requests cover it.
+
+---
+
+## A0-PREP. DONE: the preflight the user required before any paid rollout (jobs 66272358, 66272499 - both FREE)
+
+**No actor key and no optimizer key is loaded in this stage, so it cannot spend a cent.** Artifacts:
+`$PROJECT_ROOT/oqa_campaign_20261117/run_66272499_prep/`.
+
+**1. Documents - this was a REAL BLOCKER, not a formality.** The 108 questions of rule OQA-SEL-3 reference
+**153** distinct parsed bulletins; the sparse corpus held **78**. So **33 of the 108 items had no document at
+all** - 8 of the 24 training questions, 2 of the 24 validation questions and 23 of the 60 held-out questions.
+An item with no parsed file cannot be answered by any arm: the oracle page comes from `jsons/<stem>.json` and
+the grep and read tools from `transformed/<stem>.txt`. **150 files (121.1 MB) were fetched from the pinned
+dataset revision `8ecbf18d` with zero errors**, and the corpus now verifies **PASS**: 153 of 153 present, 0
+missing `.txt`, 0 missing `.json`.
+
+**2. Availability, all 108 items, UID0019 included: PASS.** 107 **AVAILABLE** from the supplied page, 1
+**AVAILABLE_VIA_TOOLS**; **0 ABSENT, 0 NO_DOCUMENT, 0 UNTESTED**. No verdict changed for any of the 60 items the
+previous check had already tested, which is the consistency check on the new code.
+
+**3. UID0019 and the two items like it.** UID0019 (train), UID0039 (val) and UID0064 (held-out) are the only
+`source_files`/`source_docs` count mismatches among the 108, and all three are **one file with two page
+references**. `tool_runtime._iter_oracle_refs` has an explicit branch for that shape, both references resolved
+for all three, and all three are AVAILABLE. **The OQA-SEL-1 filter that dropped UID0019 was over-cautious.**
+Recorded rather than hidden: `oqa_sel3.stratum` calls these items "multi" (it counts `max(files, docs)`) while
+`oqa_freeze_sets.stratum_of` calls them "single" (it counts `files`). Both labels are in `AVAILABILITY.json`.
+Nothing depends on it - the stratification is a balancing device whose rule was fixed in advance.
+
+**4. The caps, raced on the REAL filesystem** (`research/officeqa/oqa_ledger_check.py`, `LEDGER_CHECK.json`):
+concurrency **PASS** (four processes split exactly 23 of a 23 cap, `[4, 8, 8, 3]`, and the ledger's own record
+agrees), restart **PASS** (the first process spent the whole cap of 9, a fresh process with
+`SLURM_RESTART_COUNT=1` spent **0**), fail-closed **PASS**.
+
+**The first run, job 66272358, FAILED - and the failure was my check, not the ledger.** It made the claim
+directory `chmod 0500` and expected the write to be denied. `/nfs/turbo` does not deny it: the share carries
+POSIX ACLs whose mask grants the owner write access whatever the mode bits say, so the condition was never
+created and the check reported the ledger failing when its own premise had failed. The job refused to continue,
+which is right for an unproven cap, but the diagnosis was wrong. `fail_closed` now PROBES the premise and runs a
+portable case that works on every filesystem (the ledger path's parent is a regular file, so `makedirs` raises),
+reporting the chmod case as NOT APPLICABLE where the filesystem does not enforce it.
+
+**5. The effective settings, read back through the trainer's own resolution** of
+`configs/research/officeqa_api3.yaml`: `num_epochs 4`, `batch_size 40`, `accumulation 1` ->
+**`steps_per_epoch = ceil(24 / 40) = 1`**, one ordinary skill update per epoch; `edit_budget 4`,
+`min_edit_budget 2`, `lr_scheduler cosine` -> **4, 3, 2, 2** over the four steps; `use_gate true`,
+`sel_env_num 0` (the whole 24-question val split); `use_slow_update true`,
+`slow_update_gate_with_selection true`, `use_meta_skill true`, **`slow_update_samples 10`**,
+`longitudinal_pair_policy mixed` (no top-up rollouts); `eval_test false`; `seed 42`, `workers 4`,
+`max_tool_turns 24`; target `qwen3-5-4b` on `openai_compatible` at `https://api.empiriolabs.ai/v1`, optimizer
+`openai_compatible` at `https://api.deepseek.com`. **The route strings the jobs assert agree with this config**,
+checked offline at zero cost.
+
+---
+
+## A0-NEXT. SUPERSEDED BY A0-RUN - the offline preparation, kept for its evidence (user, 2026-11-17)
+
+**The campaign described here is now RUNNING; read A0-RUN for the live state. Two things in this section
+are out of date: the budget table is at 4 pairs per slow update (the campaign runs at 10), and the
+"173,060-token envelope" was retired by job 66271290. The split manifests, the report-separation checks
+and the model-evolution evidence below all still stand.**
 
 **Read `docs/research/OFFICEQA_THREE_ARM_LAUNCH.md`, not a paraphrase. The copy-pasteable packet is
 `OFFICEQA_HANDOFF_LATEST.md`. Evidence: `runs/20261117-officeqa-3arm-prelaunch/`.**

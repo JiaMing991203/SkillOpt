@@ -43,3 +43,17 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T07:26:30Z	66271190	oqa_slow_probe	send	ee5aeb8ebcd789e02606def25452afc925ce8197	10-pair slow-update size probe; HARD cap 2 paid HTTP attempts; 1 CPU 4G 20min; refuses on requeue
 2026-11-17T07:29:46Z	66271290	oqa_slow_probe	send	aa4aae91f2b05ec3b4b43f131ce443499180cea1	2nd attempt: preflight now pins the optimizer BACKEND (66271190 dispatched to Azure, 0 HTTP, 0 spend)
 2026-11-17T08:17:00Z	66272358	oqa_campaign	prep	eecbadea3f069114b655b1265a7c1e0b09300bdc	standard 2cpu 8G 60min; FREE (no actor or optimizer key loaded): fetch the OQA-SEL-3 documents, materialize 24/24/60, availability for all 108 items incl UID0019, ledger self-test on Turbo
+2026-11-17T08:22:00Z	66272499	oqa_campaign	prep	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 30min; FREE re-run after the fail-closed check was fixed; LEDGER_CHECK PASS on nfs (concurrency 4 procs split 23 of 23, restart respent 0)
+2026-11-17T08:30:00Z	66272737	oqa_campaign	shared	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; 24 train + 24 val under S0, actor only, optimizer key NOT loaded; seeds M0; job caps 900 attempts / $0.80
+2026-11-17T08:30:00Z	66272738	oqa_campaign	arm A epoch 1	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272737; job caps 700/$0.60 actor, 12/$0.50 optimizer
+2026-11-17T08:30:00Z	66272739	oqa_campaign	arm B epoch 1	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272738; job caps 700/$0.60 actor, 12/$0.50 optimizer
+2026-11-17T08:30:00Z	66272740	oqa_campaign	arm C epoch 1	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272739; job caps 700/$0.60 actor, 12/$0.50 optimizer
+2026-11-17T08:30:00Z	66272741	oqa_campaign	arm A epoch 2	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272740; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272742	oqa_campaign	arm B epoch 2	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272741; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272743	oqa_campaign	arm C epoch 2	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272742; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272744	oqa_campaign	arm A epoch 3	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272743; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272745	oqa_campaign	arm B epoch 3	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272744; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272746	oqa_campaign	arm C epoch 3	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272745; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272747	oqa_campaign	arm A epoch 4	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272746; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272748	oqa_campaign	arm B epoch 4	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272747; job caps 1600/$1.20 actor, 16/$0.70 optimizer
+2026-11-17T08:30:00Z	66272749	oqa_campaign	arm C epoch 4	91b249449a48fb850b82a3d0d62457bfe1ca291a	standard 2cpu 8G 60min; afterok:66272748; job caps 1600/$1.20 actor, 16/$0.70 optimizer

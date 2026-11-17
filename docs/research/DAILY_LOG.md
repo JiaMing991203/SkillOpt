@@ -836,3 +836,84 @@ Two small pieces of infrastructure came out of this and will be reused: `researc
 and uploads a pinned staging bundle (the campaign needs 13 of them, and the steps had been living in a shell
 history), and the probe's job body **refuses to run on a requeue**, which is the safeguard the earlier
 API-spending jobs only documented.
+
+## 2026-11-17 (later) — the three-arm campaign is submitted, after a preflight that found a real blocker
+
+The user authorized the campaign: 20 CPU job-hours, zero GPUs, 15,000 EmpirioLabs attempts and $8.00, 130
+DeepSeek calls and $4.00, Original SkillOpt first after the shared rollout, ten paired questions per gated slow
+update, and four specific things to settle before any paid rollout. All four are settled; one of them was not a
+formality.
+
+**The document blocker.** The corpus on the cluster was fetched for the twelve development questions of the
+earlier study — 86 files, 63 MB of a 1.25 GB dataset. Rule OQA-SEL-3's 108 questions reference **153** distinct
+parsed bulletins, of which **78** were present. So **33 of the 108 items had no document at all**, including 8
+of the 24 training questions and 23 of the 60 held-out ones. An item with no parsed file cannot be answered by
+any arm, and we would have spent roughly a third of the actor budget discovering that. 150 files (121.1 MB) are
+now fetched from the pinned revision; the corpus verifies 153 of 153.
+
+I had listed "availability is untested for 48 of the 108 items" as an open item for two days without noticing
+that the untested items were untested *because their documents were absent*. The launch plan said a short CPU
+preflight "reads local files only and spends nothing" — true of the check, false of the precondition it needed.
+
+**Availability is now PASS for all 108**: 107 AVAILABLE from the supplied page, 1 AVAILABLE_VIA_TOOLS, zero
+ABSENT, zero untested, and no verdict changed for any of the 60 items the previous check had already seen.
+
+**UID0019 turned out to be fine, and so did the two items like it.** It was dropped by OQA-SEL-1 because its
+`source_files` and `source_docs` counts differ, on the ground that the supplied-page builder pairs those lists
+positionally. It is one file with two page references, and `_iter_oracle_refs` has an explicit branch for that
+shape. Both pages resolve; the item is AVAILABLE. The same holds for UID0039 (val) and UID0064 (held-out). I
+recorded the stratum disagreement this exposes rather than smoothing it over: `oqa_sel3.stratum` counts
+`max(files, docs)` and calls these items multi-document, while `oqa_freeze_sets.stratum_of` counts `files` and
+calls them single. Nothing depends on it — the stratification is a balancing device fixed in advance — but the
+two scripts do disagree and a later reader should not have to discover that.
+
+**The caps needed building, not verifying.** The user asked me to verify that the attempt and spend caps hold
+across concurrent jobs and restarts. There were no such caps on the trainer's path: `oqa_api_smoke.py` had its
+own per-process counters, and the campaign runs `scripts/train.py`. So I built a durable shared ledger that
+claims attempts in blocks before each request, with `O_CREAT|O_EXCL` for atomicity, giving
+`spent <= claimed <= cap` under concurrency and across restarts, plus per-job ceilings so one runaway arm-epoch
+cannot eat what the other arms need.
+
+**And then the verification of it failed on the cluster — because of my test, not the ledger.** Job 66272358's
+fail-closed case made the claim directory `chmod 0500` and expected the write to be denied. `/nfs/turbo` does
+not deny it: POSIX ACLs on the share grant the owner write access whatever the mode bits say. The condition was
+never created, and my check reported the *ledger* failing when its own premise had failed. The job refused to
+continue, which is the right behaviour for an unproven cap, and I would rather have this failure mode than the
+opposite — but the diagnosis in the artifact was wrong until I fixed it. `fail_closed` now probes its premise
+and runs a portable case that works on any filesystem. On the re-run the three checks pass on NFS: four
+concurrent processes split exactly 23 of a 23 cap, a restarted process respent 0 of 9, and an unusable ledger
+refused.
+
+**The route is now proven in the process that spends.** The guard I wrote for the slow-update probe checked the
+optimizer's config in its own process, which cannot establish where the trainer's router will dispatch. The
+guard now runs inside `trainer.train()` and `eval_only`, reads back each role's live backend, base URL and
+model, and proves the dispatch path at zero HTTP cost. The actor-only stages go further and require the
+optimizer role to be *unusable* — no key loaded — which is a stronger statement than "we did not intend to call
+it". Job 66272737's record shows both: the target pinned to EmpirioLabs `qwen3-5-4b` with the dispatch proven,
+the optimizer with no key.
+
+**Ten pairs, with a check before the send.** The user asked for ten paired questions per slow update and for the
+rendered request to be checked against a conservative limit inside the tested prompt size, falling back to a
+smaller subset in a predetermined order. The limit is 225,000 estimated tokens, chosen so that the prompt plus
+the whole 16,384-token completion allowance (241,384) stays inside the 251,548 tokens job 66271290 demonstrably
+processed. Rule OQA-PB-1 drops pairs from the least informative category first — `stable_success`, then
+`improved`, then `persistent_fail`, then `regressed`, which is SkillOpt's own stated order of interest — and the
+log records the pair count actually sent and whether guidance came back, per arm.
+
+I should be plain about what that means in practice: at ten pairs the typical mix estimates to about 230,000
+tokens, **above** the limit, so some slow updates will send nine pairs rather than ten. That is the mechanism
+working as specified rather than a surprise, and it is visible in the log rather than inferred. The honest
+summary of the size question is unchanged from last night: ten pairs sits *at* the proven point, not inside it,
+and there is no demonstrated headroom for longer epochs or longer trajectories.
+
+**Submitted as one chain, not three concurrent arms.** The 50 RPM limit is account-wide and one job with
+`workers: 4` already offers about 70 RPM, so concurrency cannot raise throughput — it divides the same quota and
+roughly triples the CPU job-hours for the same wall time. 66272737 (shared) through 66272749 (C.e4), every link
+`afterok`. Computed need: 12,763 actor requests and $6.22, 102 DeepSeek calls and $3.49 at peak, about 5 CPU
+job-hours. Nothing exceeds a ceiling.
+
+One observation from the first three questions of the shared rollout, recorded now so it is not mistaken for a
+late discovery: all three produced no `<answer>` tag and one reached the tool-turn cap. The checkpoint treats
+those as rollout outcomes, which they are, but if the starting skill answers rarely then every arm's score sits
+near the floor and the comparison has little to separate. The A40 pilot's 5 of 12 is not a guide here — FP8
+makes this a new baseline.

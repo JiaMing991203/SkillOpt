@@ -1087,3 +1087,103 @@ runs/20261117-officeqa-slow-probe-66271190/
 
 Code: `research/officeqa/oqa_slow_probe.py`, `research/cluster/oqa_slow_probe_body.sh`,
 `research/cluster/oqa_bundle.sh`; `research/officeqa/oqa_budget.py` (constants revised to the measured values).
+
+---
+
+## OQA-3ARM — the three-arm OfficeQA campaign on the hosted actor (submitted 2026-11-17 03:26 EST)
+
+**Status: RUNNING.** Commit `91b249449a48fb850b82a3d0d62457bfe1ca291a`, deployed as a `git archive` bundle at
+`$PROJECT_ROOT/oqa_campaign_20261117` (pushing is not authorized). Campaign root
+`$PROJECT_ROOT/runs/20261117-officeqa-3arm-campaign`.
+
+### Design
+
+| arm | name | what the analyst receives |
+|---|---|---|
+| A | Original SkillOpt | the ordinary analyst inputs, byte-identical to upstream |
+| B | Action Contracts Only | the ordinary inputs plus feedback from the evolving action contracts |
+| C | Action Contracts + Stages | the ordinary inputs plus the action feedback, the stage obligations, and the checks linking actions to stage progress |
+
+One config file for all three arms, `configs/research/officeqa_api3.yaml`. The arms differ in exactly two
+environment variables read by the opt-in hook in `skillopt/gradient/reflect.py`
+(`OFFICEQA_STAGE_REPORT_CONDITION` = unset / `LC_ACTION` / `LC_STAGE`) plus `OFFICEQA_LC_MODEL`.
+
+Splits: rule **OQA-SEL-3**, digest `117836ff413934b3…`, train 24 / val 24 (the whole released val split) /
+held-out 60, disjoint, with all three OQA-SEL-2 sets as subsets. Materialized at
+`$PROJECT_ROOT/officeqa_data/split_sel3`; row counts verified 24 / 24 / 60, every row carrying a question and a
+ground truth.
+
+Effective settings, read back through the trainer's own resolution: `num_epochs 4`, one ordinary update per
+epoch (`ceil(24/40) = 1`), edit budget 4 / 3 / 2 / 2 (cosine), gate on the whole 24-question val split with
+strict improvement, `use_slow_update` + `slow_update_gate_with_selection` + `use_meta_skill` all true from
+epoch 2, **`slow_update_samples 10`**, `longitudinal_pair_policy mixed`, `eval_test false`, seed 42,
+`workers 4`, `max_tool_turns 24`. Target `qwen3-5-4b` on EmpirioLabs (FP8 weights, FP8 KV, 262144 context),
+optimizer `deepseek-flash`.
+
+### The job chain
+
+```
+66272737 shared  ->  66272738 A.e1 -> 66272739 B.e1 -> 66272740 C.e1
+                 ->  66272741 A.e2 -> 66272742 B.e2 -> 66272743 C.e2
+                 ->  66272744 A.e3 -> 66272745 B.e3 -> 66272746 C.e3
+                 ->  66272747 A.e4 -> 66272748 B.e4 -> 66272749 C.e4
+```
+
+Every link `afterok`, `--no-requeue`, partition `standard`, 2 CPUs, 8 GB, 60 min each, 0 GPUs. A chain rather
+than concurrent arms because the 50 RPM limit is ACCOUNT-WIDE and one job with `workers: 4` already offers about
+70 RPM: concurrency divides the same quota and roughly triples the CPU job-hours for the same wall time.
+
+Contract models: epochs 1 and 2 both run under **M0** (learned on the shared rollout, so epoch 1's reports are
+**in-sample** and say so in their own text); epoch 3 under `model_arm<X>_epoch02.json` and epoch 4 under
+`model_arm<X>_epoch03.json`, each evolved by the arm job at the END of the preceding epoch from that arm's own
+traces.
+
+### Authorization and computed need
+
+User, 2026-11-17: 20 CPU job-hours, zero GPUs, 15,000 EmpirioLabs attempts and $8.00, 130 DeepSeek calls and
+$4.00, inside the shared 50 RPM account limit.
+
+| resource | computed | authorized |
+|---|---|---|
+| actor HTTP requests | 12,763 | 15,000 |
+| actor charges | $6.22 | $8.00 |
+| DeepSeek calls | 102 | 130 |
+| DeepSeek charges | $3.49 at peak / $1.75 off-peak | $4.00 |
+| CPU job time | ~5 job-hours | 20 |
+| GPUs | 0 | 0 |
+
+### Preflight (jobs 66272358 and 66272499, both free — no actor or optimizer key loaded)
+
+| check | result |
+|---|---|
+| documents the 108 questions need | 153 required, **78 present**, so 33 items had NO document. **150 files (121.1 MB) fetched** from pinned revision `8ecbf18d`, 0 errors; corpus now 153 of 153, verdict PASS |
+| availability, all 108 items | **PASS** — 107 AVAILABLE, 1 AVAILABLE_VIA_TOOLS, 0 ABSENT, 0 NO_DOCUMENT, 0 UNTESTED; no verdict changed for the 60 previously tested |
+| **UID0019** | **AVAILABLE.** 1 source file, 2 page references, **both resolved** (pages 54 and 58 of `treasury_bulletin_2016_09.txt`); supplied page 3,490 chars, 313 candidate values. Same for UID0039 (val) and UID0064 (held-out) |
+| caps under concurrency, on NFS | **PASS** — 4 processes split exactly 23 of a 23 cap (`[4, 8, 8, 3]`), ledger record agrees |
+| caps across a restart, on NFS | **PASS** — first process spent 9 of 9, a fresh process with `SLURM_RESTART_COUNT=1` spent **0** |
+| caps fail closed | **PASS** (portable case). The chmod case is NOT APPLICABLE on `/nfs/turbo`: POSIX ACLs grant the owner write access whatever the mode bits say |
+| route pinned and proven | **PASS** — job 66272737: target `openai_compatible` -> `https://api.empiriolabs.ai/v1` (`qwen3-5-4b`), dispatch proven at zero HTTP cost; optimizer required UNUSABLE and confirmed to have no key |
+| route string vs the pinned config | **agrees**, checked offline at zero cost through the trainer's own config resolution |
+
+**Job 66272358 FAILED and the failure was the check, not the ledger** — see DAILY_LOG for the full account.
+
+### What must be read before any result is reported
+
+* `LEDGER_AFTER.json` — `verdict` PASS and `observed` inside the caps.
+* `prompt_budget.jsonl` per arm-epoch — the pair count actually sent per slow update and per meta skill, and
+  `guidance_produced`. **Expect some slow updates at 9 pairs rather than 10**: the typical 10-pair mix estimates
+  to ~230,000 tokens against the 225,000-token limit, so rule OQA-PB-1 trims.
+* `slow_update/epoch_NN/slow_result.json` per arm for `action: "no_content"`.
+* `route_guard.json` per run dir.
+* The **validation-selected** skill (`best_skill.md`) is the PRIMARY comparison; a last-skill evaluation is
+  **EXPLORATORY** and must be labelled so.
+* The held-out evaluation is NOT in the chain: run `research/officeqa/oqa_heldout.py --plan` afterwards, which
+  deduplicates S0 plus each arm's selected and last skill by digest.
+
+### What this campaign cannot establish
+
+The earlier offline probe on the two-arm run's traces found **0 of 8 cases gained a valid diagnosis attributable
+to the report and 1 of 8 gained a misleading one** (`docs/research/OFFICEQA_REPORT_VALUE_PROBE.md`). That finding
+stands; this campaign tests it at scale and does not presuppose the answer. Nothing here is Lean-verified: the
+Lean artifact compiled (job 66259448, all 64 statements, Lean 4.20.0) and the reports rest on the Python
+extractor. FP8 makes this a new baseline, so the A40 pilot's S0 does not transfer.
