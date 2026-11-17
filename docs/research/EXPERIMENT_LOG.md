@@ -1219,3 +1219,36 @@ two-arm run ended the same way (all four candidates rejected, both final skills 
 material on all 24 and **contains arm B's report line for line on 24 of 24**; both arms show 24 distinct trace
 digests under the single model digest `8d8ecceecd0b7753` (M0); all 24 reports per arm carry the IN-SAMPLE notice;
 `boundary_audit` PASS on every one. Arm B's reports average 4,438 characters and arm C's 6,095.
+
+### Arm A epoch 2 — the first gated slow update and meta skill (job 66273856)
+
+Elapsed **65:41**, which settles the time-limit question with evidence: the 60-minute limit the launch plan
+proposed would have killed this job, and the chain with it. The nine later-epoch jobs were raised to 120 minutes
+before any of them ran.
+
+| what the epoch did | result |
+|---|---|
+| ordinary update | candidate 0.0833 (2/24) — **REJECT** against 0.1667 |
+| slow update, pairs sent | **10 of 10**, ~185,332 tokens against the 225,000 limit, nothing dropped |
+| slow update, guidance | **produced**, 3,783 characters, 1,194.7 s |
+| slow update, gate | candidate 0.0833 (2/24) — **REJECT**; `action: "reject"`, not `no_content` |
+| meta skill, pairs sent | **10 of 10**, ~184,959 tokens, nothing dropped |
+| meta skill, memory | **produced**, 2,141 characters, 16.6 s |
+| epoch outcome | accept 0, reject 1, best 0.1667 (S0) |
+
+The comparison the slow update worked from: 1 regressed, 1 improved, 8 persistent failures, 0 stable successes
+over its 10 sampled training items, with `prev epoch hard=0.1000` and `curr epoch hard=0.1000` — the two skill
+versions scored identically on the sample, as expected when the ordinary candidate was rejected and the two
+documents differ only by a placeholder.
+
+**The guidance is a sensible diagnosis, for the record:** "Always finish with a final answer (highest priority)
+— Your single biggest failure is ending the episode without emitting `<answer>`." That is the same failure mode
+the offline probe's guidance identified, and it matches the rollout checkpoints, where items were recorded as
+producing no `<answer>` tag.
+
+The meta skill took 16.6 s against the slow update's 1,194.7 s, because the slow update includes its two
+10-question rollouts while the meta skill REUSES those comparison pairs — one optimizer call, no rollouts, which
+is what `use_meta_skill` beside `use_slow_update` is supposed to cost.
+
+Ledger after this job, verdict PASS: optimizer 32 of 130 calls (25%) and $0.8638 of $4.00 (22%); target 1,864 of
+15,000 attempts (12%) and $1.2061 of $8.00 (15%); 4 failed attempts, **zero refusals**.
