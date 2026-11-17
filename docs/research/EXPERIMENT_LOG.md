@@ -1362,3 +1362,127 @@ held-out, per distinct skill                                      $0.39 actor  +
 So completing all four AND the held-out evaluation fits inside the authorization already granted. It needs the
 user's decision, because it spends about $2.60 more of their money and it means resetting each arm's
 `runtime_state.json` to re-run a step the record currently shows as `skip_no_patches`.
+
+---
+
+## OQA-3ARM-RECOVERY — recovering the four starved arm-epochs (jobs 66323200–66323203, 2026-11-17)
+
+**Authorization.** The amendment of 2026-11-17: EmpirioLabs **$16 / 30,000 attempts**, DeepSeek **$8 / 260
+attempts**, CPU **40 job-hours**, GPUs **zero**, as TOTALS including everything already spent, with the
+recovery and the planned evaluations authorized without further approval inside them.
+`docs/research/OFFICEQA_AUTHORIZATION.md` holds the grant's wording and the arithmetic.
+
+**Deployed revision.** Bundle `oqa_campaign_20261117c`, commit
+`37c78ec683d53f656c0aceed9fde413b4ce1f941`, pinned `git archive` with an in-job `MANIFEST.sha256` check.
+`git diff --stat 797846e..37c78ec -- skillopt/ configs/ scripts/` touches two files and **deletes no line of
+`skillopt/envs/officeqa/rollout.py`**: the actor's prompt construction, tool loop and scoring are identical to
+the original run's, and the only new behaviour is the provenance guard (inert unless its environment variable
+is set) plus one extra field on each result row. That field cannot move a trace digest, because
+`trace_digest()` hashes `conversation.json` and `target_user_prompt.txt` from the per-item prediction
+directory, not the `results.jsonl` row.
+
+### 1. The ledger, reconciled (rule OQA-REC-1)
+
+| role | net claimed before | recorded spend | net claimed after | released |
+|---|---|---|---|---|
+| optimizer | $4.0000 / 100 attempts | $2.1913 / 66 | $2.1913 / 66 | $1.8087 / 34 |
+| target | $7.0000 / 7,700 attempts | $4.9441 / 7,313 | $4.9441 / 7,313 | $2.0559 / 387 |
+
+52 release records. **Zero unresolved requests** — every attempt in this campaign has a matching usage record,
+so nothing was retained on that account. A second reconciliation finds nothing left to release. Record:
+`recovery/LEDGER_RECONCILE.json`.
+
+**A rounding disagreement the reconciliation exposed.** `oqa_ledger_read.py` then reported FAIL: "$4.9441
+spent against $4.9441 claimed". The ledger adds `int(round(usd * 1e6))` per usage record and compares *that*
+against the claims; the audit summed raw floats, which over 7,313 records came out **26 microdollars higher**
+($4.944136 against $4.944110). Fixed on both sides: the audit checks the invariant in micros and reports the
+float sum beside it, and the reconciler retains the larger of the two sums.
+
+### 2. The stage audit (rule OQA-REC-2) — exactly four arm-epochs
+
+Read from the artifacts **and** the ledger's per-process refusal records. All **24 refusals** sit in four
+jobs, six each (4 analyst, 1 slow update, 1 meta skill):
+
+| job | arm-epoch | refusals |
+|---|---|---|
+| 66273861 | C.e3 | analyst 4, slow_update 1, meta_skill 1 |
+| 66273862 | A.e4 | analyst 4, slow_update 1, meta_skill 1 |
+| 66273863 | B.e4 | analyst 4, slow_update 1, meta_skill 1 |
+| 66273864 | C.e4 | analyst 4, slow_update 1, meta_skill 1 |
+
+**No other stage was masked.** Two shapes that look like failures and are not, both checked by hand before
+the classifier was written and now explained by it:
+
+* **arm B epoch 3 made 3 analyst calls, not 4.** No refusal in that job. It scored **0/24**, so there was no
+  success group to reflect on — one analyst call fewer is the correct behaviour.
+* **arm C epoch 1 made no ranking call.** Its 4 merged edits already fit the edit budget of 4, so there was
+  nothing to rank; all four were applied.
+
+Record: `recovery/RECOVERY_AUDIT.json`.
+
+### 3. What was reused, and what decided it
+
+Every starved arm-epoch still held its paid 24-question training rollout and both 10-question slow-update
+rollouts. `run_batch` resumes by id from `results.jsonl`, so leaving those directories in place returns the
+identical trajectories at no cost.
+
+Reuse is decided by **provenance, not position**. Each stored row records the system prompt it ran under, and
+the prompt embeds the skill verbatim, so the producing skill is recovered from the trace itself and matched
+against the skill the recovered state puts in force (longest match wins; ambiguity is reported, and a rollout
+that cannot be attributed is never reused). Measured on the live artifacts:
+
+| artifact | per arm-epoch | decision |
+|---|---|---|
+| training rollout | 24 items | reuse (A.e4, B.e4, C.e3); **conditional** for C.e4 |
+| slow-update `rollout_prev` | 10 items | reuse (A.e4, B.e4, C.e3); **conditional** for C.e4 |
+| slow-update `rollout_curr` | 10 items | **conditional** in every arm — it runs the skill the recovered gate leaves in force |
+| `comparison_pairs.json` | 10 pairs | rebuilt from whichever trajectories survive the check (free) |
+
+"Conditional" is settled at run time by `SKILLOPT_ROLLOUT_PROVENANCE_GUARD=1` rather than guessed: on a reject
+the rows are reused, on an accept they are re-rolled, the superseded `results.jsonl` is preserved beside the
+new one and the live one is kept canonical so no id appears twice.
+
+Plan (`recovery/RECOVERY_PLAN.json`): **192 question-rollouts certain** ($1.2595, 1,981 attempts), **266 worst
+case** ($1.7450, 2,745 attempts), plus ~36 optimizer calls and ~$1.44.
+
+### 4. The checkpoint the recovery rewound to
+
+| arm | last_completed_step | current_skill | incumbent the recovered gate must beat | best |
+|---|---|---|---|---|
+| A | 3 | `skill_v0003.md` | 0.1667 (4/24) | S0, step 0 |
+| B | 3 | `skill_v0003.md` | **0.2083 (5/24)** | step 2 |
+| C | 2 | `skill_v0002.md` | 0.1667 (4/24) | S0, step 0 |
+
+The incumbent is reconstructed from the previous step's record **and** the previous epoch's slow-update result,
+because an epoch does not end with its ordinary step — a slow update that accepted would make the step record
+stale. Every slow gate here rejected, so no number moved.
+
+**51 original records archived** to `recovery/original/20261117-recovery` (4.2 MB): each arm's
+`runtime_state.json`, `history.json`, `summary.json`, `best_skill.md` and `skills/`, the step records and
+slow/meta results from the first recovered epoch on, and both contract arms' model and EVOLVE files.
+
+**Moved aside, not deleted:** arm C's `model_armC_epoch04.json`, `EVOLVE_armC_epoch04.json` and
+`predictions_epoch04.jsonl`, because epoch 4's traces can change and `oqa_lc_ir.freeze()` refuses to overwrite
+a frozen model with different content. **Kept:** each arm's first-recovered-epoch model
+(`model_armC_epoch03.json`, `model_armB_epoch04.json`) — its rollout is reused unchanged, so re-evolving it is
+a no-op and the file holds its original bytes.
+
+### 5. The chain
+
+```
+66323200  oqa-rec-A-e4   arm A epoch 4   head of the chain
+66323201  oqa-rec-B-e4   arm B epoch 4   afterok 66323200   model model_armB_epoch03.json
+66323202  oqa-rec-C-e3   arm C epoch 3   afterok 66323201   model model_armC_epoch02.json
+66323203  oqa-rec-C-e4   arm C epoch 4   afterok 66323202   model model_armC_epoch03.json
+```
+
+`standard`, 2 CPUs, 8 GB, 90 min, `--no-requeue`, `afterok` throughout. Per-job ceilings 1,600 attempts /
+$1.20 actor and 16 calls / $0.70 optimizer. Arm C epoch 4 follows epoch 3 because it begins from the skill
+epoch 3 leaves in force.
+
+**First evidence that the design works** (job 66323200, 6 minutes in): `[resume] from step 4 current=0.1667
+best=0.1667`; the provenance guard checked all 24 saved training rows, reused them, and printed that their
+turn budget could not be checked because they predate the settings fingerprint; the analyst ran and produced
+3 failure and 1 success patch, 5 edits merged, 2 selected at budget 2, a candidate of 2,847 characters from a
+940-character skill; **zero** actor attempts for the training rollout and 48 so far, all from the gate pass in
+progress.
