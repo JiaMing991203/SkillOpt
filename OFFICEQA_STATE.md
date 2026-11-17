@@ -30,14 +30,19 @@ of job 66234927 remains deliberately UNREAD/SEALED.**
 
 ## A-API. NEXT: OfficeQA on a HOSTED ACTOR (user, 2026-11-16) -> `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`
 
-**BLOCKED on one credential; everything else is built, tested and ready. Nothing spent: 0 API calls, 0 GPU,
-0 CPU jobs.**
+**SMOKE TEST RAN AND PASSED. The API is viable.** Job **66264849**, COMPLETED exit 0, 68.4 s, 20 attempts,
+**0 errors, 0 malformed replies, 0 retries**, **$0.0034 of the authorized $0.50**, **zero GPUs**.
+All four tool-loop checks PASS: 18 of 20 replies carried `tool_calls`, every argument set parsed as JSON,
+**18 tool calls executed against the documents with 0 observation errors**, and all 3 items took further turns
+after an observation. Latency min 1.63 / median 3.41 / max 7.04 s. 73,145 prompt + 6,251 completion tokens.
+**cached_prompt_tokens = 0, so NO prefix caching was observed** - do not assume the $0.02/M cached rate.
+Accuracy, separate and not the verdict: 1 of 3 answered, hard [0,1,0].
 
-**THE BLOCKER.** `EMPIRIOLABS_API_KEY` does not exist on either machine - every occurrence of the name is code
-READING it, there is no assignment anywhere, the cluster secrets file has `DEEPSEEK_API_KEY` only, and the
-`lc_site.env` the ALFWorld pilot read `ACTOR_PILOT_SECRETS` from is gone from both machines. **To unblock: add
-`EMPIRIOLABS_API_KEY=<key>` to the cluster secrets file named by `SECRETS_FILE` in the private site settings,
-mode 600.** Until then `research/cluster/oqa_api_smoke.sbatch` runs the (key-free) preflight and exits 4.
+**THE KEY IS AT `/home/yaojm/.config/lean_skillopt/actor_api.env`** on the cluster (mode 600, 79 chars).
+**CORRECTION: I previously reported it existed on neither machine, and that was wrong** - I searched $HOME
+dotfiles, guessed filenames and the turbo tree but never `~/.config`. The user supplied the path. The job reads
+it there, exports it for the ACTOR role only, drops the optimizer keys, and greps the run dir against the live
+value afterwards (0 artifacts contain it).
 
 **VERIFIED FREE OF CHARGE.** `GET /v1/models/qwen3-5-4b` (unauthenticated, 200 in 0.67 s): id `qwen3-5-4b`,
 alias `qwen3.5-4b`, `hugging_face_id` **Qwen/Qwen3.5-4B** (the A40's weights), features include
@@ -63,11 +68,22 @@ MODEL VERSION as well as the trace, and every report records `trace_sha256` + `m
 reports checked against epoch-2 attempts **FAIL** (the A40 integrity failure, now caught); a report built under
 the early model v5 checked against the final v7 **FAIL** (`607f3a138090` vs `059c110ae6c7`).
 
-**MEASURED ESTIMATE for the 4-epoch comparison** (from the A40's 128 tool calls / 12 questions = 11.7 requests
-per question): 264 question-rollouts, ~3,100 actor requests, ~4.2 h wall. **Allowances it NEEDS, as a SEPARATE
-request** (the old allowance has 8 DeepSeek calls left and no CPU or actor budget): **12 CPU job-hours** (<=4
-concurrent, each <=60 min, 2 CPUs + 8 GB), **0 GPUs**, **4,000 actor HTTP attempts**, **$4.00 actor charges**,
-**56 DeepSeek calls**, **$1.50 DeepSeek charges**. Rationale per line in the plan doc section 4.4.
+**MEASURED ESTIMATE for the 4-epoch comparison, now from the smoke test's own numbers:** 264 question-rollouts,
+~3,100 actor requests, **~2 h wall** - and the **50 RPM account limit is the binding constraint, not latency**
+(3,100/50 = 62 min floor; 44 min latency-bound at 3.41 s median with workers=4). **Allowances it NEEDS, as a
+SEPARATE request** (the old allowance has 8 DeepSeek calls left and no CPU or actor budget): **8 CPU job-hours**
+(<=4 concurrent, each <=60 min, 2 CPUs + 8 GB), **0 GPUs**, **4,000 actor HTTP attempts**, **$2.50 actor
+charges**, **56 DeepSeek calls**, **$1.50 DeepSeek charges**. CPU down from 12 and actor down from $4.00 because
+the measured cost is $0.00112/question at a 12-turn cap (~$0.003 at 24 turns, ~$0.80 for the whole comparison).
+
+**FIVE SUBMISSIONS, FOUR FAILURES, NO WASTED API ATTEMPTS.** 66262999 and 66263561: **NODE_FAIL at 60 s, four
+times each, on eight different nodes**, before Python ran. A control job with identical account/partition/
+resources COMPLETED, and one-factor controls showed reading the key from `~/.config`, extracting the 576-file
+bundle and curling the endpoint from a compute node are each fine. Fixed by moving work to a **node-local /tmp**
+and submitting via `--wrap` (the shape five control jobs used) - the same NFS-temp-dir lesson the
+learned-contract line recorded in job 65818719. Then 66264572 hit **`python -I` ignoring PYTHONPATH**, and
+66264701 hit the **Azure default** (3 ledger attempts, 0 HTTP sent; the ledger now reports `never_sent`).
+Total actual HTTP: 3 probe + 20 smoke = **23 of 100**, $0.0034.
 
 **THREE THINGS TO DECIDE BEFORE IT RUNS** (plan doc 4.5): the FP8 confound means S0 must be re-measured on the API
 actor and this is a NEW baseline, not a continuation; four epochs still gives NO cross-epoch memory
