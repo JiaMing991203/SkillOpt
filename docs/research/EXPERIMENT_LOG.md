@@ -1252,3 +1252,113 @@ is what `use_meta_skill` beside `use_slow_update` is supposed to cost.
 
 Ledger after this job, verdict PASS: optimizer 32 of 130 calls (25%) and $0.8638 of $4.00 (22%); target 1,864 of
 15,000 attempts (12%) and $1.2061 of $8.00 (15%); 4 failed attempts, **zero refusals**.
+
+---
+
+## OQA-3ARM: THE RESULT, and a defect in my own instrumentation that cost two epochs
+
+**The chain completed: 66273855 through 66273864, all COMPLETED.** The result below is what the artifacts say,
+with the part that is sound separated from the part that is not.
+
+### The gate decisions, per arm per step
+
+| step / epoch | arm A Original | arm B Action Contracts | arm C Action + Stages |
+|---|---|---|---|
+| 1 | reject 0.0417 | reject 0.1250 | reject 0.0833 |
+| 2 | reject 0.0833 | **accept_new_best 0.2083** | reject 0.0833 |
+| 3 | reject 0.0417 | reject 0.0417 | **skip_no_patches** |
+| 4 | **skip_no_patches** | **skip_no_patches** | **skip_no_patches** |
+| **best** | **S0, 0.1667** | **step 2, 0.2083** | **S0, 0.1667** |
+
+S0 is 4/24 = 0.1667 on the gate. Arm B's accepted skill is 3,601 characters from S0's 887, adding sections on
+committing to an answer once the operands are held, operands that are not in the local bulletins, repeating
+column blocks and year-only-on-first-row tables, and decomposing multi-hop questions.
+
+### `skip_no_patches` is a DEFECT IN MY LEDGER, not a property of the arms
+
+Four arm-epochs — **arm C epoch 3, and epoch 4 in all three arms** — made **ZERO optimizer calls**. 24 attempts
+were refused. The cause is mine:
+
+**The ledger enforces the cap on CLAIMED money and never released what a process did not spend.** Each process
+kept roughly one `per_call_reserve_usd` plus block rounding at exit. Across 13 processes:
+
+```
+optimizer   spent $2.1913   CLAIMED $4.0000 (the whole cap, 16 blocks of $0.25)   wasted $1.8087 = 45%
+target      spent $4.9441   CLAIMED $7.0000 of $8.00                              wasted $2.0559
+```
+
+Once the claims reached $4.00 every further optimizer attempt was refused — while the provider had been paid
+$2.19 of an authorized $4.00. The cap did its job on the wrong quantity. The actor was four blocks from the same
+fate.
+
+It also cost money for nothing: those four jobs ran their actor rollouts before the analyst was refused —
+**2,161 attempts and $1.4976 spent on rollouts whose analyst never ran.**
+
+### Therefore: what is sound and what is not
+
+* **Epochs 1 and 2 are complete and symmetric in all three arms**, with full optimizer access. This is the
+  comparison.
+* **Epoch 3 is asymmetric**: arms A and B ran it (both rejected), arm C did not.
+* **Epoch 4 is empty in every arm** — symmetric, and contributes nothing anywhere.
+
+### What the sound window supports, and it is not what the headline looks like
+
+Arm B is the only arm whose gate accepted anything. **That is not evidence that action contracts help.** The
+margin was 5/24 against 4/24 — ONE question — and `docs/research/OFFICEQA_GATE_RESOLUTION.md` works out what
+that instrument can decide:
+
+```
+P(a candidate exactly as good as S0 measures >= 5/24, i.e. is ACCEPTED)   = 0.371
+gate evaluations in the sound window (ordinary + slow update, all arms)   = 9
+expected acceptances IF EVERY CANDIDATE WERE MERELY AS GOOD AS S0         = 2.99
+observed acceptances                                                      = 1
+P(at most 1 acceptance | every candidate neutral)                         = 0.141
+```
+
+**The campaign produced FEWER acceptances than the null predicts.** One acceptance at a one-question margin out
+of nine evaluations is the modal kind of noise outcome, and the total is on the low side of chance. The
+supported conclusion is that **no feedback channel in this campaign produced edits the gate could distinguish
+from neutral**, and arm B's single acceptance does not separate it from arms A and C.
+
+### What DID differ between the arms
+
+The arms' edits are genuinely different documents, which is the thing the design was meant to produce:
+epoch 1's three candidates were 4,174 / 4,652 / 4,420 characters from S0's 887, with different content. The
+feedback channels change what the optimizer writes. What they do not change, at this resolution, is whether the
+gate accepts it.
+
+### Everything that was supposed to be checked, checked
+
+| check | result |
+|---|---|
+| arm B carries no stage material | 24 of 24 reports, zero stage markers |
+| arm C contains arm B, epoch 1 | 24 of 24, line for line (both arms under M0) |
+| epoch 1 reports labelled in-sample | 24 of 24 per arm |
+| one starting contract model | 24 distinct trace digests per arm under the single M0 digest |
+| answer-key isolation | `boundary_audit` PASS on every report |
+| slow update pair counts | 10/10 sent in 6 of 9; trimmed to 8, 7 and 9 in the three draws that exceeded the limit; those three plus one more produced no guidance BECAUSE of the ledger, not the size |
+| guidance produced | epochs 2 and 3 where the optimizer was reachable: arm A 3,783 and 3,089 chars; arm B 4,523 and 3,566; arm C 3,683 |
+| contract evolution | ran for every epoch in both arms — it is offline, so the starvation did not touch it |
+
+**Arm C's reports no longer contain arm B's from epoch 2 onward, and that is correct**: from epoch 2 each
+contract arm evolves its OWN model from its OWN traces, so the action halves legitimately diverge. The
+containment invariant is an epoch-1 property, where both arms run under M0 on identical traces. My first audit
+flagged the divergence as a failure; the audit was wrong, not the campaign.
+
+### What is recoverable, and what it would cost
+
+Every expensive thing the starved epochs needed is already on disk: the 24-question training rollout and both
+10-question slow-update rollouts for all four. What is missing is only the optimizer calls that were refused
+and the gate passes for the candidates they would have produced.
+
+```
+per starved arm-epoch   48 question-rollouts (two gate passes) = $0.31 actor  +  ~9 calls = $0.33 optimizer
+four of them                                                     $1.26 actor  +  $1.32 optimizer
+remaining authorization                                           $3.06 actor  +  $1.81 optimizer
+after completing them                                             $1.80 actor  +  $0.49 optimizer
+held-out, per distinct skill                                      $0.39 actor  +  $0    optimizer
+```
+
+So completing all four AND the held-out evaluation fits inside the authorization already granted. It needs the
+user's decision, because it spends about $2.60 more of their money and it means resetting each arm's
+`runtime_state.json` to re-run a step the record currently shows as `skip_no_patches`.

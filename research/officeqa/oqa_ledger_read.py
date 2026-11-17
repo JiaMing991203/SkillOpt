@@ -32,6 +32,21 @@ def read(ledger: str) -> dict:
         if m:
             key = (m.group(2), m.group(3))
             claimed[key] = claimed.get(key, 0) + int(m.group(4))
+    # Releases: what processes handed back when they exited cleanly. The cap is enforced on the NET claim, so
+    # an audit that ignored these would overstate how much of the authorization is gone - which is exactly the
+    # confusion that made the three-arm campaign's starvation hard to see from the totals.
+    released: dict[tuple[str, str], int] = {}
+    try:
+        release_names = os.listdir(os.path.join(ledger, "release"))
+    except OSError:
+        release_names = []
+    for name in release_names:
+        m = CLAIM.match(name)
+        if m:
+            key = (m.group(2), m.group(3))
+            released[key] = released.get(key, 0) + int(m.group(4))
+    for key, amount in released.items():
+        claimed[key] = claimed.get(key, 0) - amount
 
     roles: dict[str, dict] = {}
     owners: dict[str, dict] = {}
@@ -95,11 +110,21 @@ def read(ledger: str) -> dict:
         if cap and r["usd"] > cap["usd"]:
             problems.append(f"{role}: ${r['usd']:.4f} exceeds the authorized ${cap['usd']:.2f}")
         if r["usd"] > got_u + 1e-9:
-            problems.append(f"{role}: ${r['usd']:.4f} spent against ${got_u:.4f} claimed")
+            problems.append(f"{role}: ${r['usd']:.4f} spent against ${got_u:.4f} claimed net of releases")
+        # The failure mode that starved four arm-epochs: the NET claim reaches the cap while real spend is far
+        # below it, so every further attempt is refused with money still authorized.
+        if cap and got_u >= cap["usd"] - 1e-9 and r["usd"] < cap["usd"] * 0.9:
+            problems.append(
+                f"{role}: the net claim has reached the ${cap['usd']:.2f} cap while only ${r['usd']:.4f} has "
+                f"been spent - ${got_u - r['usd']:.4f} is claimed-but-unspent and unreachable. Further "
+                f"attempts will be REFUSED with money still authorized.")
     return {
         "ledger": os.path.abspath(ledger),
         "read_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
-        "claimed": {f"{k[0]}/{k[1]}": (v / 1e6 if k[1] == "usdmicro" else v) for k, v in sorted(claimed.items())},
+        "claimed_net_of_releases": {f"{k[0]}/{k[1]}": (v / 1e6 if k[1] == "usdmicro" else v)
+                                    for k, v in sorted(claimed.items())},
+        "released": {f"{k[0]}/{k[1]}": (v / 1e6 if k[1] == "usdmicro" else v)
+                     for k, v in sorted(released.items())},
         "authorized": CAPS,
         "observed": roles,
         "rates": rates,

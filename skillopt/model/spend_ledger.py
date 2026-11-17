@@ -21,8 +21,19 @@ WHAT IT GUARANTEES, and how.
   rewritten, which is what makes this safe on NFS.
 
   Restarts. Claims and the per-attempt record are files. A restarted process re-reads the directory and sees
-  every block its predecessor took, so a requeue cannot reset the counter. The unused remainder of a dead
-  process's block is LOST rather than recycled - the conservative direction, and the reason blocks are small.
+  every block its predecessor took, so a requeue cannot reset the counter.
+
+  Releasing what was not used. A process that exits cleanly RELEASES its unused claim, by writing a record in
+  `release/` that `_granted` subtracts. A process that dies without releasing keeps its claim, which is the
+  conservative direction.
+
+  WHY THE RELEASE EXISTS, recorded because its absence cost a campaign. The first version never released, so
+  every process kept the headroom it was holding at exit - about one `per_call_reserve_usd` each, plus block
+  rounding. Over the three-arm campaign's 13 processes that claimed the ENTIRE $4.00 optimizer authorization
+  while actually spending $2.19: 45 per cent of the money was claimed-but-unspent and unreachable. Once the
+  claims reached the cap the ledger refused every further attempt, exactly as designed, and the last four
+  arm-epochs made NO optimizer call at all - 24 refusals - while the provider had been paid $2.19 of an
+  authorized $4.00. The cap did its job on the wrong quantity.
 
   Money. A call's cost is known only after it returns, so the USD cap is enforced by requiring headroom of
   ``per_call_reserve_usd`` before each attempt. A call that costs more than its reserve is honoured and recorded
@@ -61,9 +72,12 @@ ROLES = ("target", "optimizer")
 
 _DEFAULT_RESERVE_USD = {"target": 0.02, "optimizer": 0.15}
 _DEFAULT_BLOCK_ATTEMPTS = {"target": 50, "optimizer": 4}
-_DEFAULT_BLOCK_USD = {"target": 0.25, "optimizer": 0.30}
+# Waste is bounded by one block plus one reserve per process, so a block must be SMALL
+# against the cap. $0.25 against a $4.00 optimizer cap is 6 per cent per process.
+_DEFAULT_BLOCK_USD = {"target": 0.05, "optimizer": 0.05}
 
 _CLAIM_NAME = re.compile(r"^(\d{6})-(target|optimizer)-(attempts|usdmicro)-(\d+)\.json$")
+_RELEASE_NAME = _CLAIM_NAME
 
 _lock = threading.Lock()
 _state: dict[str, dict] = {}
@@ -154,6 +168,10 @@ def _claims_dir() -> str:
     return os.path.join(directory(), "claims")
 
 
+def _release_dir() -> str:
+    return os.path.join(directory(), "release")
+
+
 def _owner_token() -> str:
     global _owner
     if not _owner:
@@ -180,6 +198,17 @@ def _granted() -> dict[tuple[str, str], int]:
             continue
         key = (m.group(2), m.group(3))
         totals[key] = totals.get(key, 0) + int(m.group(4))
+    # Subtract what processes gave back when they exited cleanly.
+    try:
+        released = os.listdir(_release_dir())
+    except OSError:
+        released = []
+    for name in released:
+        m = _RELEASE_NAME.match(name)
+        if not m:
+            continue
+        key = (m.group(2), m.group(3))
+        totals[key] = totals.get(key, 0) - int(m.group(4))
     return totals
 
 
@@ -210,6 +239,13 @@ def _grant(role: str, resource: str, amount: int, cap_amount: int, note: str) ->
             m = _CLAIM_NAME.match(name)
             if m and (m.group(2), m.group(3)) == (role, resource):
                 granted += int(m.group(4))
+        try:
+            for name in os.listdir(_release_dir()):
+                m = _RELEASE_NAME.match(name)
+                if m and (m.group(2), m.group(3)) == (role, resource):
+                    granted -= int(m.group(4))
+        except OSError:
+            pass
         room = cap_amount - granted
         if room <= 0:
             return 0
@@ -257,7 +293,7 @@ def _init(role: str) -> dict:
     if st is not None:
         return st
     root = directory()
-    for sub in ("claims", "spend"):
+    for sub in ("claims", "spend", "release"):
         try:
             os.makedirs(os.path.join(root, sub), exist_ok=True)
         except OSError as exc:
@@ -266,6 +302,7 @@ def _init(role: str) -> dict:
     st = {"cfg": cfg, "claimed_attempts": 0, "used_attempts": 0,
           "claimed_usdmicro": 0, "used_usdmicro": 0, "reserve_exceeded": 0}
     _state[role] = st
+    _install_atexit()
     _record({"schema": SCHEMA, "kind": "open", "role": role, "owner": _owner_token(),
              "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
              "slurm_job": os.environ.get("SLURM_JOB_ID", ""),
@@ -359,6 +396,77 @@ def record_usage(role: str, stage: str, prompt_tokens: int, completion_tokens: i
                  "reserve_exceeded": bool(over),
                  "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()})
     return usd
+
+
+def release(reason: str = "clean exit") -> dict:
+    """Give back what this process claimed and did not spend, so another process can have it.
+
+    Called from an `atexit` hook, and safe to call twice. The release never exceeds `claimed - used`, so the
+    invariant `spent <= claimed - released <= cap` still holds; and `claimed` is reset to `used` in this
+    process's state, so if it somehow keeps going it will claim afresh rather than spend what it gave back.
+
+    A process that dies without reaching this keeps its claim. That is the conservative direction and it is
+    why a claim BLOCK must be small against the cap, not merely small in absolute terms.
+    """
+    if not active():
+        return {"active": False}
+    given: dict = {}
+    with _lock:
+        for role, st in list(_state.items()):
+            for resource, used_key, claimed_key in (("attempts", "used_attempts", "claimed_attempts"),
+                                                    ("usdmicro", "used_usdmicro", "claimed_usdmicro")):
+                unused = int(st.get(claimed_key, 0)) - int(st.get(used_key, 0))
+                if unused <= 0:
+                    continue
+                try:
+                    _write_release(role, resource, unused, reason)
+                except Exception as exc:  # noqa: BLE001 - a release must never fail a finishing process
+                    given[f"{role}/{resource}"] = f"error: {type(exc).__name__}"
+                    continue
+                st[claimed_key] = st[used_key]
+                given[f"{role}/{resource}"] = unused
+        if given:
+            try:
+                _record({"schema": SCHEMA, "kind": "release", "owner": _owner_token(), "reason": reason,
+                         "given_back": given,
+                         "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+            except Exception:  # noqa: BLE001
+                pass
+    return {"active": True, "given_back": given}
+
+
+def _write_release(role: str, resource: str, amount: int, reason: str) -> None:
+    """Write one release record. Same atomic-sequence scheme as a claim, in its own directory."""
+    rel = _release_dir()
+    os.makedirs(rel, exist_ok=True)
+    for _ in range(500):
+        names = os.listdir(rel)
+        seq = _next_seq(names)
+        path = os.path.join(rel, f"{seq:06d}-{role}-{resource}-{amount}.json")
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"schema": SCHEMA, "kind": "release", "seq": seq, "role": role, "resource": resource,
+                       "amount": amount, "owner": _owner_token(), "reason": reason,
+                       "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()}, f, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
+        return
+    raise LedgerUnusable(f"could not allocate a release sequence in {rel} after 500 tries")
+
+
+_atexit_installed = False
+
+
+def _install_atexit() -> None:
+    global _atexit_installed
+    if _atexit_installed:
+        return
+    import atexit
+    atexit.register(release, "atexit")
+    _atexit_installed = True
 
 
 def snapshot() -> dict:

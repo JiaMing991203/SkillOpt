@@ -622,3 +622,94 @@ def test_a_failed_module_load_leaves_nothing_half_built(monkeypatch, tmp_path):
     assert reports._LC_CACHE is None, "a failed load must not be cached"
     for name in reports._LC_NAMES:
         sys.modules.pop(name, None)
+
+
+# ── the claim-granularity defect that starved four arm-epochs ─────────────────
+
+def test_a_process_that_exits_cleanly_gives_back_what_it_did_not_spend(tmp_path, monkeypatch):
+    """The defect this guards against cost the three-arm campaign its last four arm-epochs.
+
+    The ledger enforces the cap on CLAIMED money. The first version never released, so every process kept the
+    headroom it held at exit - about one per-call reserve each, plus block rounding. Over 13 processes that
+    claimed the whole $4.00 optimizer authorization while spending $2.19: 45% of the money was
+    claimed-but-unspent and unreachable, and once claims hit the cap the ledger refused all 24 further
+    attempts. The cap did its job on the wrong quantity.
+    """
+    env = _env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02)
+    _apply(env, monkeypatch)
+    LEDGER.reserve("target", "test")
+    LEDGER.record_usage("target", "test", 100_000, 0)          # $0.004
+    before = LEDGER._granted()
+    claimed_before = before[("target", "usdmicro")]
+    assert claimed_before > 4_000, "the process should be holding more than it spent"
+
+    given = LEDGER.release("test")
+    assert given["given_back"], "something should have been given back"
+    after = LEDGER._granted()[("target", "usdmicro")]
+    assert after < claimed_before, "the net claim must fall when a process releases"
+    # The invariant: net claims still cover what was actually spent.
+    assert after >= 4_000
+
+
+def test_the_released_headroom_is_available_to_another_process(tmp_path, monkeypatch):
+    """The point of the release: the next arm-epoch can claim what the last one handed back."""
+    env = _env(str(tmp_path), attempts=1000, usd=0.20, block_usd=0.05, reserve=0.02)
+    _apply(env, monkeypatch)
+
+    def one_process(release_at_end: bool, attempts: int = 5) -> int:
+        """A short-lived process: a few cheap attempts, then exit - the shape of one arm-epoch job."""
+        LEDGER._state.clear()
+        used = 0
+        for _ in range(attempts):
+            try:
+                LEDGER.reserve("target", "test")
+            except LEDGER.BudgetExhausted:
+                break
+            used += 1
+            LEDGER.record_usage("target", "test", 25_000, 0)    # $0.001 per attempt
+        if release_at_end:
+            LEDGER.release("end of process")
+        return used
+
+    # Six processes spending $0.005 each come to $0.03 against a $0.20 cap, so the MONEY is never the
+    # constraint. What can starve them is claim granularity: each holds a $0.05 block plus a $0.02 reserve at
+    # exit, so without the release the fourth process onwards finds the cap fully claimed.
+    with_release = []
+    for i in range(6):
+        LEDGER._owner = f"keep{i}"
+        with_release.append(one_process(True))
+    assert all(r == 5 for r in with_release), \
+        f"a later process was starved despite released headroom: {with_release}"
+    observed = LEDGER.observed()["by_role"]["target"]
+    assert observed["usd"] <= 0.20 + 1e-9, "the cap must still hold"
+    assert observed["usd"] == pytest.approx(0.030, abs=1e-6)
+
+    # The counterfactual, on a fresh ledger: the same six processes WITHOUT releasing.
+    fresh = tmp_path / "norelease"
+    fresh.mkdir()
+    _apply(_env(str(fresh), attempts=1000, usd=0.20, block_usd=0.05, reserve=0.02), monkeypatch)
+    without = []
+    for i in range(6):
+        LEDGER._owner = f"drop{i}"
+        without.append(one_process(False))
+    assert without[-1] == 0, (
+        f"the no-release case should starve a later process, which is the defect being fixed: {without}")
+    assert sum(without) < sum(with_release), (
+        f"releasing must let more real work through: {without} vs {with_release}")
+
+
+def test_releasing_twice_cannot_hand_back_the_same_money(tmp_path, monkeypatch):
+    _apply(_env(str(tmp_path), attempts=1000, usd=1.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    LEDGER.reserve("target", "test")
+    LEDGER.record_usage("target", "test", 100_000, 0)
+    first = LEDGER.release("first")
+    net_after_first = LEDGER._granted()[("target", "usdmicro")]
+    second = LEDGER.release("second")
+    assert not second["given_back"], "a second release must hand back nothing"
+    assert LEDGER._granted()[("target", "usdmicro")] == net_after_first
+
+
+def test_a_usd_block_must_be_small_against_the_cap():
+    """The defect was not that the block existed but that it was LARGE relative to the authorization."""
+    for role, block in LEDGER._DEFAULT_BLOCK_USD.items():
+        assert block <= 0.05, f"{role}: a {block} block against a single-digit cap wastes too much per process"
