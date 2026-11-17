@@ -1187,3 +1187,35 @@ to the report and 1 of 8 gained a misleading one** (`docs/research/OFFICEQA_REPO
 stands; this campaign tests it at scale and does not presuppose the answer. Nothing here is Lean-verified: the
 Lean artifact compiled (job 66259448, all 64 statements, Lean 4.20.0) and the reports rest on the Python
 extractor. FP8 makes this a new baseline, so the A40 pilot's S0 does not transfer.
+
+### Epoch 1 result (all three arms), 2026-11-17
+
+S0 on this endpoint: training `hard` **0.125** (3/24); the gate's baseline on the 24 validation questions,
+`hard` **0.1667** (4/24). The baseline is SHARED - all three arms were given the same 24 training traces and the
+same validation baseline, so none of them re-measured it.
+
+| arm | candidate `hard` on the selection set | gate | epoch wall |
+|---|---|---|---|
+| A Original SkillOpt | 0.0417 (1/24) | **REJECT** | 629 s |
+| B Action Contracts Only | 0.1250 (3/24) | **REJECT** | 733 s |
+| C Action Contracts + Stages | 0.0833 (2/24) | **REJECT** | 962 s |
+
+**All three candidates were rejected, so all three arms' `best_skill.md` is S0 at 0.1667.** The gate requires
+STRICT improvement, so a candidate needed 5 of 24. Every arm's edit made the skill worse than the starting
+skill, not better.
+
+Read with care. The candidate scores do differ (A 0.0417 < C 0.0833 < B 0.1250) but all three are BELOW the
+baseline, so this is not evidence that one feedback channel produces better edits - it is one epoch, and the
+ordering among three sub-baseline candidates on a 24-question set where one question is 4.2 percentage points
+is not a signal. What it does say is that on OfficeQA, with this actor, the optimizer's first edit is harmful in
+every condition.
+
+**If that pattern holds through all four epochs**, the primary comparison will be three arms that all retained
+S0 - a legitimate negative result about SkillOpt on this benchmark, but one that cannot distinguish the arms,
+because an arm that never accepts an edit never exercises the difference between the feedback channels. The A40
+two-arm run ended the same way (all four candidates rejected, both final skills byte-identical to S0).
+
+**Report checks on the live run, all 24 items per arm:** arm B carries ZERO stage markers; arm C carries stage
+material on all 24 and **contains arm B's report line for line on 24 of 24**; both arms show 24 distinct trace
+digests under the single model digest `8d8ecceecd0b7753` (M0); all 24 reports per arm carry the IN-SAMPLE notice;
+`boundary_audit` PASS on every one. Arm B's reports average 4,438 characters and arm C's 6,095.
