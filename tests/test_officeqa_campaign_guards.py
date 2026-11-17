@@ -1553,3 +1553,52 @@ def test_prepare_moves_aside_a_later_epochs_model(tmp_path):
         assert os.path.exists(os.path.join(
             str(tmp_path), rec["archive"], "contracts", "arm_C",
             f"model_armC_epoch{e:02d}.json.superseded")), "and preserved in the archive"
+
+
+def test_the_rewind_takes_the_incumbent_from_an_accepted_slow_update(tmp_path):
+    """An epoch does not end with its ordinary step: the gated slow update runs after it and can accept.
+
+    If it did, the step record's current_score is stale, and rewinding to it would hand the recovered gate
+    the wrong incumbent to beat. Every slow gate in this campaign rejected, so nothing actually moves - this
+    test exists because a tool that is accidentally right is not right.
+    """
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    with open(os.path.join(arm, "slow_update/epoch_01/slow_result.json"), "w", encoding="utf-8") as f:
+        json.dump({"action": "accept_new_best", "selection_hard": 0.2917,
+                   "slow_update_content": "x"}, f)
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    state = json.load(open(os.path.join(arm, "runtime_state.json")))
+    assert state["current_score"] == 0.2917, "the incumbent must come from the accepted slow update"
+    assert state["best_score"] == 0.2917 and state["best_step"] == 1
+    assert state["current_origin"] == "slow_update_epoch_01"
+
+
+def test_the_rewind_refuses_when_an_accepted_slow_update_records_no_score(tmp_path):
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    with open(os.path.join(arm, "slow_update/epoch_01/slow_result.json"), "w", encoding="utf-8") as f:
+        json.dump({"action": "accept", "slow_update_content": "x"}, f)
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=False, stamp="TEST")
+    assert rec["refused"], "an incumbent it cannot determine must stop the rewind, not be guessed"
+
+
+def test_the_rewind_uses_the_step_record_when_the_slow_update_rejected(tmp_path):
+    """The actual campaign case, stated so the general path above cannot silently change it."""
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    arm = os.path.join(str(tmp_path), "arm_A")
+    with open(os.path.join(arm, "slow_update/epoch_01/slow_result.json"), "w", encoding="utf-8") as f:
+        json.dump({"action": "reject", "selection_hard": 0.0417, "slow_update_content": "x"}, f)
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    state = json.load(open(os.path.join(arm, "runtime_state.json")))
+    assert state["current_score"] == 0.1667, "a rejected slow update must not move the incumbent"
+    assert state["current_origin"] == "initial_skill"

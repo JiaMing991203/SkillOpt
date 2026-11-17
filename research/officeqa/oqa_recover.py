@@ -551,6 +551,12 @@ def prepare(campaign: str, plan_doc: dict, *, apply: bool, stamp: str) -> dict:
         rs_path = os.path.join(arm_root, "runtime_state.json")
         prev = start - 1
         prev_rec = _load(os.path.join(arm_root, "steps", f"step_{prev:04d}", "step_record.json"), {}) or {}
+        # The state at the START of epoch `start` is the state after epoch `prev` COMPLETED, and an epoch
+        # does not end with its ordinary step: the gated slow update runs after it and can accept. So the
+        # step record is only the right source when that slow update did NOT accept. Taking it on faith
+        # would hand the recovered gate the wrong incumbent to beat - which is the one thing a gate must
+        # not get wrong. Every slow gate in this campaign rejected, so in fact nothing moves; the
+        # reconstruction is here because a tool that is accidentally right is not right.
         rewound = {
             "last_completed_step": prev,
             "current_skill_path": os.path.join(arm_root, "skills", f"skill_v{prev:04d}.md"),
@@ -561,9 +567,28 @@ def prepare(campaign: str, plan_doc: dict, *, apply: bool, stamp: str) -> dict:
             "current_origin": prev_rec.get("current_origin"),
             "best_origin": prev_rec.get("best_origin"),
         }
+        prev_slow = _load(os.path.join(arm_root, "slow_update", f"epoch_{prev:02d}",
+                                       "slow_result.json"), {}) or {}
+        slow_note = "the previous epoch's slow update did not move the state"
+        if prev_slow.get("action") in ("accept", "accept_new_best"):
+            sel = prev_slow.get("selection_hard")
+            if sel is None:
+                rewound["current_score"] = None      # forces a refusal below
+                slow_note = (f"epoch {prev}'s slow update ACCEPTED but records no selection_hard, so the "
+                             f"incumbent at the start of epoch {start} cannot be determined")
+            else:
+                rewound["current_score"] = sel
+                rewound["current_origin"] = f"slow_update_epoch_{prev:02d}"
+                if prev_slow["action"] == "accept_new_best":
+                    rewound["best_score"] = sel
+                    rewound["best_step"] = prev
+                    rewound["best_origin"] = f"slow_update_epoch_{prev:02d}"
+                slow_note = (f"epoch {prev}'s slow update was {prev_slow['action']} at {sel}, so the "
+                             f"incumbent comes from it and not from the step record")
         missing = [k for k, v in rewound.items() if v is None]
         act = {"arm": arm, "action": "rewind runtime_state", "path": "runtime_state.json",
-               "from": _load(rs_path, {}), "to": rewound, "fields_not_recoverable": missing}
+               "from": _load(rs_path, {}), "to": rewound, "fields_not_recoverable": missing,
+               "previous_epoch_slow_update": prev_slow.get("action"), "note": slow_note}
         if missing:
             act["status"] = "REFUSED: step_%04d/step_record.json does not carry %s" % (prev, missing)
         elif apply:
