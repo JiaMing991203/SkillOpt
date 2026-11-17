@@ -1,8 +1,8 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-16 22:45 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-17 00:34 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
-**Nothing is running or queued. 0 GPUs held.** Both arms and the held-out evaluation are COMPLETE.
+**Nothing is running or queued. 0 GPUs held.** The A40 two-arm comparison, the held-out evaluation, the learned-contract port, the Lean compile (job 66259448) and the hosted-actor smoke test (job 66264849) are all COMPLETE. **The next step is the full-scale four-epoch comparison, which needs its own budget - see section A0-NEXT.**
 **The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
 `docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`. Correcting the eight stale reports changes the diagnosis for
 5 of 8 items but NOT the advice, so **no replay was run**; its exact cost is scoped in section 6 of that
@@ -28,7 +28,55 @@ of job 66234927 remains deliberately UNREAD/SEALED.**
 
 ---
 
-## A-API. NEXT: OfficeQA on a HOSTED ACTOR (user, 2026-11-16) -> `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`
+## A0-NEXT. THE FULL-SCALE RUN (user will instruct after this compaction). DO NOT START BEFORE THEY DO.
+
+**Everything is built, tested and measured. What is missing is a budget.** Read
+`docs/research/OFFICEQA_API_COMPARISON_PLAN.md` section 4, not a paraphrase.
+
+**ASK THE USER FOR, OR CONFIRM, THESE ALLOWANCES** (the old OQA-5 allowance has **8 DeepSeek calls** left and
+**no CPU or actor budget**; the Lean grant and the smoke-test grant are both spent):
+
+| resource | request | measured basis |
+|---|---|---|
+| CPU job time | **8 job-hours**, <=4 concurrent, each **<=60 min**, 2 CPUs + 8 GB | ~2 h wall at 2 CPUs ~= 4 CPU-h; 8 covers one retry per job |
+| GPUs | **0** | the actor is remote, the tools are local |
+| actor HTTP attempts | **4,000** | 20 attempts / 3 questions at a 12-turn cap; A40 at 24 turns averaged 11.7/question; 264 question-rollouts ~= 3,100 + retries |
+| actor charges | **$2.50** | measured $0.00112/question at 12 turns, ~$0.003 at 24 -> ~$0.80 total. **No prefix caching exists**, so the cached rate is NOT assumed |
+| DeepSeek calls | **56** | A40 used 4/epoch/arm; 4 epochs x 2 arms = 32, + ranking calls -> up to 48 |
+| DeepSeek charges | **$1.50** | measured $0.009/call -> ~$0.50 at 56; prompts grow over 4 epochs |
+
+**RUNTIME: ~2 hours, and the 50 RPM ACCOUNT LIMIT is the binding constraint, not latency.** 3,100 requests / 50
+RPM = 62 min floor; 44 min latency-bound at the measured 3.41 s median with `workers: 4`. Split into ~10 jobs of
+**<=60 min** (one per arm-epoch) and rely on resume: tonight's queue measurement showed <=60 min requests waiting
+6-72 min while a 90-min request waited 4h23m.
+
+**USE THE JOB SHAPE THAT WORKS - do not rediscover it.** `research/cluster/oqa_api_body.sh`, invoked as
+`sbatch --wrap="bash <bundle>/oqa_api_body.sh" --chdir=<bundle> --export=ALL,OQA_BUNDLE=<bundle>`, working in a
+**node-local /tmp**. A script submitted directly as the sbatch batch file from `/nfs/turbo` was killed by
+**NODE_FAIL at 60 s, four times each, on eight different nodes**; `--no-requeue` did NOT stop it. **The attempt
+ledger is per-process, so a requeue respends the authorized attempts** - keep jobs short and check
+`SLURM_RESTART_COUNT` in the log before trusting any ledger total.
+
+**Deployment:** `research/deploy.sh` refuses a commit that is not on `origin`, and **pushing has not been
+authorized**. Both the Lean job and the smoke test ran from a `git archive HEAD` **staging bundle** with a
+sha256 manifest verified in-job. Either ask for a push, or reuse the bundle route (the bundle dir on the cluster
+is `$PROJECT_ROOT/oqa_api_smoke_bundle_20261116`, and `settings.env` there is private and already correct).
+
+**THREE DECISIONS STILL OPEN before the comparison runs** (plan doc 4.5):
+1. **FP8 makes this a NEW baseline.** Same weights as the A40 (`Qwen/Qwen3.5-4B`), different numerics (FP8 + FP8
+   KV vs bfloat16). S0 must be re-measured on this actor; the A40's 5/12 does not transfer. Symmetric across arms.
+2. **Four epochs still gives NO cross-epoch memory.** `step_buffer` is declared inside the epoch loop and
+   `steps_per_epoch` is 1, so epoch n never sees epoch n-1's rejected edits. Four epochs = four independent
+   attempts. The restructure that would fix it is one epoch of four steps - still an open decision from the A40 run.
+3. **Arm B's frozen model (v7) has a known counterexample** on the confirmation collection
+   (`read.effect.1 = width_uniform` at UID0028@42). Defensible to freeze, but record it.
+
+**READY AND VERIFIED (do not redo):** the config (`configs/research/officeqa_api.yaml`, one file for both arms);
+the smoke driver with hard attempt/USD caps; the treatment arm wired to the compiled prototype with
+trace+model-version provenance (24 saved-trace reports PASS, stale-attempt and wrong-model reports FAIL); the
+two-attempt live probe; 2032 local tests passing.
+
+## A-API. DONE: OfficeQA on a HOSTED ACTOR - smoke test PASSED (user, 2026-11-16) -> `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`
 
 **SMOKE TEST RAN AND PASSED. The API is viable.** Job **66264849**, COMPLETED exit 0, 68.4 s, 20 attempts,
 **0 errors, 0 malformed replies, 0 retries**, **$0.0034 of the authorized $0.50**, **zero GPUs**.

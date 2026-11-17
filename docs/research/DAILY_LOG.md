@@ -598,3 +598,79 @@ assumption contradicted 10 more times in UID0014.
 User decisions: compile the Lean file (needs the CPU job above); approve the guarded-`effect` extension; spend
 1-2 of the 8 remaining DeepSeek calls on one learner round to test whether a paid learner proposes anything the
 deterministic proposer does not.
+
+## 2026-11-16/17 (OfficeQA worktree, branch `officeqa-contracts`)
+
+### Compiled the ported Lean file on the cluster (job 66259448)
+USER-AUTHORIZED: 1 CPU core, 2 GB, <=15 min, 0 GPUs, 0 paid calls. **Lean 4.20.0 compiled all 64 statements,
+rc 0, zero compiler output, zero warnings, zero `sorry`** (23 in `section General` + 2 `rfl` bridges + 39 over
+the exported evidence), 4.24 s in `lean`. The file's digest is identical at six links - recorded locally before
+submission, reproduced twice by the generator at `47c6ed8`, committed at `87b9ad6` with a manifest, verified by
+the job's own manifest check, logged by the job, and in the copy fed to `lean`:
+`e40a7e62faed92ffdc53093b4937f8eb6b655ba5eabda14d7036444c0b9eecbb`.
+
+**NOT established: the axiom set.** `#print axioms` was deliberately not added, because changing the file would
+break the digest guarantee. Zero warnings does rule out `sorry`, since Lean warns on every one.
+
+An earlier submission (66259421) failed in 1 s before `lean` ran: Slurm copies a batch script into the node
+spool, so `${BASH_SOURCE[0]}` pointed there instead of at the bundle. Fixed with `$SLURM_SUBMIT_DIR`.
+
+The toolchain is **Lean 4.20.0** under the project's own `elan` directory on cluster storage, registered as
+`OQA_LEAN_BIN` in the private site settings. The learned-contract state note records "Lean 4.35.0"; no such
+toolchain exists there now. Nothing was pushed - `deploy.sh` refuses an unpushed commit, so the job ran from a
+read-only staging bundle.
+
+### Switched the planned comparison to a hosted actor, and ran the authorized smoke test (job 66264849)
+Full record: `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`. Artifacts:
+`~/dev/lean_skillopt/runs/20261117-officeqa-api-smoke-66264849/`.
+
+USER-AUTHORIZED: <=30 min CPU job time, 0 GPUs, <=100 EmpirioLabs HTTP attempts, <=$0.50 actor charges.
+**Spent: 23 of 100 attempts, $0.0034 of $0.50, ~3 min of CPU, 0 GPUs.**
+
+**Verified free, before spending anything:** `GET /v1/models/qwen3-5-4b` is unauthenticated and declares
+`function_calling`, `json_schema` structured output, 262144 context, 32768 max output, **FP8 weights + FP8 KV**,
+and `hugging_face_id` `Qwen/Qwen3.5-4B` - the same weights the A40 pilot served, different numerics.
+
+**Smoke test PASS.** 20 attempts, 0 errors, 0 malformed replies, 0 retries; 18 of 20 replies carried
+`tool_calls`; every argument set parsed as JSON; **18 tool calls executed against the documents with 0
+observation errors**; all 3 items took further turns after an observation. Latency min 1.63 / median 3.41 /
+max 7.04 s. 73,145 prompt + 6,251 completion tokens. **`cached_prompt_tokens` was 0 on every call**, so no
+prefix caching happens even though each turn re-sends an identical system prompt and oracle-page prefix.
+Accuracy, recorded separately and not the verdict: 1 of 3 answered.
+
+### Decisions and reasons
+- **Decision:** judge the smoke test on the tool loop and report accuracy separately, as instructed. Three
+  questions cannot measure accuracy, and the A40 run already put this skill at 5/12 on training.
+- **Decision:** select the three questions by a rule fixed before the run (`OQA-SMOKE-1`) - the first three
+  training items in the A40 shared-rollout order that requested at least one tool under S0. Requiring a tool
+  call is the point; an item answered from the supplied pages alone exercises none of the loop.
+- **Correction to an earlier claim of mine.** I reported that `EMPIRIOLABS_API_KEY` existed on neither machine.
+  It is at `/home/yaojm/.config/lean_skillopt/actor_api.env` on the cluster (mode 600, 79 characters). I had
+  searched `$HOME` dotfiles, guessed filenames and the turbo tree, and never looked in `~/.config`. The user
+  supplied the path.
+- **My own error cost four of five submissions.** I documented the "target_backend: openai_chat means AZURE"
+  trap in the plan and then did not guard it in the driver, which called `process_one` without configuring a
+  backend (job 66264701). The driver now configures both roles itself, and the ledger reports `never_sent` so a
+  client-side failure is not mistaken for spend.
+- **Infrastructure finding, recorded for the comparison:** a batch script submitted directly as the sbatch file
+  from `/nfs/turbo`, doing its work there, was killed by **NODE_FAIL at 60 s, four times each, on eight
+  different nodes** (66262999, 66263561) before Python ran. A control job with the same account, partition and
+  resources COMPLETED; one-factor controls (66264099-101, 66264256) showed reading the key from `~/.config`,
+  extracting the 576-file bundle and curling the endpoint from a compute node are each fine. Submitting via
+  `--wrap` with a **node-local /tmp** work dir fixed it - the same lesson the learned-contract line recorded in
+  job 65818719. **`--no-requeue` did not stop the requeue loop**, which matters because the attempt ledger is
+  per-process: a requeue after work begins would respend the authorized attempts with a fresh counter.
+- **`python -I` is isolated mode and ignores `PYTHONPATH`** (job 66264572). The driver now derives the repository
+  root from `__file__`.
+- **Treatment arm wired to the compiled prototype with provenance.** Arm B emits the obligation-form report under
+  a frozen model whose digest is verified first; the report-cache key now covers the **model version** as well as
+  the trace, because the same trace yields different bindings under a model that assumes `index_alignment` and one
+  that has dropped it. Verified on the saved A40 traces: 24 reports pass against their own attempts; epoch-1
+  reports checked against epoch-2 attempts FAIL; a report built under model v5 FAILs against v7.
+- **Budget revised DOWN from measured numbers:** 8 CPU job-hours (was 12) and $2.50 actor charges (was $4.00).
+  The **50 RPM account limit is the binding constraint on runtime, not latency**: 3,100 requests is a 62-minute
+  floor against 44 minutes latency-bound.
+
+### Next actions
+The user will instruct on the full-scale run after a compaction. The comparison needs its own budget (section 4.4
+of the plan); the old OfficeQA allowance has 8 DeepSeek calls left and no CPU or actor budget.

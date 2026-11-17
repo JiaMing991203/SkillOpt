@@ -1,112 +1,116 @@
 # OfficeQA handoff (latest)
 
-One copy-pasteable block. Written 2026-11-16 22:05 EST (from `date`).
+One copy-pasteable block. Written 2026-11-17 00:35 EST (from `date`).
 
 ```text
-OFFICEQA / LEARNED-CONTRACT PORT - HANDOFF 2026-11-16 22:05 EST
-Branch officeqa-contracts, worktree ~/dev/lean_skillopt/SkillOpt-officeqa, HEAD b530b9b (tree clean, NOT pushed).
+OFFICEQA - HANDOFF 2026-11-17 00:35 EST, prepared for a compaction
+Branch officeqa-contracts, worktree ~/dev/lean_skillopt/SkillOpt-officeqa.
+HEAD e624c2f (clean, NOT pushed). Nothing running or queued. 0 GPUs held.
+NEXT: the user will instruct on the FULL-SCALE RUN after the compaction. DO NOT START BEFORE THEY DO.
 
-STATUS: the full learned-contract loop RAN, offline. 0 GPU jobs, 0 CPU jobs, 0 paid API calls, 0 network.
-Nothing is running or queued; OfficeQA holds 0 GPUs. OQA-5 caps untouched: 6.23 of 8 A40-hours and 8 of 24
-DeepSeek calls still unused. Full record: docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md.
+=== WHAT IS DONE ===
+1. A40 two-arm comparison (Original SkillOpt vs + stage/action feedback): all four candidates REJECTED, both
+   arms' final skills byte-identical to S0. Spend 1.77/8 A40-h, 16/24 DeepSeek calls, $0.154/$1.
+2. Three offline audits: epoch-2 reports were stale (fixed, cache keyed to the trace); the report surfaced no
+   diagnosis a trace-only review missed (0 of 8 valid, 1 of 8 misleading); the report's problem is obligation
+   BOOKKEEPING, not rule content.
+3. Learned-contract port from the ALFWorld branch: the full loop ran offline - learn, freeze by digest, commit a
+   prediction, reveal, real counterexample, repair, recheck, independent confirmation, Lean, report, skill edit.
+   docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md
+4. Lean compile, job 66259448: Lean 4.20.0, ALL 64 statements, rc 0, 0 output, 0 warnings, 0 sorry, 4.24 s.
+   Axiom set NOT checked (adding #print axioms would break the digest guarantee).
+5. Hosted-actor switch + smoke test, job 66264849: TOOL LOOP PASS. See below.
 
-REFERENCE DESIGN: LEARNED_CONTRACT_DESIGN.md v0.1 + amendments A1-A4, in ~/dev/lean_skillopt/SkillOpt-learned-
-contract @ 4a9914a. No document labelled v0.2 exists; v0.1 as amended IS the agreed design. Digests recorded.
+=== SMOKE TEST RESULT (job 66264849, COMPLETED exit 0) ===
+2 CPUs / 8 GB / ZERO GPUs, elapsed 00:01:12 (68.4 s in the driver), commit 07d4bb5, skill 9d377d1c2906...
+  structured tool calls returned  TRUE   18 of 20 replies carried tool_calls
+  arguments usable                TRUE   every argument set parsed as JSON; 0 malformed
+  tools executed                  TRUE   18 tool calls run against the documents, 0 observation errors
+  results fed back                TRUE   all 3 items took further turns after an observation
+  attempts 20/87 | 0 errors | 0 retries | charges $0.003363/$0.50 | latency 1.63/3.41/7.04 s
+  tokens 73,145 prompt + 6,251 completion | cached_prompt_tokens 0 -> NO PREFIX CACHING EXISTS
+  0 run artifacts contain the key (checked on the cluster against the live value)
+ACCURACY, separate and NOT the verdict: 1 of 3 answered, hard [0,1,0].
+Authorization spend: 23 of 100 attempts, $0.0034 of $0.50, ~3 min of 30 min CPU, 0 GPUs.
 
-WHAT WAS REUSED (9 further reference files transferred, manifest entry 2; 15 total, none on an execution path)
-  direct, ~90%     ir.py            -> oqa_lc_ir      Kleene logic, validation, freeze-by-digest
-  direct machinery learn.py         -> oqa_lc_learn   the gate, assumption ops, auto-refutation
-  direct           replay.py        -> oqa_lc_replay  commit-before-reveal with a hash chain, scoring
-  semantics only   fact_ledger.py   -> oqa_lc_chain   fact kinds/statuses, obligation reopening (A4 3.1)
-  semantics only   stage_tracker.py -> oqa_lc_chain   stage requirements and their discharge
-  shape only       vocab.py         -> oqa_lc_vocab   OfficeQA verbs/atoms/assumptions are entirely new
-  direct harness   lean_gen/a4_lean -> oqa_lc_lean    run_lean, parse_results, the mirror discipline
-  NOT wired in     lc_llm.py                          no paid learner is needed for this milestone
-  ALFWorld-only    parse_command, the entity-typed atom set, TASK_FORMS, compose.py, stage_replay.py
+=== THE FULL-SCALE RUN NEEDS A BUDGET (the old OQA-5 has 8 DeepSeek calls left, no CPU, no actor budget) ===
+  CPU job time        8 job-hours, <=4 concurrent, each <=60 min, 2 CPUs + 8 GB
+  GPUs                0
+  Actor HTTP attempts 4,000
+  Actor charges       $2.50     (measured $0.00112/question at 12 turns, ~$0.003 at 24 -> ~$0.80 total)
+  DeepSeek calls      56
+  DeepSeek charges    $1.50
+RUNTIME ~2 h, and the 50 RPM ACCOUNT LIMIT is the binding constraint, not latency (3,100 requests = 62 min
+floor; 44 min latency-bound at 3.41 s median with workers=4). Split into ~10 jobs of <=60 min and use resume:
+measured queue behaviour was 6-72 min for <=60 min requests vs 4h23m for a 90-min request.
+Full rationale per line: docs/research/OFFICEQA_API_COMPARISON_PLAN.md section 4.4.
 
-WHAT CHANGED FOR OFFICEQA
-  * atoms are 0-ARY properties of ONE tool observation (there is no entity to bind, and no state persists)
-  * OfficeQA tools almost never fail informatively, so condition-based prediction is UNKNOWN at PRE BY
-    CONSTRUCTION and `effect` contracts carry all the content. Recorded, not worked around.
-  * NEW: cells bound to a column path, a period (month included) and a unit - the link oqa_check lacked
-  * NEW: obligations with a RESOLUTION (DISCHARGED / VIOLATED / OUTSTANDING / UNKNOWN) plus a witness
-  * deviations, each deliberate: TEMPLATES not exhaustive enumeration; MIN_ITEMS=2; assumption_recheck added;
-    mech_repair targets REFUTED contracts (a proposer looking at active ones never fires)
+=== USE THE JOB SHAPE THAT WORKS - DO NOT REDISCOVER IT ===
+research/cluster/oqa_api_body.sh, invoked as
+  sbatch --wrap="bash <bundle>/oqa_api_body.sh" --chdir=<bundle> --export=ALL,OQA_BUNDLE=<bundle>
+working in a NODE-LOCAL /tmp. A script submitted directly as the sbatch batch file from /nfs/turbo was killed by
+NODE_FAIL at 60 s, FOUR TIMES EACH, on EIGHT different nodes (66262999, 66263561) before Python ran, while a
+control job with identical account/partition/resources COMPLETED. --no-requeue did NOT stop it.
+THE ATTEMPT LEDGER IS PER-PROCESS: a requeue respends the authorized attempts with a fresh counter. Keep jobs
+short and check SLURM_RESTART_COUNT in the log before trusting any ledger total.
 
-THE LOOP (12 shared epoch-1 attempts, in the order results.jsonl recorded them - not a curriculum I chose)
-  round 0 UID0033  5 assumptions adopted; nothing in the evidence contradicted any of them
-  round 3 UID0031  grep.effect.2 = not cap_reached auto-refuted (@28 hit the 20-line cap) and retired
-  round 6 UID0026  frozen v5 committed "index merge will agree"; the read at s44 REFUTED it in 12 places
-                   -> index_alignment DROPPED; affected bindings reopen to UNKNOWN, never to violations
-  round 8 UID0028  year_inheritance dropped (Table AY-1's first row is "Jan." with no year in the table)
-  final  v7        3 active contracts: read width_uniform, grep pattern_in_every_line, read sub_row_aligned
-  dev replay totals 67 forecasts confirmed / 5 violated / 123 unresolved over 11 replayed attempts
-  CONFIRMATION (arm B epoch 2, same 12 items, never seen by the repair): 82 confirmed / 1 violated / 71
-                   unresolved; index_alignment contradicted 10 MORE times in UID0014
+=== DEPLOYMENT: NOTHING HAS BEEN PUSHED ===
+research/deploy.sh refuses a commit not on origin, and pushing was never authorized. Both the Lean job and the
+smoke test ran from a `git archive HEAD` STAGING BUNDLE with a sha256 manifest verified in-job. Either ask for a
+push, or reuse the bundle route: the cluster bundle dir is $PROJECT_ROOT/oqa_api_smoke_bundle_20261116, and the
+private settings.env there is already correct (keys: OQA_PY, OQA_SPLIT_DIR, OQA_DOCS_DIR, ACTOR_ENV_FILE,
+OQA_API_MAX_ATTEMPTS, OQA_API_USD_CAP, OQA_API_MAX_TOOL_TURNS).
 
-REGRESSION CASE - the known false warning about an already-completed conversion (UID0014, epoch-2 trace)
-  old C report:       scale_conversion_missing x29, every one "No conversion step appears"
-  obligation form:    13 DISCHARGED, 23 VIOLATED, 8 OUTSTANDING
-  the 13 discharges:  "step 1 converts it with the correct factor: 1,004,461 (in millions) = $1,004.461 billion"
-  the 23 violations:  thousands->billions applied with 1e-3 where 1e-6 is required - 14 regression inputs are
-                      1,000x too large. Verified by hand. Neither P nor the old C report found this.
-  plain report P on the same trace: one category, no_matches, and nothing about units.
-  SKILL-EDIT CANDIDATE: write the conversion factor explicitly as a power of ten and re-check it against each
-  new table's own stated unit instead of reusing the previous factor.
+=== THREE DECISIONS STILL OPEN (plan doc 4.5) ===
+1. FP8 makes this a NEW BASELINE. Same weights as the A40 (Qwen/Qwen3.5-4B), different numerics (FP8 + FP8 KV vs
+   bfloat16). S0 must be re-measured on this actor; the A40's 5/12 does not transfer. Symmetric across arms.
+2. Four epochs still gives NO cross-epoch memory. step_buffer is declared inside the epoch loop and
+   steps_per_epoch is 1, so epoch n never sees epoch n-1's rejected edits. Four epochs = four independent
+   attempts. The fix is one epoch of four steps - still open from the A40 run.
+3. Arm B's frozen model v7 has a KNOWN COUNTEREXAMPLE on the confirmation collection (read.effect.1 =
+   width_uniform at UID0028@42). Defensible to freeze, but record it rather than pick a cleaner-looking model.
 
-ALSO FIXED (each with a regression test): arithmetic intermediates reported as missing provenance (17 -> 1);
-every year of "fiscal years 1929-1942" flagged as a wrong period (12 false positives -> UNKNOWN); a scaled
-match now needs equal significant digits (the value 1 used to match any operand near a million).
+=== READY AND VERIFIED - DO NOT REDO ===
+configs/research/officeqa_api.yaml   one config for BOTH arms; records the FP8 and sampling differences that
+    cannot be matched. Both roles must read "openai_compatible": target_backend "openai_chat" means AZURE.
+research/officeqa/oqa_api_smoke.py   fail-closed preflight, hard attempt + USD caps with worst-case reservation
+    settled against reported usage, tool-loop verdict separate from accuracy, never_sent accounting.
+research/officeqa/oqa_api_probe.py   two-attempt (~$0.00005) live tool-calling probe. Run it first whenever the
+    endpoint, model or tool schemas change.
+research/officeqa/oqa_lc_*.py (9)    the ported learned-contract layer; research/officeqa/lean/OqaContracts.lean
+    is the compiled artifact with its MANIFEST.sha256.
+TREATMENT ARM provenance: arm B emits the obligation-form report under a frozen model whose digest is verified
+    first; the cache key covers the MODEL VERSION as well as the trace; every report records trace_sha256 and
+    model_sha256. Verified on saved A40 traces: 24 reports PASS against their own attempts; epoch-1 reports vs
+    epoch-2 attempts FAIL; a report under model v5 FAILs against v7.
+TESTS: whole local suite 2032 passed, 11 skipped (4 files uncollectable in the scratch venv for want of
+    openpyxl - pre-existing, unrelated). Local venv:
+    /private/tmp/claude-501/.../scratchpad/venv312 (workstation python is 3.9 and cannot import SkillOpt) -
+    THE SCRATCHPAD IS CLEARED ON REBOOT; recreate the venv if it is gone.
 
-HONEST LIMITS - do not drop these
-  * adjudicating evidence is VERY sparse: 5 table pairs over 3 tool steps in 24 attempts; 126 of 128
-    development tool steps leave the column atom UNKNOWN
-  * the learned model is 3 contracts, and ONE of them (read width_uniform) acquires a counterexample on the
-    confirmation collection at UID0028@42, so the final model is NOT fully confirmed on later data
-  * nothing here shows any of this changes a skill edit that survives merge, the edit budget and the 6/12 gate
+=== SETTLED FACTS (do not re-derive) ===
+- The actor key is at ~/.config/lean_skillopt/actor_api.env on the cluster, mode 600, 79 chars. I once reported
+  it absent from both machines; that was wrong - I never looked in ~/.config.
+- GET /v1/models/qwen3-5-4b is UNAUTHENTICATED and free: function_calling, json_schema, 262144 context,
+  32768 max output, FP8 weights + FP8 KV, hugging_face_id Qwen/Qwen3.5-4B, 50 RPM, $0.04/$0.02/$0.07 per M.
+- python -I is isolated mode and IGNORES PYTHONPATH.
+- The frozen splits are CSV with quoted multi-line source_docs fields: use the adapter's own dataloader, and
+  never count lines to count records (train 12, val 12, test 24 - verified with a CSV parser).
+- Lean toolchain: 4.20.0 under the project's own elan dir on cluster storage, as OQA_LEAN_BIN in the private
+  site env. The learned-contract note's "Lean 4.35.0" does not exist there.
+- Frozen question sets: rule OQA-SEL-2, digest fc02291540ef..., 12/12/24, UID0046 -> UID0063.
+- Never tune on held-out. Never derive contracts from the skill. No secrets, cluster paths or run dirs in
+  tracked files. Record every submission in docs/research/jobs.tsv and the coordination ledger. Timestamps
+  come from `date`.
 
-LEAN: GENERATED, NOT COMPILED. lean/OqaContracts.lean, Lean 4 core only, 64 statements, no sorry /
-native_decide / axioms. 25 general ones are stated over the finite Kleene domain acceptability factors through,
-so they close by EXHAUSTION rather than by a tactic script; 39 cover the exported evidence. The Python mirror
-agrees on every row (0 mismatches) - a cross-implementation check, NOT a Lean proof.
-  Lean verifies: the composition's properties over its finite domain; that the recorded atom values and a
-  contract's polarity produce the recorded class; the unit exponent arithmetic.
-  Extraction supplies and Lean does NOT check: that a row label is the period it is read as, that a flattened
-  header states its column's path, that an operand is the cell it matched, that a line is the conversion parsed.
-  Nothing establishes that the corpus obeys a learned hypothesis or that a violation caused a wrong answer.
+=== SEALED ===
+The held-out score of job 66234927 remains deliberately UNREAD.
 
-TESTS: tests/test_officeqa_lc.py 38 pass (constructed inputs only - Stage A software checks, not research
-findings). The existing 87 OfficeQA tests pass unchanged, which is the check that the port is additive:
-oqa_check.py and oqa_obligations.py were NOT modified, so arm A stays byte-identical to upstream. Whole local
-suite 2014 passed / 11 skipped (4 files cannot be collected in the scratch venv for want of openpyxl - a
-pre-existing gap, unrelated).
-
-CORRECTION to an earlier claim of mine: OFFICEQA_STATE.md section A0 said the transfer manifest was untracked
-and that its source_commit and per-file source paths were null. All three were wrong - the manifest is tracked
-and the fields exist as source_head and path, populated, with source_status recording that the SOURCES are
-untracked in their own worktree. There was no provenance gap.
-
-WITH THE USER (nothing will be spent without a new instruction)
-  1. Compile the Lean file? Needs ONE Slurm CPU job: 1 core, 2 GB, 15 min, 0 GPU, no API key, no paid call,
-     plus the LEAN_BIN path from the learned-contract worktree's private lc_site.env. The OQA-5 grant does NOT
-     cover it: it is expressed in A40-hours and DeepSeek calls and names no CPU job-hours.
-  2. Approve the guarded-`effect` extension? Two worked examples of where the current format bites, and the
-     smallest change, are in port note 3.3. Deliberately NOT implemented - it changes contract semantics.
-  3. Spend 1-2 of the 8 remaining DeepSeek calls on one learner round, to test whether a paid learner proposes
-     hypotheses the deterministic template proposer does not?
-  4. Still open from the comparison: re-run arm B's epoch 2 with the cache fix; restructure as one epoch of two
-     steps; apply the OFFICEQA_CONTRACT_AUDIT.md changes 1-4 to oqa_check.py itself.
-  The held-out score of job 66234927 remains deliberately UNREAD.
-
-WHERE THINGS ARE
-  code      research/officeqa/oqa_lc_{vocab,ir,cells,chain,learn,replay,lean,report,demo}.py
-  doc       docs/research/OFFICEQA_LEARNED_CONTRACT_PORT.md   (read this, not a paraphrase)
-  output    ~/dev/lean_skillopt/runs/20261116-offline-lc-port/  (420 KB; LOOP.json, 12 frozen models,
-            11 + 12 committed-prediction logs, lean/OqaContracts.lean, report_UID0014.md)
-  rerun     $VENV/bin/python -I research/officeqa/oqa_lc_demo.py \
-              --learn  <shared>/epoch1/predictions  --order  <shared>/epoch1/results.jsonl \
-              --confirm <armB>/steps/step_0002/rollout/predictions \
-              --confirm-order <armB>/steps/step_0002/rollout/results.jsonl \
-              --regression UID0014 --out <a NEW dir>
-  ledger    coordination/reservations.jsonl, last record OQA-6:LEARNED-CONTRACT-PORT-DONE-OFFLINE
+=== ARTIFACTS ===
+~/dev/lean_skillopt/runs/20261116-offline-lc-port/            the port's loop output + lean_job_66259448/
+~/dev/lean_skillopt/runs/20261117-officeqa-api-smoke-66264849/ SMOKE.json, job.log, slurm.out, 3 predictions
+~/dev/lean_skillopt/runs/20261116-160952_officeqa_arm_66228142/audit_evidence/  44 files, the three audits
+docs/research/: OFFICEQA_API_COMPARISON_PLAN.md, OFFICEQA_LEARNED_CONTRACT_PORT.md, OFFICEQA_CONTRACT_AUDIT.md,
+    OFFICEQA_REPORT_VALUE_PROBE.md, OFFICEQA_EPOCH2_REPORT_AUDIT.md, EXPERIMENT_LOG.md, DAILY_LOG.md, jobs.tsv
+Coordination ledger last record: OQA-9:API-ACTOR-SMOKE-PASSED-66264849
 ```

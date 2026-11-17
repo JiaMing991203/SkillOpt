@@ -760,6 +760,74 @@ record only its SHA-256 (`manifest.json → site_env_sha256`).
 
 <!-- Template for job entries:
 
+## 2026-11-16 — OfficeQA learned-contract Lean compile (job 66259448) — COMPLETED, all 64 statements
+
+- **Authorization:** USER 2026-11-16: 1 CPU core, 2 GB, <=15 min walltime, 0 GPUs, 0 paid API calls. Spent once
+  (plus ~1 CPU-second on a failed first submission); the grant is now exhausted. OQA-5's own caps untouched.
+- **Deployed revision:** generator `47c6ed8`; the frozen artifact committed at `87b9ad6` as
+  `research/officeqa/lean/OqaContracts.lean` with `MANIFEST.sha256`. Ran from a read-only **staging bundle**, not
+  a git snapshot: `research/deploy.sh` refuses a commit that is not on `origin` and pushing was not authorized.
+- **Resources:** partition `standard`, AllocTRES `cpu=1, mem=2G, node=1`, **0 GPUs**. Elapsed 00:00:06, TotalCPU
+  00:00.907, `lean` itself 4.24 s.
+- **Toolchain:** Lean 4.20.0 (x86_64-unknown-linux-gnu, commit 77cfc4d1a4f6, Release), from `OQA_LEAN_BIN` in the
+  private cluster site settings. Not present on the workstation or the login node.
+- **Result:** rc 0. **0 bytes of compiler output, 0 errors, 0 warnings, 0 `sorry`.** 64 statements: 23 in
+  `section General` + 2 `rfl` bridge theorems + 39 over the exported evidence.
+- **File identity:** `e40a7e62faed92ffdc53093b4937f8eb6b655ba5eabda14d7036444c0b9eecbb`, identical at six links
+  (recorded before submission; reproduced twice by the generator; committed with a manifest; verified by the
+  job's manifest check; logged by the job; and in the copy fed to `lean`).
+- **Deviations:** none beyond the staging-bundle deployment noted above.
+- **NOT established:** the axiom set. `#print axioms` was deliberately omitted because changing the file would
+  break the digest guarantee. Zero warnings does rule out `sorry`.
+- **Earlier submission:** 66259421 FAILED in 1 s, exit 3, before `lean` ran (`${BASH_SOURCE[0]}` resolves to the
+  node spool copy of a batch script; fixed with `$SLURM_SUBMIT_DIR`). Both logs preserved.
+- **Artifacts:** `~/dev/lean_skillopt/runs/20261116-offline-lc-port/lean_job_66259448/`.
+
+## 2026-11-17 — OfficeQA hosted-actor tool-loop smoke test (job 66264849) — COMPLETED, tool loop PASS
+
+- **Question:** does a hosted OpenAI-compatible actor (EmpirioLabs Qwen3.5-4B) return structured tool calls that
+  SkillOpt can execute against OfficeQA's local document tools, with results fed back? Judged on the LOOP;
+  accuracy recorded separately, as instructed.
+- **Authorization:** USER 2026-11-16: <=30 min CPU job time, 0 GPUs, <=100 EmpirioLabs HTTP attempts including
+  retries, <=$0.50 actor charges. **Spent: 23 of 100 attempts, $0.003363 + ~$0.00005 probe, ~3 min CPU, 0 GPUs.**
+- **Deployed revision:** `07d4bb5` via `git archive` staging bundle (digest verified in-job). Starting skill
+  `9d377d1c2906...` — the same skill the A40 two-arm comparison used.
+- **Model wiring:** `configs/research/officeqa_api.yaml`; both roles `openai_compatible`; target
+  `https://api.empiriolabs.ai/v1`, model `qwen3-5-4b`, temperature 0.7, top_p 1.0, max_tokens 8000, timeout 300.
+  Driver-set `max_tool_turns` 12 for the smoke test (the comparison uses 24).
+- **Endpoint facts (unauthenticated `GET /v1/models/qwen3-5-4b`, free):** `function_calling` declared,
+  `structured_output: json_schema`, context 262144, max output 32768, **FP8 weights + FP8 KV**,
+  `hugging_face_id: Qwen/Qwen3.5-4B`, 50 RPM, $0.04/$0.02/$0.07 per M in/cached/out.
+- **Items (rule OQA-SMOKE-1, fixed before the run):** UID0033, UID0063, UID0034 — the first three TRAINING items
+  in the A40 shared-rollout order that requested at least one tool under S0. Validation and held-out untouched.
+- **Result — tool loop PASS (all four checks):** 18 of 20 replies carried `tool_calls`; every argument set parsed
+  as JSON (0 malformed); **18 tool calls executed, 0 observation errors**; all 3 items took further turns after
+  an observation.
+- **Measured:** 20 attempts / 0 errors / 0 retries; elapsed 68.4 s for 3 sequential questions; latency min 1.63,
+  median 3.41, max 7.04 s; 73,145 prompt + 6,251 completion tokens; settled **$0.003363** against a $0.0133
+  worst-case reservation; **`cached_prompt_tokens` = 0 on every call** (no prefix caching, although each turn
+  re-sends an identical system prompt and oracle-page prefix); compute-node reachability `http=200` in 0.124 s;
+  0 run artifacts contain the key (checked on the cluster against the live value).
+- **Accuracy (recorded, NOT the verdict):** 1 of 3 answered; `hard` = [0, 1, 0]. UID0033 stopped without a tool
+  request or an answer after 2 calls; UID0034 used all 12 turns of the smoke cap and produced nothing.
+- **Deviations:** staging bundle rather than a git snapshot (pushing not authorized); `max_tool_turns` 12 rather
+  than the comparison's 24, to keep the worst case inside the attempt cap; `top_k` / `min_p` /
+  `repetition_penalty` could not be sent through the chat schema and were left at the provider's defaults.
+- **Four failed submissions, none of which spent an API attempt.** 66262999 and 66263561: **NODE_FAIL at 60 s,
+  four times each, on eight different nodes**, before Python ran; control job 66263988 (same account, partition,
+  resources) COMPLETED, and one-factor controls 66264099 (read the key from `~/.config`), 66264100 (extract the
+  576-file bundle) and 66264101 (curl the endpoint from a compute node) all COMPLETED. Fixed by submitting via
+  `--wrap` with a **node-local /tmp** work dir. **`--no-requeue` did not stop the requeue loop.** 66264572:
+  `python -I` ignores `PYTHONPATH`. 66264701: the target backend defaulted to Azure OpenAI (3 ledger attempts,
+  **0 HTTP sent** — the ledger now reports `never_sent`).
+- **Interpretation (not measured here):** the API is viable for the comparison, and the **50 RPM account limit,
+  not latency, is the binding constraint** — 3,100 estimated requests is a 62-minute floor against 44 minutes
+  latency-bound at the measured median with `workers: 4`. FP8 numerics mean S0 must be re-measured on this actor
+  rather than inherited from the A40 run's 5/12.
+- **Artifacts:** `~/dev/lean_skillopt/runs/20261117-officeqa-api-smoke-66264849/` (SMOKE.json, job.log,
+  slurm.out, manifest_check.txt, three predictions directories). Plan and budget:
+  `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`.
+
 ## YYYY-MM-DD — <job name> (job <id>)
 
 - **Purpose:**
