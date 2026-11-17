@@ -1381,3 +1381,95 @@ def test_prepare_refuses_when_the_previous_step_record_cannot_supply_the_state(t
     os.remove(os.path.join(str(tmp_path), "arm_A", "steps/step_0001/step_record.json"))
     rec = REC.prepare(str(tmp_path), plan, apply=False, stamp="TEST")
     assert rec["refused"], "a rewind it cannot substantiate must be refused"
+
+
+# ── the rounding question: two ways to sum the same charges ───────────────────
+
+def test_the_reconciler_retains_the_larger_of_the_two_ways_to_sum_a_charge(tmp_path, monkeypatch):
+    """A real finding from reconciling the campaign's own ledger, reduced to a test.
+
+    The ledger adds `int(round(usd * 1e6))` per record, so that integer is the quantity the cap is enforced
+    on. A reader that instead sums the raw floats gets a slightly different number - over the campaign's
+    7,313 target records the float sum came out 26 microdollars HIGHER. Releasing down to the integer sum
+    therefore made `oqa_ledger_read.py`, which summed floats, report that spend exceeded the net claim. The
+    reconciler now retains the larger of the two, so no reader can see that whichever way it sums.
+    """
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=5000, usd=5.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    # Prices chosen so each charge lands between two microdollars and the rounding goes the same way often.
+    monkeypatch.setenv("SKILLOPT_LEDGER_PRICE_TARGET", "0.0411,0.0733,0.02")
+    LEDGER._state.clear()
+    LEDGER._owner = "999r0p1"
+    for i in range(400):
+        LEDGER.reserve("target", "test")
+        LEDGER.record_usage("target", "test", 1_111 + i, 37)
+    LEDGER._state.clear()
+
+    import math as _m
+    floats, micros = 0.0, 0
+    with open(os.path.join(str(tmp_path), "spend", "999r0p1.jsonl"), encoding="utf-8") as f:
+        for line in f:
+            rec = json.loads(line)
+            if rec.get("kind") == "usage":
+                floats += float(rec["usd"])
+                micros += int(round(float(rec["usd"]) * 1_000_000))
+
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    plan = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert not plan["problems"], plan["problems"]
+    R.apply_plan(plan, reason="test")
+    net = LEDGER._granted()[("target", "usdmicro")]
+    assert net >= micros, "the ledger's own integer accounting must stay covered"
+    assert net >= _m.ceil(floats * 1_000_000), "a float-summing reader must also see spent <= claimed"
+
+
+def test_the_external_audit_checks_the_invariant_in_micros(tmp_path, monkeypatch):
+    """The same defect from the audit's side: equality after reconciliation is the IDEAL, not a failure."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "research", "officeqa", "oqa_ledger_read.py")
+    spec = importlib.util.spec_from_file_location("oqa_ledger_read_test", path)
+    READ = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(READ)
+
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=5000, usd=5.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    LEDGER._state.clear()
+    LEDGER._owner = "aaa1r0p1"
+    for i in range(300):
+        LEDGER.reserve("target", "test")
+        LEDGER.record_usage("target", "test", 997 + i, 13)
+    LEDGER._state.clear()
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    R.apply_plan(R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True), reason="test")
+
+    out = READ.read(str(tmp_path))
+    spent_vs_claim = [p for p in out["problems"] if "spent against" in p]
+    assert not spent_vs_claim, f"reconciled to equality must not be a problem: {spent_vs_claim}"
+    t = out["observed"]["target"]
+    assert t["usd"] == pytest.approx(t["usdmicro"] / 1e6)
+    assert "usd_float_sum" in t and "usd_float_minus_micro" in t
+
+
+def test_the_audit_still_flags_real_overspend(tmp_path, monkeypatch):
+    """The check must not have been loosened into uselessness."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "research", "officeqa", "oqa_ledger_read.py")
+    spec = importlib.util.spec_from_file_location("oqa_ledger_read_test2", path)
+    READ = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(READ)
+    _apply(_env(str(tmp_path), attempts=5000, usd=5.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    LEDGER._state.clear()
+    LEDGER._owner = "bbb1r0p1"
+    LEDGER.reserve("target", "test")
+    LEDGER.record_usage("target", "test", 1_000, 0)
+    # Forge a release far larger than anything claimed, as a corrupt or hostile record would look.
+    rel = os.path.join(str(tmp_path), "release")
+    os.makedirs(rel, exist_ok=True)
+    with open(os.path.join(rel, "999999-target-usdmicro-900000.json"), "w", encoding="utf-8") as f:
+        json.dump({"schema": "lso.spend_ledger.v1", "kind": "release", "role": "target",
+                   "resource": "usdmicro", "amount": 900000, "owner": "forged"}, f)
+    out = READ.read(str(tmp_path))
+    assert any("spent against" in p for p in out["problems"]), \
+        f"spend above the net claim must still be reported: {out['problems']}"

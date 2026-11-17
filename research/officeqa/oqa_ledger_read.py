@@ -63,9 +63,10 @@ def read(ledger: str) -> dict:
             role = rec.get("role")
             if not role:
                 continue
-            r = roles.setdefault(role, {"attempts": 0, "usd": 0.0, "refusals": 0, "prompt_tokens": 0,
-                                        "completion_tokens": 0, "cached_prompt_tokens": 0,
-                                        "reserve_exceeded": 0, "usage_records": 0})
+            r = roles.setdefault(role, {"attempts": 0, "usd": 0.0, "usdmicro": 0, "refusals": 0,
+                                        "prompt_tokens": 0, "completion_tokens": 0,
+                                        "cached_prompt_tokens": 0, "reserve_exceeded": 0,
+                                        "usage_records": 0})
             o = owners.setdefault(name[:-6], {"role": role, "attempts": 0, "usd": 0.0,
                                               "restart": rec.get("slurm_restart_count", "")})
             kind = rec.get("kind")
@@ -75,8 +76,16 @@ def read(ledger: str) -> dict:
                 times.setdefault(role, []).append(rec.get("utc"))
             elif kind == "usage":
                 r["usage_records"] += 1
-                r["usd"] += float(rec.get("usd") or 0.0)
-                o["usd"] += float(rec.get("usd") or 0.0)
+                # TWO SUMS, because they are not the same number and the difference once made this tool
+                # report a failure that was not one. `usdmicro` adds the SAME per-record rounded integer the
+                # ledger itself adds to `used_usdmicro`, so it is the quantity the cap is actually enforced
+                # on; `usd` adds the raw floats, which over 7,313 records drifted 26 microdollars ABOVE it
+                # and so appeared to exceed a claim that exactly covered the real spend. The invariant is
+                # checked in micros; the float sum is kept for reference and reported when it differs.
+                usd = float(rec.get("usd") or 0.0)
+                r["usd"] += usd
+                r["usdmicro"] += int(round(usd * 1_000_000))
+                o["usd"] += usd
                 for field in ("prompt_tokens", "completion_tokens", "cached_prompt_tokens"):
                     r[field] += int(rec.get(field) or 0)
                 if rec.get("reserve_exceeded"):
@@ -84,8 +93,13 @@ def read(ledger: str) -> dict:
             elif kind == "refused":
                 r["refusals"] += 1
     for r in roles.values():
-        r["usd"] = round(r["usd"], 6)
+        r["usd_float_sum"] = round(r["usd"], 9)
+        r["usd"] = round(r["usdmicro"] / 1e6, 6)
+        r["usd_float_minus_micro"] = round(r["usd_float_sum"] - r["usd"], 9)
         r["failed_attempts"] = r["attempts"] - r["usage_records"]
+        # An attempt with no usage record is an UNRESOLVED request: it was sent and its cost was never
+        # learned. The ledger retains one reserve for each, and the reconciler does too.
+        r["unresolved_requests"] = r["failed_attempts"]
     for o in owners.values():
         o["usd"] = round(o["usd"], 6)
 
@@ -109,8 +123,8 @@ def read(ledger: str) -> dict:
             problems.append(f"{role}: {r['attempts']} attempts exceeds the authorized {cap['attempts']}")
         if cap and r["usd"] > cap["usd"]:
             problems.append(f"{role}: ${r['usd']:.4f} exceeds the authorized ${cap['usd']:.2f}")
-        if r["usd"] > got_u + 1e-9:
-            problems.append(f"{role}: ${r['usd']:.4f} spent against ${got_u:.4f} claimed net of releases")
+        if r["usdmicro"] > int(round(got_u * 1_000_000)):
+            problems.append(f"{role}: ${r['usd']:.6f} spent against ${got_u:.6f} claimed net of releases")
         # The failure mode that starved four arm-epochs: the NET claim reaches the cap while real spend is far
         # below it, so every further attempt is refused with money still authorized.
         if cap and got_u >= cap["usd"] - 1e-9 and r["usd"] < cap["usd"] * 0.9:

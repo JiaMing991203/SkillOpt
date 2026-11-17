@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import math
 import os
 import re
 import subprocess
@@ -136,7 +137,7 @@ def read_ledger(ledger: str) -> dict:
                 if role not in ROLES:
                     continue
                 r = rec["roles"].setdefault(role, {
-                    "attempts": 0, "resolved": 0, "usdmicro": 0, "refusals": 0,
+                    "attempts": 0, "resolved": 0, "usdmicro": 0, "usdfloat": 0.0, "refusals": 0,
                     "reserve_usd": _DEFAULT_RESERVE_USD[role], "released_already": False})
                 kind = row.get("kind")
                 if kind == "open":
@@ -147,7 +148,9 @@ def read_ledger(ledger: str) -> dict:
                     r["attempts"] += 1
                 elif kind == "usage":
                     r["resolved"] += 1
-                    r["usdmicro"] += int(round(float(row.get("usd") or 0.0) * 1_000_000))
+                    usd = float(row.get("usd") or 0.0)
+                    r["usdmicro"] += int(round(usd * 1_000_000))
+                    r["usdfloat"] += usd
                 elif kind == "refused":
                     r["refusals"] += 1
                 elif kind == "release":
@@ -194,8 +197,14 @@ def plan(ledger: str, *, exited_jobs: set[str] | None, assume_all_exited: bool) 
         for role, r in sorted(rec["roles"].items()):
             unresolved = max(0, r["attempts"] - r["resolved"])
             hold_usdmicro = unresolved * int(round(r["reserve_usd"] * 1_000_000))
+            # Which sum counts as "spent"? The ledger adds a per-record rounded integer, so that is the
+            # quantity the cap is enforced on - but a reader who sums the raw floats instead gets a slightly
+            # LARGER number (26 microdollars larger over this campaign's 7,313 records). Retaining the larger
+            # of the two costs a few microdollars of headroom and means no reader, whichever way it sums, can
+            # ever see recorded spend exceed the net claim.
+            used_usdmicro = max(r["usdmicro"], math.ceil(r["usdfloat"] * 1_000_000))
             for resource, used, hold in (("attempts", r["attempts"], 0),
-                                         ("usdmicro", r["usdmicro"], hold_usdmicro)):
+                                         ("usdmicro", used_usdmicro, hold_usdmicro)):
                 claimed = st["claimed_by_owner"].get((owner, role, resource), 0)
                 already = st["released_by_owner"].get((owner, role, resource), 0)
                 amount = claimed - already - used - hold
@@ -222,7 +231,9 @@ def plan(ledger: str, *, exited_jobs: set[str] | None, assume_all_exited: bool) 
         ca = st["claimed_total"].get((role, "attempts"), 0) - st["released_total"].get((role, "attempts"), 0)
         cu = st["claimed_total"].get((role, "usdmicro"), 0) - st["released_total"].get((role, "usdmicro"), 0)
         used_a = sum(r["roles"].get(role, {}).get("attempts", 0) for r in st["owners"].values())
-        used_u = sum(r["roles"].get(role, {}).get("usdmicro", 0) for r in st["owners"].values())
+        used_u = sum(max(r["roles"].get(role, {}).get("usdmicro", 0),
+                         math.ceil(r["roles"].get(role, {}).get("usdfloat", 0.0) * 1_000_000))
+                     for r in st["owners"].values())
         rel = totals.get(role, {})
         before[role] = {
             "net_claimed_attempts": ca, "net_claimed_usd": round(cu / 1e6, 6),
