@@ -83,6 +83,33 @@ prediction." That is in the report the optimizer reads, not only in a record bes
 
 Wall time floor 255 min from the account rate limit. **Nothing exceeds a ceiling.**
 
+### VERIFIED LIVE, on the running campaign (not the dry run)
+
+| check | result |
+|---|---|
+| S0 on this endpoint | training `hard` **0.125** (3/24); the gate's baseline, validation `hard` **0.1667** (4/24) |
+| M0 | frozen `8d8ecceecd0b77533913ab5996cfa57740d6eb4e6782d7146e74fbcb7e7d1a69`, 24 items, 339 tool steps, 0 assumptions rejected |
+| the route, both roles, inside the trainer | **PASS** — optimizer `openai_compatible` -> `api.deepseek.com` (`deepseek-flash`), target -> `api.empiriolabs.ai/v1` (`qwen3-5-4b`), dispatch proven at zero HTTP cost (66272738) |
+| the shared traces are reused, not re-rolled | 24 shared rollouts injected into each arm; arm A's epoch-1 rollout spent nothing |
+| **arm A gets the ordinary input** | `OFFICEQA_STAGE_REPORT_DIR` unset, no report heading in its analyst prompts |
+| **arm B carries NO stage material** | **24 of 24 reports, 0 stage markers**, audited independently from the files (mean 4,438 chars) |
+| **epoch 1's reports are labelled in-sample** | **24 of 24** carry the notice; it is in the report the optimizer reads |
+| both contract arms start from ONE model | 24 distinct trace digests, all under the single model digest `8d8ecceecd0b` |
+| answer-key isolation | `boundary_audit: PASS` on every report |
+| the caps | audit at 48 rollouts **PASS**: target 511 attempts / $0.3177 / 4 failed / 0 refusals; optimizer 7 calls / $0.1776 / 0 refusals; claims ahead of spend in both roles |
+
+**Arm A epoch 1 result: the candidate was REJECTED**, `hard` 0.0417 against the current 0.1667 — the edit made
+things markedly worse and the strict-improvement gate refused it, so `best_skill.md` is S0. Epoch wall time
+629 s. Read this as one data point, not a trend.
+
+**A defect in the job body, contained and NOT patched mid-run.** The end-of-job ledger summary writes nothing:
+it runs `python -I -m skillopt.model.spend_ledger`, and `-I` implies `-E`, so PYTHONPATH is ignored and `-m`
+cannot find the extracted tree. Only this diagnostic is affected — the ledger that enforces the caps is imported
+inside the trainer's own process. The deployed bundle is deliberately untouched, because its manifest is
+verified in-job and editing it would fail every queued job. **Read the ledger with
+`research/officeqa/oqa_ledger_read.py <ledger dir> --questions N`**, which needs nothing but the standard
+library. The repo copy of the body is fixed for anything deployed later.
+
 ### CORRECTED FROM THE CAMPAIGN'S OWN FIRST 47 ROLLOUTS (job 66272737) — read this, not the table above
 
 The table above was computed from the A40 pilot's per-question tokens. The campaign measured itself and three of
