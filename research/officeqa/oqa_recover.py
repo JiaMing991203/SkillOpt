@@ -509,7 +509,11 @@ def prepare(campaign: str, plan_doc: dict, *, apply: bool, stamp: str) -> dict:
     def _archive(src: str) -> dict:
         rel = os.path.relpath(src, campaign)
         dst = os.path.join(archive, rel)
-        rec = {"archive": os.path.relpath(dst, campaign), "exists": os.path.exists(src)}
+        # `live_path` is the ONE unambiguous way back to the file: relative to the campaign root. The caller's
+        # own `path` field is relative to whatever was convenient there - the arm root for an arm's files, the
+        # campaign root for a contracts file - and `verify` guessing between them got it wrong.
+        rec = {"archive": os.path.relpath(dst, campaign), "live_path": rel,
+               "exists": os.path.exists(src)}
         if not rec["exists"]:
             return rec
         rec["digest"] = _digest(src) if os.path.isfile(src) else None
@@ -733,16 +737,26 @@ def verify(campaign: str, record: dict) -> dict:
                 "ok": analyst > 0 and step.get("action") in ("reject", "accept_new_best")
                       and slow.get("action") not in (None, "no_content"),
             })
-    # Did the reuse actually happen? A reused rollout is byte-identical to its archived copy.
+    # What changed and what did not. An archived file that is byte-identical afterwards was reused or left
+    # alone; one that differs was rewritten by the recovery. Both are expected for different files, so this is
+    # reported rather than judged - the judgement that matters is `per_epoch` above and the models below.
+    arch_rel = record.get("archive", "")
     reuse: list[dict] = []
     for a in record["actions"]:
         if a.get("action") != "archive" or not a.get("digest"):
             continue
-        live = os.path.join(campaign, a["path"]) if os.path.isabs(a["path"]) is False else a["path"]
-        arm = a.get("arm")
-        live = os.path.join(campaign, f"arm_{arm}", a["path"]) if arm else live
-        if os.path.isfile(live):
-            reuse.append({"path": a["path"], "arm": arm, "unchanged": _digest(live) == a["digest"]})
+        # `live_path` is written by `prepare`. A record written before that field existed still carries
+        # `archive`, which is <archive dir>/<the same relative path>, so it can be recovered rather than
+        # guessed - and guessing is what the first version of this did wrong.
+        rel = a.get("live_path")
+        if not rel and arch_rel and str(a.get("archive", "")).startswith(arch_rel + os.sep):
+            rel = str(a["archive"])[len(arch_rel) + 1:]
+        if not rel:
+            continue
+        live = os.path.join(campaign, rel)
+        reuse.append({"path": rel, "arm": a.get("arm"),
+                      "exists": os.path.isfile(live),
+                      "unchanged": os.path.isfile(live) and _digest(live) == a["digest"]})
     # The contract models: the one kept must be byte-identical afterwards, because its inputs were reused.
     models: list[dict] = []
     for a in record["actions"]:
@@ -877,6 +891,15 @@ def main() -> int:
         for c in doc["per_epoch"]:
             print(f"  {c['key']}  analyst={c['analyst_calls']}  ordinary={c['ordinary_action']}  "
                   f"slow={c['slow_action']}  meta={c['meta_action']}  {'ok' if c['ok'] else 'PROBLEM'}")
+        ch = [r for r in doc["unchanged_after_recovery"] if not r["unchanged"]]
+        un = [r for r in doc["unchanged_after_recovery"] if r["unchanged"]]
+        print(f"\n  archived files: {len(un)} unchanged, {len(ch)} rewritten by the recovery")
+        for r in ch[:20]:
+            print(f"    rewritten  {r['path']}")
+        for m in doc.get("contract_models", []):
+            state = ("unchanged" if m.get("unchanged") else
+                     "regenerated" if m.get("regenerated") else "PROBLEM")
+            print(f"  contract model  {state:<13} {m['path']}")
 
     out = getattr(args, "out", "")
     if out:

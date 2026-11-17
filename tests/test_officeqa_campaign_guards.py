@@ -1693,3 +1693,32 @@ def test_a_missing_skill_is_recorded_rather_than_skipped(tmp_path):
     doc = F.freeze(root, init)
     assert doc["missing"] and doc["missing"][0]["role"] == "validation_selected"
     assert doc["requested"] == 2, "a missing skill must not be counted as present"
+
+
+def test_verify_resolves_archived_paths_for_both_record_shapes(tmp_path):
+    """`path` in an archive action is relative to whatever was convenient; `live_path` is not ambiguous.
+
+    The first version of `verify` guessed between the arm root and the campaign root and got the contracts
+    entries wrong. It now uses `live_path`, and falls back to recovering the same relative path out of
+    `archive` for a record written before that field existed.
+    """
+    REC = _recover()
+    bundle = _fake_campaign(str(tmp_path))
+    plan = REC.plan(str(tmp_path), REC.audit(str(tmp_path), [bundle]),
+                    usd_per_question=0.00656, requests_per_question=10.32)
+    rec = REC.prepare(str(tmp_path), plan, apply=True, stamp="TEST")
+    arch = [a for a in rec["actions"] if a["action"] == "archive" and a.get("digest")]
+    assert arch and all("live_path" in a for a in arch)
+
+    out = REC.verify(str(tmp_path), rec)
+    assert out["unchanged_after_recovery"], "it must resolve at least one archived file"
+    assert all(r["exists"] for r in out["unchanged_after_recovery"]), \
+        [r for r in out["unchanged_after_recovery"] if not r["exists"]]
+
+    # The same record with live_path stripped, as an older run would have written it.
+    old_shape = json.loads(json.dumps(rec))
+    for a in old_shape["actions"]:
+        a.pop("live_path", None)
+    out2 = REC.verify(str(tmp_path), old_shape)
+    assert len(out2["unchanged_after_recovery"]) == len(out["unchanged_after_recovery"])
+    assert all(r["exists"] for r in out2["unchanged_after_recovery"])
