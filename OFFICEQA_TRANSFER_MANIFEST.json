@@ -1,0 +1,93 @@
+{
+ "transfers": [
+  {
+   "schema": "officeqa.transfer_manifest.v1",
+   "created": "2026-11-15T00:27:38-05:00",
+   "source_tree": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract",
+   "source_branch": "contract/learned-contract",
+   "source_head": "4a9914a9005a80423175c344632e1deaeb56c2e2",
+   "dest_worktree": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-officeqa",
+   "dest_branch": "officeqa-contracts",
+   "tool": {
+    "path": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-officeqa/research/officeqa/transfer.py",
+    "sha256": "e0ed921176b84992ad9bb4e771ee584b5d61547d133259a80d41d0cf515e87a0"
+   },
+   "rule": "copy only the listed files byte-for-byte; never modify or delete source files; refuse overwrites. Transferred files stay ALFWorld-domain references and are not edited here.",
+   "files": [
+    {
+     "path": "research/full_update/fu_budget.py",
+     "dest": "research/officeqa/transferred/fu_budget.py",
+     "role": "operational: paid-call guard",
+     "why": "audited worst-case reservation/settlement ledger and the fail-closed endpoint guard (guard_client expect=); required before any paid OfficeQA analyst call",
+     "source_status": "?? research/full_update/fu_budget.py",
+     "source_sha256": "21a2d42638221d332596671cb8e7a09ae5b8977837adb3e25da14536f9945209",
+     "bytes": 19600,
+     "source_mtime": "2026-11-08T21:42:10",
+     "action": "copied",
+     "dest_sha256": "21a2d42638221d332596671cb8e7a09ae5b8977837adb3e25da14536f9945209"
+    },
+    {
+     "path": "research/learned_contracts/lc_llm.py",
+     "dest": "research/officeqa/transferred/lc_llm.py",
+     "role": "operational: DeepSeek transport",
+     "why": "guarded transport: base-URL+model compared before each send, SDK retries off, one HTTP attempt per counted attempt, response cache; needs its own OfficeQA budget profile set by the caller",
+     "source_status": "?? research/learned_contracts/lc_llm.py",
+     "source_sha256": "6501d317ca876c07bc092107f6c99bd98c25fd1d4669c5d93aaa4e84e63b68ac",
+     "bytes": 11023,
+     "source_mtime": "2026-11-10T12:18:43",
+     "action": "copied",
+     "dest_sha256": "6501d317ca876c07bc092107f6c99bd98c25fd1d4669c5d93aaa4e84e63b68ac"
+    },
+    {
+     "path": "research/learned_contracts/ir.py",
+     "dest": "research/officeqa/transferred/ir.py",
+     "role": "reference: contract schema",
+     "why": "the structured action-contract shape (verb/kind/condition/effects/context/assumptions/status/version) that the OfficeQA IR copies; vocabulary itself is ALFWorld-specific",
+     "source_status": "?? research/learned_contracts/ir.py",
+     "source_sha256": "7bf531504c8103dbc6a9bc82ee228dec518c865ddf55c3de2e59ba531cc7321f",
+     "bytes": 9119,
+     "source_mtime": "2026-11-10T01:12:48",
+     "action": "copied",
+     "dest_sha256": "7bf531504c8103dbc6a9bc82ee228dec518c865ddf55c3de2e59ba531cc7321f"
+    },
+    {
+     "path": "research/learned_contracts/stage_contracts.py",
+     "dest": "research/officeqa/transferred/stage_contracts.py",
+     "role": "reference: stage semantics",
+     "why": "open stage, stage requirements, instance binding and handoffs - the semantics the OfficeQA stage model re-implements over documents instead of receptacles",
+     "source_status": "?? research/learned_contracts/stage_contracts.py",
+     "source_sha256": "c220efd38ad00f1d1f03c7402d15666a1e2f9aa07ee3194dcb98c0f479baed42",
+     "bytes": 18305,
+     "source_mtime": "2026-11-10T19:26:59",
+     "action": "copied",
+     "dest_sha256": "c220efd38ad00f1d1f03c7402d15666a1e2f9aa07ee3194dcb98c0f479baed42"
+    },
+    {
+     "path": "research/learned_contracts/plain_v4.py",
+     "dest": "research/officeqa/transferred/plain_v4.py",
+     "role": "reference: corrected plain report",
+     "why": "the corrected P semantics (assessment at PRE of the selected command, no one-step lag; NOTE vs ADVICE) that the OfficeQA P must not re-break",
+     "source_status": "?? research/learned_contracts/plain_v4.py",
+     "source_sha256": "fe39a27756b0584f744b68569cb05cef5716a8f80aee488f12e842b09bd268c1",
+     "bytes": 5868,
+     "source_mtime": "2026-11-11T00:13:14",
+     "action": "copied",
+     "dest_sha256": "fe39a27756b0584f744b68569cb05cef5716a8f80aee488f12e842b09bd268c1"
+    },
+    {
+     "path": "research/learned_contracts/score_v4.py",
+     "dest": "research/officeqa/transferred/score_v4.py",
+     "role": "reference: frozen scoring",
+     "why": "A3 section 3.6 scoring: first correct and appropriately timed warning per problem, redundant / premature / unsupported categories",
+     "source_status": "?? research/learned_contracts/score_v4.py",
+     "source_sha256": "9f358e6ef2e468a5521b7a3c5eb161a4c9ccab4d7c4b24a5d996cfd72762be8b",
+     "bytes": 8822,
+     "source_mtime": "2026-11-11T00:13:14",
+     "action": "copied",
+     "dest_sha256": "9f358e6ef2e468a5521b7a3c5eb161a4c9ccab4d7c4b24a5d996cfd72762be8b"
+    }
+   ],
+   "problems": []
+  }
+ ]
+}
