@@ -41,6 +41,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import sys
 
 RULE = "OQA-FREEZE-1"
