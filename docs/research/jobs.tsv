@@ -42,3 +42,4 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T05:04:01Z	66264849	oqa_api_smoke	smoke	07d4bb5e9985dcfc30eb81106976c6963e90f1fd	5th attempt: backend configured in-driver
 2026-11-17T07:26:30Z	66271190	oqa_slow_probe	send	ee5aeb8ebcd789e02606def25452afc925ce8197	10-pair slow-update size probe; HARD cap 2 paid HTTP attempts; 1 CPU 4G 20min; refuses on requeue
 2026-11-17T07:29:46Z	66271290	oqa_slow_probe	send	aa4aae91f2b05ec3b4b43f131ce443499180cea1	2nd attempt: preflight now pins the optimizer BACKEND (66271190 dispatched to Azure, 0 HTTP, 0 spend)
+2026-11-17T08:17:00Z	66272358	oqa_campaign	prep	eecbadea3f069114b655b1265a7c1e0b09300bdc	standard 2cpu 8G 60min; FREE (no actor or optimizer key loaded): fetch the OQA-SEL-3 documents, materialize 24/24/60, availability for all 108 items incl UID0019, ledger self-test on Turbo

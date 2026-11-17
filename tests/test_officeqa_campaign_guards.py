@@ -149,17 +149,42 @@ def test_a_missing_cap_refuses_to_let_anything_be_sent(tmp_path, monkeypatch):
         LEDGER.reserve("target", "test")
 
 
+def test_a_ledger_directory_that_cannot_be_created_refuses_to_let_anything_be_sent(tmp_path, monkeypatch):
+    """Portable: the ledger path's parent is a regular file, so makedirs fails on every filesystem."""
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("a regular file\n")
+    _apply(_env(str(blocker / "ledger"), attempts=10, usd=1.0), monkeypatch)
+    with pytest.raises(LEDGER.LedgerUnusable):
+        LEDGER.reserve("target", "test")
+
+
 def test_an_unwritable_ledger_directory_refuses_to_let_anything_be_sent(tmp_path, monkeypatch):
+    """The chmod form of the same property - skipped where the filesystem does not enforce chmod for the owner.
+
+    /nfs/turbo, where the campaign's ledger lives, does NOT: job 66272358 chmod-ed a claim directory to 0500
+    and then created a file in it, because the share's POSIX ACL mask grants the owner write access whatever
+    the mode bits say. That is a limitation of this test, not of the ledger, and the test above covers the
+    property portably.
+    """
     blocked = tmp_path / "blocked"
     blocked.mkdir()
-    (blocked / "claims").mkdir()
-    os.chmod(blocked / "claims", 0o500)   # readable, not writable
+    claims = blocked / "claims"
+    claims.mkdir()
+    os.chmod(claims, 0o500)
     try:
+        probe = claims / ".probe"
+        try:
+            probe.write_text("x")
+        except OSError:
+            pass
+        else:
+            probe.unlink()
+            pytest.skip("this filesystem does not enforce chmod 0500 against the owner")
         _apply(_env(str(blocked), attempts=10, usd=1.0), monkeypatch)
         with pytest.raises(LEDGER.LedgerUnusable):
             LEDGER.reserve("target", "test")
     finally:
-        os.chmod(blocked / "claims", 0o700)
+        os.chmod(claims, 0o700)
 
 
 # ── the ledger: concurrency ───────────────────────────────────────────────────

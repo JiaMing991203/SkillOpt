@@ -10,7 +10,8 @@ Three checks, all free (no HTTP, no GPU, no model request):
   concurrency   N processes race for one cap that is deliberately not a multiple of the block size. Their total
                 must not exceed the cap, and the ledger's own record must agree with what they report.
   restart       a fresh process, with a Slurm restart count set, must find the authorization already spent.
-  fail_closed   with the claim directory read-only, a process must refuse to proceed rather than spend.
+  fail_closed   a ledger that cannot be used must stop the run. Two ways of making it unusable, because
+                only one of them is portable - see `fail_closed` below.
 
 usage: python3 -I research/officeqa/oqa_ledger_check.py --root <dir on the shared filesystem> --out LEDGER_CHECK.json
 """
@@ -140,28 +141,84 @@ def restart(root: str) -> dict:
             "problems": problems, "verdict": "PASS" if not problems else "FAIL"}
 
 
+def _spend_in_child(ledger: str, cap: int = 9) -> dict:
+    env = {**os.environ, **_env(ledger, cap), "SLURM_JOB_ID": "ledgercheck"}
+    run = subprocess.run([sys.executable, "-I", "-c", _SPEND_ALL], capture_output=True, text=True, env=env)
+    try:
+        spent = json.loads(run.stdout.strip().splitlines()[-1])["spent"]
+    except Exception:  # noqa: BLE001 - a crash IS a refusal, and is the expected outcome here
+        spent = None
+    return {"returncode": run.returncode, "spent": spent,
+            "refused": run.returncode != 0 or spent in (0, None),
+            "error_tail": run.stderr.strip().splitlines()[-1][:200] if run.stderr.strip() else ""}
+
+
+def _chmod_is_enforced(path: str) -> bool:
+    """Does this filesystem actually deny the OWNER write access to a directory they chmod 0500?
+
+    On the campaign's `/nfs/turbo` it does NOT: job 66272358 chmod-ed the claim directory to 0500 and then
+    created a file in it without error, because the share carries POSIX ACLs whose mask grants the owner
+    write access regardless of the mode bits. The first version of this check read that as the LEDGER failing
+    when what had failed was the check's own premise. So the premise is now probed instead of assumed.
+    """
+    os.chmod(path, 0o500)
+    probe = os.path.join(path, ".chmod-probe")
+    try:
+        with open(probe, "w", encoding="utf-8") as f:
+            f.write("x")
+    except OSError:
+        return True
+    else:
+        os.remove(probe)
+        return False
+
+
 def fail_closed(root: str) -> dict:
+    """A ledger that cannot be used must stop the run, not be ignored.
+
+    Two ways of making it unusable, because only one of them is portable:
+
+      cannot_create   the ledger path's parent is a regular FILE, so `os.makedirs` raises on every filesystem.
+                      This case always runs and always decides the verdict.
+      unwritable      the claim directory is chmod 0500. Only meaningful where the filesystem enforces that;
+                      where it does not, the case is reported as not applicable rather than as a failure.
+    """
+    checks: dict = {}
+
+    # cannot_create: the parent of the ledger directory is a file.
+    blocker = os.path.join(root, "not-a-directory")
+    shutil.rmtree(blocker, ignore_errors=True)
+    os.makedirs(root, exist_ok=True)
+    with open(blocker, "w", encoding="utf-8") as f:
+        f.write("this is a regular file, so a directory cannot be created underneath it\n")
+    checks["cannot_create"] = _spend_in_child(os.path.join(blocker, "ledger"))
+    checks["cannot_create"]["applicable"] = True
+
+    # unwritable: only where chmod is enforced for the owner.
     ledger = os.path.join(root, "failclosed")
     shutil.rmtree(ledger, ignore_errors=True)
     claims = os.path.join(ledger, "claims")
     os.makedirs(claims, exist_ok=True)
     os.makedirs(os.path.join(ledger, "spend"), exist_ok=True)
-    os.chmod(claims, 0o500)
-    env = {**os.environ, **_env(ledger, 9), "SLURM_JOB_ID": "ledgercheck"}
     try:
-        run = subprocess.run([sys.executable, "-I", "-c", _SPEND_ALL], capture_output=True, text=True, env=env)
-        spent = -1
-        try:
-            spent = json.loads(run.stdout.strip().splitlines()[-1])["spent"]
-        except Exception:  # noqa: BLE001 - a crash is the expected outcome
-            spent = None
-        refused = run.returncode != 0 or spent == 0
-        problems = [] if refused else [f"an unwritable ledger still allowed {spent} attempts"]
-        return {"returncode": run.returncode, "spent": spent,
-                "error_tail": run.stderr.strip().splitlines()[-1][:200] if run.stderr.strip() else "",
-                "problems": problems, "verdict": "PASS" if not problems else "FAIL"}
+        enforced = _chmod_is_enforced(claims)
+        if enforced:
+            checks["unwritable"] = {**_spend_in_child(ledger), "applicable": True}
+        else:
+            checks["unwritable"] = {
+                "applicable": False,
+                "why": "this filesystem does not deny the owner write access to a directory chmod-ed 0500 "
+                       "(POSIX ACLs on /nfs/turbo), so the condition cannot be created here and the case "
+                       "proves nothing either way",
+            }
     finally:
         os.chmod(claims, 0o700)
+
+    problems = []
+    for name, c in checks.items():
+        if c.get("applicable") and not c.get("refused"):
+            problems.append(f"{name}: an unusable ledger still allowed {c.get('spent')} attempts")
+    return {"checks": checks, "problems": problems, "verdict": "PASS" if not problems else "FAIL"}
 
 
 def _fstype(path: str) -> str:

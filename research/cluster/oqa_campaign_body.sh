@@ -224,6 +224,17 @@ shared)
     if [ -f "$SHARED/epoch1/results.jsonl" ]; then
         "$OQA_PY" -I research/officeqa/oqa_inventory.py "$SHARED/epoch1" \
             --out "$OUTDIR/trace_inventory.json" >> "$OUTDIR/job.log" 2>&1 || log "note: inventory failed"
+        # M0: the ONE contract model both contract arms start from, learned on this shared rollout. Offline,
+        # deterministic, free. It records its own evidence items, which is what makes a report on one of them
+        # say in its own text that its forecasts are IN-SAMPLE training feedback rather than predictions.
+        log "seeding M0 from the shared rollout"
+        "$OQA_PY" -I research/officeqa/oqa_lc_arm.py seed \
+            --pred "$SHARED/epoch1/predictions" --order "$SHARED/epoch1/results.jsonl" \
+            --out "$OQA_CAMPAIGN_ROOT/contracts" >> "$OUTDIR/job.log" 2>&1 || status=$?
+        cp "$OQA_CAMPAIGN_ROOT/contracts/SEED.json" "$OUTDIR/SEED.json" 2>/dev/null || true
+        [ -f "$OQA_CAMPAIGN_ROOT/contracts/model_M0.json" ] \
+            && log "M0 frozen: $(sha256sum "$OQA_CAMPAIGN_ROOT/contracts/model_M0.json" | cut -c1-16)" \
+            || log "WARNING: M0 was not written; arms B and C cannot start"
     fi
     ;;
 arm)
@@ -290,6 +301,30 @@ arm)
     if [ -f "$SKILLOPT_OPTIMIZER_PROMPT_BUDGET_LOG" ]; then
         log "prompt-budget decisions: $(wc -l < "$SKILLOPT_OPTIMIZER_PROMPT_BUDGET_LOG")"
         cat "$SKILLOPT_OPTIMIZER_PROMPT_BUDGET_LOG" >> "$OUTDIR/job.log"
+    fi
+
+    # ── END OF EPOCH: evolve this arm's contract model, AFTER the reports of this epoch were built ───────────
+    # The order is what keeps a prediction a prediction: rollout -> reports under the model frozen BEFORE this
+    # epoch -> analyst -> gate -> END OF EPOCH -> evolve. `evolve` replays the new traces against the model in
+    # force first, committing each forecast to a hash chain before the observation is released, and only then
+    # admits them as evidence. Offline, deterministic, free. Epochs 1 and 2 both run under M0, so the first
+    # evolution is the one that follows epoch 2.
+    if [ "$ARM" != "A" ] && [ "$EPOCH" -ge 2 ]; then
+        PRED="$OQA_ARM_OUT/steps/step_000$EPOCH/rollout"
+        if [ -f "$PRED/results.jsonl" ]; then
+            CDIR="$OQA_CAMPAIGN_ROOT/contracts/arm_$ARM"
+            mkdir -p "$CDIR"
+            log "evolving arm $ARM's contract model from its own epoch-$EPOCH traces"
+            "$OQA_PY" -I research/officeqa/oqa_lc_arm.py evolve \
+                --prev "$OFFICEQA_LC_MODEL" --pred "$PRED/predictions" --order "$PRED/results.jsonl" \
+                --epoch "$EPOCH" --arm "$ARM" --out "$CDIR" --history "$CDIR/history.jsonl" \
+                >> "$OUTDIR/job.log" 2>&1 || log "WARNING: the evolution failed; the next epoch has no new model"
+            NEXT="$CDIR/model_arm${ARM}_epoch0${EPOCH}.json"
+            [ -f "$NEXT" ] && log "next model frozen: $NEXT ($(sha256sum "$NEXT" | cut -c1-16))"
+            cp "$CDIR/EVOLVE_arm${ARM}_epoch0${EPOCH}.json" "$OUTDIR/" 2>/dev/null || true
+        else
+            log "WARNING: no epoch-$EPOCH rollout at $PRED, so nothing was evolved"
+        fi
     fi
     ;;
 heldout)
