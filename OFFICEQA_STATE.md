@@ -1,38 +1,99 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-17 03:28 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-17 (from `date`), prepared for a compaction.** Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`. **HEAD `771b3f0` + the containment-scope fix. Nothing is running or queued; 0 GPUs held.**
 
-**THE THREE-ARM CAMPAIGN IS RUNNING, on its SECOND chain.** The first chain reached arm C epoch 1 and died
-there on a concurrent-import race (job 66272740); the fix is `df9d922` and the chain was resumed from that point
-as **66273855 -> 66273864** under commit `797846e`. Arms A and B epoch 1 are COMPLETE and were NOT re-run - see
-**A0-FAIL-1** for why that is sound. 0 GPUs held and 0 requested. See **A0-RUN** for the guards in force and
-what to check when it finishes. The user authorized it on 2026-11-17: 20 CPU job-hours, zero GPUs, 15,000 EmpirioLabs attempts and
-$8.00, 130 DeepSeek calls and $4.00, inside the shared 50 RPM account limit.
+## THE CAMPAIGN IS FINISHED, AND A DECISION IS WITH THE USER
 
-**The preflight the user required is COMPLETE** (jobs 66272358 and 66272499, both free) -> section **A0-PREP**.
-It closed a real blocker: the 108 questions reference 153 parsed bulletins and only 78 were on the cluster, so
-33 items - 8 of the 24 training questions - had no document at all. 150 files were fetched and all 108 items are
-now answerable.
+All 14 jobs COMPLETED (chain 1: 66272737-66272740 with 66272740 failing; chain 2: 66273855-66273864).
+**The user's next instruction is about RECOVERY — do not submit anything before it arrives.**
 
-Everything before this campaign is COMPLETE: the A40 two-arm comparison, the held-out evaluation, the
-learned-contract port, the Lean compile (66259448), the hosted-actor smoke test (66264849) and the slow-update
-size probe (66271290, section **A0-PROBE**). **The report-cache defect is FIXED (`c353b99`)** and the follow-up
-audit is done (`docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`): correcting the eight stale reports changes the
-diagnosis for 5 of 8 items but NOT the advice, so no replay was run.
-**The offline value probe answers the research question directly** ->
-`docs/research/OFFICEQA_REPORT_VALUE_PROBE.md`: **0 of 8 cases gained a valid diagnosis attributable to the
-report; 1 of 8 gained a misleading one.** That finding stands and this campaign is what tests it at scale.
-**A contract/check audit** (`docs/research/OFFICEQA_CONTRACT_AUDIT.md`, section C6) says what to change to make
-the report accurate; those changes are deliberately NOT applied.
+### The result
 
-**Still with the USER:** whether to apply the C6 changes 1-4, and whether to restructure as one epoch of four
-steps so the optimizer sees its rejected edits (section C3). **One paid DeepSeek attempt from the probe
-authorization remains UNSPENT.** **The held-out outcome of job 66234927 remains deliberately UNREAD/SEALED.**
+| step / epoch | arm A Original | arm B Action Contracts | arm C Action + Stages |
+|---|---|---|---|
+| 1 | reject 0.0417 | reject 0.1250 | reject 0.0833 |
+| 2 | reject 0.0833 | **accept_new_best 0.2083** | reject 0.0833 |
+| 3 | reject 0.0417 | reject 0.0417 | **skip_no_patches** |
+| 4 | **skip_no_patches** | **skip_no_patches** | **skip_no_patches** |
+| **best** | **S0, 0.1667** | **step 2, 0.2083** | **S0, 0.1667** |
 
-**This session owns** the OfficeQA track only. Write only `from: "officeqa"` records in
-`/Users/yaojiaming/dev/lean_skillopt/coordination/reservations.jsonl`; the latest is
-`OQA-13:THREE-ARM-CAMPAIGN-SUBMITTED`. Standing authorization since 2026-11-15 ~23:00 replaced per-job ACKs; a
-peer's ACK coordinates capacity, never authorizes work.
+**Arm B's acceptance is NOT evidence that action contracts help.** The margin was 5/24 against 4/24 — one
+question. In the sound window there were 9 gate evaluations; if every candidate were merely as good as S0 the
+expected number of acceptances is **2.99**, and we observed **1**. P(at most 1 | all neutral) = 0.141. The
+campaign produced FEWER acceptances than chance predicts. See `docs/research/OFFICEQA_GATE_RESOLUTION.md`.
+
+**What did differ:** the arms' edits are different documents (epoch 1: 4,174 / 4,652 / 4,420 chars from S0's
+887). The feedback channels change what the optimizer writes, not whether the gate takes it.
+
+### `skip_no_patches` is MY BUG, and it is why a decision is needed
+
+The spend ledger enforced its cap on **CLAIMED** money and never released what a process did not spend:
+
+```
+optimizer   spent $2.1913   CLAIMED $4.0000 (the whole cap)   wasted $1.8087 = 45%
+target      spent $4.9441   CLAIMED $7.0000 of $8.00          wasted $2.0559
+```
+
+Once claims reached $4.00, every further optimizer attempt was refused (24 refusals) while DeepSeek had been
+paid $2.19 of an authorized $4.00. **Four arm-epochs made ZERO optimizer calls** — arm C epoch 3, and epoch 4
+in all three arms. $1.4976 went on rollouts whose analyst never ran. The damage is **asymmetric**: arm C lost
+two epochs, arms A and B one each.
+
+**FIXED (`771b3f0`)**: clean exits release unused claims into `release/`, which `_granted` subtracts; the
+default USD block drops from $0.25 to $0.05; `oqa_ledger_read.py` nets out releases and FLAGS this exact
+condition. Four tests including the counterfactual. **The campaign's own ledger still shows the pre-fix state,
+so an audit of it will correctly report FAIL.**
+
+### The recovery position — everything expensive survived
+
+All four starved arm-epochs already hold their 24-question training rollout and both 10-question slow-update
+rollouts. Only the refused optimizer calls and the gate passes are missing.
+
+| | actor | optimizer |
+|---|---|---|
+| complete all four starved arm-epochs | $1.26 | $1.32 |
+| remaining authorization | $3.06 | $1.81 |
+| left afterwards | $1.80 | $0.49 |
+| held-out, per distinct skill | $0.39 | — |
+
+It fits inside the authorization already granted. It needs the user's word because it spends ~$2.60 more and
+means resetting each arm's `runtime_state.json` to re-run a step the record shows as `skip_no_patches`.
+**The alternative is to write up the two-epoch result and run the held-out stage on what exists.**
+
+### What to run after the user decides
+
+```
+# the readout, which refuses to present a result without its checks
+python3 -I research/officeqa/oqa_campaign_summary.py --campaign <camp> \
+    --bundle <bundle1> --bundle <bundle2> --out <camp>/CAMPAIGN_SUMMARY.json
+# the ledger, from outside the job
+python3 -I research/officeqa/oqa_ledger_read.py <camp>/ledger --questions N
+# the reports
+python3 -I research/officeqa/oqa_report_audit.py --expect 24 --arm B=... --arm C=...
+# the held-out plan and submission (PRIMARY = S0 + each arm's best_skill.md; last-skill = EXPLORATORY)
+OQA_BUNDLE=<bundle> bash research/cluster/oqa_heldout_submit.sh --dry-run
+```
+
+As of the final state `oqa_heldout.py` reports **7 skills requested, 2 distinct by digest, 1 BY ADVICE** — all
+three arms' last skills are S0 plus injected marker blocks. Arm B's `best_skill.md` is a genuinely different
+skill (3,601 chars), so the primary set is S0 + arm B's skill = **2 distinct by advice**.
+
+### Verified on the live run (not the dry run)
+
+S0 training 0.125, gate baseline 0.1667; M0 `8d8ecceecd0b…`; route PASS for both roles inside the trainer with
+the dispatch proven; arm B zero stage markers in 24 of 24; **arm C contains arm B for 22 of 22 comparable
+reports** (the comparable set is where both the model AND the trace are shared, i.e. epoch 1 — from epoch 2 each
+arm evolves its own model, so later reports are expected to differ); 24 distinct trace digests per arm under one
+M0 digest; all epoch-1 reports labelled in-sample; `boundary_audit` PASS throughout; 153 of 153 documents
+present and 108 of 108 items answerable, UID0019 included.
+
+### Prompt-size check: ten pairs had MORE headroom than planned
+
+6 of 9 slow updates sent 10/10; three draws exceeded the 225,000-token limit and were trimmed to 8, 7 and 9 by
+rule OQA-PB-1. The per-showing-pair cost is **18,533** tokens here, not the 34,569 the plan assumed. The four
+`no_content` results were the LEDGER, not the size — arm B epoch 4 failed at 181,849 tokens having succeeded at
+223,815 in epoch 2.
 
 ---
 

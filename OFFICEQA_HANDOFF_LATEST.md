@@ -1,28 +1,35 @@
-# OfficeQA — handoff, 2026-11-17 (the three-arm campaign is RUNNING)
+# OfficeQA — handoff, 2026-11-17 (the three-arm campaign is FINISHED; a recovery decision is with the user)
 
 ```
 =====================================================================================================
-OFFICEQA THREE-ARM CAMPAIGN — STATUS AT 2026-11-17 ~05:20 EST
+OFFICEQA THREE-ARM CAMPAIGN — FINISHED. NOTHING IS RUNNING. A DECISION IS PENDING.
 =====================================================================================================
+
+0. READ THIS FIRST
+
+   The campaign ran to completion, and a defect in MY OWN spend ledger cost four arm-epochs their optimizer
+   calls. The sound comparison is EPOCHS 1-2, symmetric across all three arms. Arm B is the only arm whose
+   gate accepted a candidate, and that acceptance is NOT evidence that action contracts help - the campaign
+   produced FEWER acceptances than chance predicts at this gate's resolution. The recovery is cheap and fits
+   the existing authorization, but it needs the user's word. Details in 5, 6 and 10.
 
 1. WHERE IT IS
 
-   RUNNING, on its second chain. 0 GPUs held, 0 requested.
+   FINISHED. Nothing running, nothing queued, 0 GPUs held. HEAD 771b3f0 + the containment-scope fix.
 
      CHAIN 1  commit 91b2494, bundle $PROJECT_ROOT/oqa_campaign_20261117
-       66272737 shared  COMPLETED
-       66272738 A.e1    COMPLETED      66272739 B.e1  COMPLETED
-       66272740 C.e1    FAILED  (concurrent-import race; see 6)
-       66272741..66272749             CANCELLED by the afterok dependency
+       66272737 shared COMPLETED   66272738 A.e1 COMPLETED   66272739 B.e1 COMPLETED
+       66272740 C.e1 FAILED (concurrent-import race, fixed in df9d922) -> 66272741..49 CANCELLED
 
      CHAIN 2  commit 797846e, bundle $PROJECT_ROOT/oqa_campaign_20261117b, resumed with `--from C.1`
-       66273855 C.e1 COMPLETED -> 66273856 A.e2 RUNNING -> 66273857 B.e2 -> 66273858 C.e2
-                     -> 66273859 A.e3 -> 66273860 B.e3 -> 66273861 C.e3
-                     -> 66273862 A.e4 -> 66273863 B.e4 -> 66273864 C.e4
+       66273855 C.e1 -> 66273856 A.e2 -> 66273857 B.e2 -> 66273858 C.e2 -> 66273859 A.e3
+       -> 66273860 B.e3 -> 66273861 C.e3 -> 66273862 A.e4 -> 66273863 B.e4 -> 66273864 C.e4
+       ALL COMPLETED.
 
    Campaign root  $PROJECT_ROOT/runs/20261117-officeqa-3arm-campaign
-   Ledger         <campaign root>/ledger     read it with research/officeqa/oqa_ledger_read.py
-   Pushing is still NOT authorized; both bundles are `git archive` trees with in-job manifest checks.
+   Readout        <campaign root>/CAMPAIGN_SUMMARY.json  (regenerate with oqa_campaign_summary.py)
+   Ledger         <campaign root>/ledger                 (read with oqa_ledger_read.py; it will report FAIL,
+                                                          correctly, because this ledger predates the fix)
 
 2. THE AUTHORIZATION AND WHAT IS LEFT OF IT
 
@@ -67,23 +74,28 @@ OFFICEQA THREE-ARM CAMPAIGN — STATUS AT 2026-11-17 ~05:20 EST
                               answerable (107 AVAILABLE, 1 AVAILABLE_VIA_TOOLS, 0 ABSENT, 0 UNTESTED)
    UID0019                    AVAILABLE; 1 file, 2 page refs, BOTH resolved. Same for UID0039, UID0064.
 
-5. RESULTS SO FAR — every candidate rejected
+5. THE RESULT
 
-     arm A epoch 1   candidate 0.0417 (1/24)   REJECT    629 s
-     arm B epoch 1   candidate 0.1250 (3/24)   REJECT    733 s
-     arm C epoch 1   candidate 0.0833 (2/24)   REJECT    962 s
-     arm A epoch 2   candidate 0.0833 (2/24)   REJECT   2142 s   (ordinary update)
-     arm A epoch 2   slow update: 10/10 pairs sent, ~185,332 tokens, guidance produced; gate running
+     step/epoch |  arm A Original   |  arm B Action Contracts  |  arm C Action + Stages
+        1       |  reject 0.0417    |  reject 0.1250           |  reject 0.0833
+        2       |  reject 0.0833    |  ACCEPT_NEW_BEST 0.2083  |  reject 0.0833
+        3       |  reject 0.0417    |  reject 0.0417           |  skip_no_patches  <- starved
+        4       |  skip_no_patches  |  skip_no_patches         |  skip_no_patches  <- starved
+       best     |  S0, 0.1667       |  step 2, 0.2083          |  S0, 0.1667
 
-   All arms' best_skill.md is S0 at 0.1667. The arms' CANDIDATES do differ — epoch 1 gave three
-   different documents (4,174 / 4,652 / 4,420 bytes from S0's 887) — so the feedback channels change
-   what the optimizer writes. What none has produced is an edit the gate accepts.
+   S0 is 4/24 on the gate. Arm B's accepted skill is 3,601 chars from S0's 887.
 
-   skills/skill_v0001.md is NOT a candidate. When a candidate is rejected the trainer still writes the
-   step's snapshot, which with use_slow_update on is the retained skill plus an empty SLOW_UPDATE
-   placeholder. All three arms' copies are byte-identical for that reason alone. oqa_heldout.py now
-   reports `skills_distinct_by_advice` and names any arm whose last skill carries S0's advice; after
-   epoch 1 that is all three, so 7 requested skills are 2 distinct by digest and ONE by advice.
+   ARM B'S ACCEPTANCE IS NOT EVIDENCE THAT CONTRACTS HELP. The margin was 5/24 against 4/24 - ONE question.
+   P(a candidate exactly as good as S0 is accepted) = 0.371. In the sound window there were 9 gate
+   evaluations; expected acceptances if every candidate were neutral = 2.99; observed = 1;
+   P(at most 1 | all neutral) = 0.141. The campaign produced FEWER acceptances than chance predicts.
+   docs/research/OFFICEQA_GATE_RESOLUTION.md has the working.
+
+   WHAT DID DIFFER: the arms' edits are different documents (epoch 1: 4,174 / 4,652 / 4,420 chars from 887).
+   The channels change what the optimizer writes, not whether the gate takes it.
+
+   SCOPE: epochs 1-2 are complete and symmetric in all three arms - that is the comparison. Epoch 3 is
+   ASYMMETRIC (A and B ran it, C did not). Epoch 4 is empty everywhere.
 
 6. FOUR CORRECTIONS TO FIGURES OR CLAIMS I GAVE THE USER
 
@@ -117,21 +129,44 @@ OFFICEQA THREE-ARM CAMPAIGN — STATUS AT 2026-11-17 ~05:20 EST
      best_skill.md. A last-skill number is EXPLORATORY and must be labelled so. The script refuses to
      submit a set it computes to exceed the authorized charge.
 
-8. OPEN FOR THE USER
+8. THE DEFECT THAT COST FOUR ARM-EPOCHS, AND THE FIX
 
-   1. If the held-out set turns out to need 5+ distinct skills, raise the actor ceiling to about $10 or
-      drop the exploratory last-skill passes. As of epoch 1 this is moot (one distinct skill by advice).
-   2. The gate's resolution (6d). Options on the record, none recommended: a larger selection set, a
-      repeated S0 baseline, or accepting on a tie — the last is WEAKENING a validation gate and needs
-      explicit approval.
-   3. Four epochs still give no cross-epoch memory in the ORDINARY update; one epoch of four steps is
-      the fix. The gated slow update and meta skill now carry some memory, which is new.
-   4. The C6 contract/check changes (docs/research/OFFICEQA_CONTRACT_AUDIT.md) are still not applied.
+   The ledger enforced its cap on CLAIMED money and never released what a process did not spend:
+
+       optimizer  spent $2.1913  CLAIMED $4.0000 (the whole cap)  wasted $1.8087 = 45%
+       target     spent $4.9441  CLAIMED $7.0000 of $8.00         wasted $2.0559
+
+   Once claims reached $4.00 every further optimizer attempt was refused - 24 refusals - while DeepSeek had
+   been paid $2.19 of an authorized $4.00. The cap did its job on the wrong quantity. Four arm-epochs made
+   ZERO optimizer calls and $1.4976 went on rollouts whose analyst never ran.
+
+   FIXED in 771b3f0: a clean exit RELEASES unused claims into release/, which _granted subtracts; a process
+   that dies keeps its claim (the conservative direction); the default USD block drops $0.25 -> $0.05, because
+   waste is bounded by one block per process and a block must be small AGAINST THE CAP; oqa_ledger_read.py
+   nets out releases and flags the exact condition. Four tests, including the counterfactual.
+
+9. OPEN FOR THE USER
+
+   1. THE RECOVERY DECISION. Every starved arm-epoch still holds its 24-question training rollout and both
+      10-question slow-update rollouts. Only the refused optimizer calls and the gate passes are missing.
+
+          complete all four starved arm-epochs   $1.26 actor  +  $1.32 optimizer
+          remaining authorization                $3.06 actor  +  $1.81 optimizer
+          left afterwards                        $1.80 actor  +  $0.49 optimizer
+          held-out, per distinct skill           $0.39 actor
+
+      It fits what was already authorized. It needs the user's word because it spends ~$2.60 more and means
+      resetting each arm's runtime_state.json to re-run a step recorded as skip_no_patches. The alternative
+      is to write up the two-epoch result and run held-out on what exists.
+   2. The gate's resolution (5). Options recorded without recommendation: a larger selection set, a repeated
+      S0 baseline, or accepting on a tie - the last is WEAKENING a validation gate and needs explicit approval.
+   3. Four epochs still give no cross-epoch memory in the ORDINARY update; one epoch of four steps is the fix.
+   4. The C6 contract/check changes are still not applied.
    5. A push has not been authorized.
    6. ONE PAID DEEPSEEK ATTEMPT from the probe grant remains UNSPENT.
    7. The held-out outcome of job 66234927 remains deliberately UNREAD and SEALED.
 
-9. WHAT THIS CAMPAIGN CANNOT ESTABLISH
+10. WHAT THIS CAMPAIGN CANNOT ESTABLISH
 
    The earlier offline probe on the two-arm run's traces found 0 of 8 cases gained a valid diagnosis
    attributable to the report and 1 of 8 gained a misleading one

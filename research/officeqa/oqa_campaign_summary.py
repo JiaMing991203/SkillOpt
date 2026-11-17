@@ -162,23 +162,70 @@ def reports(root: str) -> dict:
             "boundary_failures": [r.get("id") for r in manifest if r.get("boundary_audit") != "PASS"]}
 
 
+def _reports_by_trace(directory: str) -> dict:
+    """(model digest, trace digest) -> (item id, file name), for every report an arm actually wrote.
+
+    Keyed on the TRACE, not the item or the model, because neither alone identifies a report:
+      * an item has one report per epoch, four after four epochs;
+      * epochs 1 AND 2 both run under M0, so the model digest does not pin the epoch either.
+    Keying on (model, trace) is exact, and intersecting two arms on that key SELECTS the comparable reports
+    rather than assuming which they are - which matters because the arms share only the epoch-1 traces.
+    Files are matched to manifest rows by `report_sha256`.
+    """
+    rows = {}
+    for line in (_read(os.path.join(directory, "GENERATED.jsonl")) or "").splitlines():
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get("report_sha256") and r.get("trace_sha256"):
+            rows[r["report_sha256"]] = r
+    out = {}
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".md"):
+            continue
+        text = _read(os.path.join(directory, name))
+        if text is None:
+            continue
+        r = rows.get(hashlib.sha256(text.encode()).hexdigest())
+        if r:
+            out[((r.get("model_sha256") or "")[:12], r["trace_sha256"])] = (str(r.get("id")), name)
+    return out
+
+
 def containment(campaign: str) -> dict:
+    """Arm C's report must contain arm B's FOR THE SAME TRACE UNDER THE SAME MODEL.
+
+    THE SCOPE IS THE WHOLE DIFFICULTY, and I got it wrong twice. Comparing each arm's latest reports flags the
+    epoch-2-onward divergence as a failure, but that divergence is the DESIGN: from epoch 2 each contract arm
+    evolves its own model from its own traces. Restricting to M0 is not enough either, because epochs 1 and 2
+    both run under M0 while their traces differ per arm. The comparable reports are those sharing BOTH the
+    model and the trace, which in this campaign is exactly epoch 1 - the shared rollout - and the intersection
+    finds them without being told.
+    """
     b = os.path.join(campaign, "arm_B", "stage_reports")
     c = os.path.join(campaign, "arm_C", "stage_reports")
     if not (os.path.isdir(b) and os.path.isdir(c)):
-        return {"tested": False}
-    bf = {n.split(".")[0]: n for n in os.listdir(b) if n.endswith(".md")}
-    cf = {n.split(".")[0]: n for n in os.listdir(c) if n.endswith(".md")}
+        return {"tested": False, "why": "a report directory is missing"}
+    bf, cf = _reports_by_trace(b), _reports_by_trace(c)
     common = sorted(set(bf) & set(cf))
     ok, bad = 0, []
-    for uid in common:
-        tb = (_read(os.path.join(b, bf[uid])) or "").splitlines()
-        tc = set((_read(os.path.join(c, cf[uid])) or "").splitlines())
+    for key in common:
+        uid_b, name_b = bf[key]
+        _uid_c, name_c = cf[key]
+        tb = (_read(os.path.join(b, name_b)) or "").splitlines()
+        tc = set((_read(os.path.join(c, name_c)) or "").splitlines())
         if [l for l in tb if l.strip() and l not in tc]:
-            bad.append(uid)
+            bad.append(uid_b)
         else:
             ok += 1
-    return {"tested": True, "items_in_both": len(common), "C_contains_B": ok, "failures": bad[:5]}
+    return {"tested": True,
+            "scope": "reports sharing both the model digest and the trace digest",
+            "arm_B_reports": len(bf), "arm_C_reports": len(cf),
+            "comparable_pairs": len(common), "C_contains_B": ok, "failures": sorted(bad)[:5],
+            "note": "the comparable set is epoch 1, where both arms run under M0 on the shared rollout. From "
+                    "epoch 2 each arm evolves its own model from its own traces, so there is no shared "
+                    "(model, trace) key and nothing to compare - which is the design, not a defect."}
 
 
 def models(campaign: str, arm: str) -> list:

@@ -917,3 +917,62 @@ late discovery: all three produced no `<answer>` tag and one reached the tool-tu
 those as rollout outcomes, which they are, but if the starting skill answers rarely then every arm's score sits
 near the floor and the comparison has little to separate. The A40 pilot's 5 of 12 is not a guide here — FP8
 makes this a new baseline.
+
+## 2026-11-17 (end of day) — the campaign finished, and the instrument I built to protect it broke it
+
+The three-arm comparison ran to completion. The headline is that arm B, Action Contracts Only, is the only arm
+whose gate accepted a candidate — and the honest reading of that is **nothing**, which took some arithmetic to
+establish and is the part worth writing down.
+
+Arm B's accepted candidate scored 5 of 24 against S0's 4 of 24. One question. At that resolution a strict gate
+accepts a candidate that is merely as good as S0 **37% of the time**. Nine gate evaluations happened in the
+window where all three arms had full optimizer access, so if every single candidate were neutral we would expect
+about **three** acceptances. We saw **one**. P(at most one | all neutral) = 0.141. So the campaign produced
+fewer acceptances than chance predicts, and arm B's one is on the low side of noise rather than a signal. Had I
+reported "the arm with action contracts was the only one to improve the skill" — which is literally true — it
+would have been badly misleading.
+
+What the campaign does show is that the three feedback channels produce genuinely different edits: epoch 1's
+candidates were 4,174, 4,652 and 4,420 characters from the same 887-character starting skill, with different
+content. The channels change what the optimizer writes. At 24 validation questions they do not change whether
+the gate takes it, and they could not be shown to.
+
+**And then the part I am least pleased about.** The spend ledger I built specifically to stop this campaign
+overrunning its authorization is what truncated it. It enforces the cap on *claimed* money, and I never wrote
+the other half: a process that exits never gave back the headroom it was still holding. Thirteen processes each
+kept about one call's reserve plus block rounding, which over a $4.00 optimizer cap in $0.25 blocks came to
+$1.81 — **45% of the authorization claimed and unspendable**. Once the claims reached the cap, the ledger
+refused every further optimizer attempt, exactly as designed, while DeepSeek had been paid $2.19 of an
+authorized $4.00. Four arm-epochs made no optimizer call at all. The trainer recorded `skip_no_patches` and
+carried on, which is the right behaviour and also why it was invisible until I read the per-process records.
+
+I had documented the waste when I wrote the thing: "the unused remainder of a dead process's block is LOST
+rather than recycled — the conservative direction, and the reason blocks are small." The blocks *were* small in
+absolute terms. They were 6% of the cap each, with thirteen processes to serve. "Small" was the wrong
+comparison, and I wrote the sentence that should have caught it.
+
+Worse, the damage is asymmetric: arm C lost two epochs, arms A and B one each. So the symmetric comparison is
+epochs 1–2, not the four the user asked for.
+
+The fix is a release record written at exit, netted out of the claim total, plus a block an order of magnitude
+smaller. The counterfactual test is the one that matters: six short-lived processes spending $0.03 of a $0.20
+cap all get through with the release, and the last is starved without it.
+
+**Three other things I got wrong today, for the record.** I predicted some slow updates would send nine pairs
+rather than ten; the first one sent ten at the worst-case category mix, because my per-pair size constant came
+from a saved collection with a 171,394-character outlier and was twice the real figure. I said "the binding
+constraint on wall time is the 50 RPM account limit"; it is per-request latency and the sequential tool loop,
+and I was out by a factor of 3.2. And I wrote that "the optimizer's first edit is harmful in every condition"
+after epoch 1, which the gate cannot support — it was the same resolution problem, noticed three hours too late.
+
+The containment check took me three attempts to scope correctly, which is worth recording because the first two
+attempts each produced a confident false alarm. Comparing the arms' latest reports flags the epoch-2-onward
+divergence as a failure, but that divergence is the design. Restricting to M0 is not enough either, because
+epochs 1 and 2 both run under M0 while their traces differ per arm. The comparable reports are the ones sharing
+both the model and the trace, and intersecting on that key finds them without being told which epoch to look
+at: 22 of 22 pass.
+
+Everything expensive from the starved epochs survived — each still holds its 24-question training rollout and
+both 10-question slow-update rollouts, and the contract-model evolution ran regardless because it is offline. So
+completing them costs $1.26 of actor and $1.32 of optimizer against $3.06 and $1.81 remaining, which fits. That
+is the user's call and I have not submitted it.
