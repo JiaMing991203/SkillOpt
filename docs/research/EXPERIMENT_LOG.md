@@ -963,3 +963,127 @@ Code: `research/officeqa/oqa_sel3.py`, `oqa_lc_arm.py`, `oqa_dryrun.py`, `oqa_pr
 `oqa_budget.py`; `oqa_lc_report.py` (action renderer and the two audits), `oqa_reports.py` (the three
 conditions), `skillopt/gradient/reflect.py` (condition-dependent heading and mode).
 Tests: `tests/test_officeqa_three_arm.py`, 25 passed; whole local suite 2,057 passed, 11 skipped.
+
+---
+
+## OQA-SLOW-PROBE — is 10 paired questions per slow update practical? (jobs 66271190, 66271290, 2026-11-17)
+
+**Authorization.** The user authorized **at most two paid HTTP attempts in total, including retries**, with saved
+training artifacts only, zero new actor rollouts, zero GPU jobs and no held-out data, and asked that the campaign
+configuration stay at four pairs pending review. **One attempt was used. One remains unspent. The config is
+unchanged at `slow_update_samples: 4`.**
+
+**Deployed revision.** `aa4aae91f2b05ec3b4b43f131ce443499180cea1`, via a `git archive` staging bundle whose
+sha256 manifest the job verifies before running (`research/cluster/oqa_bundle.sh`).
+
+**Resources.** 1 CPU, 4 GB, `standard` partition, 49 s elapsed, zero GPUs. The paid attempt had to run on the
+cluster because the DeepSeek key exists only there, in the private secrets file.
+
+### Part 1 — the prompts, rendered offline
+
+`research/officeqa/oqa_slow_probe.py --mode render`. The prompts are produced by calling the campaign's own
+`run_slow_update` and `run_meta_skill` with `chat_optimizer` replaced by a capture stub, so the rendering and the
+trace-inclusion rules are the planned run's rather than a reimplementation of them. Pairs are built by the
+campaign's own `build_comparison_pairs` against the saved rollout directories, which is what reads the
+trajectories.
+
+Sources: the shared epoch-1 rollout of job 66209754 as `prev`; arm B's and arm A's epoch-2 rollouts (jobs
+66228142 and 66224637) as `curr`, keeping the heavier recorded attempt per item; arm B's `skill_v0001.md` and
+`skill_v0002.md` as the two skills. Pool: 12 distinct training items, of which **7** fall in a
+trajectory-showing category (`regressed` / `persistent_fail` / `improved`) and 5 are `stable_success`, which
+prints no trajectory and so costs almost nothing.
+
+| batch | pairs | showing | slow update | meta skill |
+|---|---|---|---|---|
+| representative (recorded order) | 10 | 6 | 641,406 chars ≈ 198,701 tok | 640,212 chars ≈ 198,331 tok |
+| **largest assemblable** | 10 | 7 | **786,843 chars ≈ 243,756 tok** | 785,649 chars ≈ 243,386 tok |
+| reference: representative | 4 | — | 183,679 chars ≈ 56,902 tok | — |
+| reference: largest | 4 | — | 539,455 chars ≈ 167,117 tok | — |
+
+**The slow update is the larger of the two requests**, by 1,194 characters: the user prompts are within 35
+characters of each other and the slow update's system prompt is 1,229 characters longer (2,984 against 1,755).
+
+Growth per trajectory-showing pair, measured (`GROWTH.json`): mean 111,483 characters, max 172,530, min 70,550 —
+about **34,569 tokens per showing pair**. The saved collections share only 12 training items and only 7 showing
+pairs, so a 10-showing-pair prompt cannot be assembled from these records; computed, it would be **~347,000
+tokens** at mean weight and **~536,000** if every pair were as heavy as the heaviest one seen.
+
+### Part 2 — the real DeepSeek path
+
+One guarded attempt, largest batch, through the campaign's endpoint, model and generation settings.
+
+```
+preflight      optimizer_backend openai_compatible | base_url https://api.deepseek.com | model deepseek-flash
+               max_tokens 16384 | temperature not sent | dispatch check PASS
+request        prompt_tokens 243,986   (offline estimate was 243,756 — 0.09% low)
+               cache hit 512 / miss 243,474        completion_tokens 7,562
+response       finish_reason "stop"    elapsed 43.7 s (stage 44.0 s)    content 5,160 chars
+parsed         run_slow_update returned slow_update_content of 3,235 chars -> USABLE
+trainer would  record an accepted candidate and gate it on the 24-question selection set
+charge         $0.04106 at off-peak prices, $0.08212 if peak
+authorization  1 of 2 HTTP attempts used, 1 unspent
+```
+
+The returned guidance is substantive, not a stub: it opens by addressing the dominant failure in the saved
+traces ("Always finish with an answer — do not run out of budget reasoning"), which matches the pool's 7
+persistent failures, 4 of them ending with no answer produced.
+
+**Success was judged on parsed output, not on HTTP 200**, which is the test the trainer itself applies: the stage
+must return a non-empty content field or the epoch records `action: "no_content"`.
+
+### The first attempt, and why it cost nothing
+
+**Job 66271190 FAILED, 6 s, zero HTTP attempts, zero charge.** It configured the openai-compatible endpoint
+correctly and then dispatched to **Azure**: `skillopt.model.chat_optimizer` is a router and `OPTIMIZER_BACKEND`
+defaults to `openai_chat`. The Azure path raised for want of an endpoint, `run_slow_update` swallowed the
+exception as it is written to do, and the probe recorded `no_content` — a result that looks like a DeepSeek
+failure and is not one. This is the trap already recorded for the TARGET role in the hosted-actor smoke test,
+hit on the OPTIMIZER role because the preflight checked the openai-compatible config without checking which
+backend the router would choose.
+
+Fixed at `aa4aae9`: the preflight calls `set_optimizer_backend`, reads it back, resets the cached per-role client
+so it is rebuilt from the config just set, and proves the dispatch path with a check that costs no HTTP attempt —
+`_chat_messages_impl` is temporarily replaced by one that raises a unique marker and a call is made through the
+same wrapper chain the probe will use. Verified locally that the check refuses under the default backend and
+passes once the backend is set. **Any campaign job that calls the optimizer must pin the backend the same way.**
+
+### Safeguards that were in force
+
+* the HTTP cap counts **actual sends** at the lowest level — a proxy around `client.chat.completions.create` —
+  because `run_slow_update` hardcodes `retries=3` and capping by argument would depend on every caller honouring
+  it. `retries` was additionally forced to 1, which `_chat_messages_impl` treats as one total attempt.
+* the job body **refuses to run when `SLURM_RESTART_COUNT` is non-zero**, because the cap is per-process and a
+  requeue would respend the authorization. This is the safeguard earlier runs only documented.
+* the actor keys were dropped inside the job, so no rollout request was possible; the optimizer key never
+  reached a log or an artifact (checked after the run).
+
+### What this changes, and what it does not
+
+The **173,060-token "envelope"** of the three-arm launch packet is retired: it was the largest prompt the project
+had tried, never a limit, and DeepSeek accepted 1.41× it. What is now established is that **243,986 tokens are
+accepted and parse**. The real ceiling remains unknown — the published figures for the DeepSeek chat family
+disagree (128k for the V3 era, 1M for the current ones) and none of the sources is DeepSeek's own documentation.
+
+At 10 pairs the measured mix sits about 13,000 tokens under the proven point, which is less than half a pair, so
+**there is no demonstrated headroom for longer epochs**, longer trajectories as the skill grows, or a worse
+category mix. The failure mode is graceful — `no_content`, symmetric across arms, at no cost — so the risk is a
+slow update that silently produces nothing rather than a broken campaign, and the post-run check for
+`no_content` in every arm's `slow_update/epoch_NN/slow_result.json` is what catches it.
+
+**The meta-skill path was deliberately not tested**: the user's condition was to test it only if its rendered
+request were larger, and it is smaller. What stays untested is that `meta_skill_content` parses back; the
+remaining authorized attempt could close that.
+
+### Artifacts
+
+```
+runs/20261117-officeqa-slow-probe-66271190/
+  RENDER.json                          both stages' rendered sizes for representative, largest and 4-pair batches
+  GROWTH.json                          the per-showing-pair growth curve and the computed 10-pair figures
+  SEND_66271290.json                   the paid attempt: preflight, HTTP record, parsed result, charge
+  SEND_66271190_azure_misdispatch.json the first attempt's record, kept as the evidence for the router lesson
+  job_66271290.log
+```
+
+Code: `research/officeqa/oqa_slow_probe.py`, `research/cluster/oqa_slow_probe_body.sh`,
+`research/cluster/oqa_bundle.sh`; `research/officeqa/oqa_budget.py` (constants revised to the measured values).

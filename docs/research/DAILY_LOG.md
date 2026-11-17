@@ -782,3 +782,57 @@ split **once per distinct skill**: S0 plus each arm's validation-selected and la
 digest, at most 7 rollouts.
 
 The held-out outcome of job 66234927 remains deliberately unread.
+
+## 2026-11-17 (later) — 10 paired questions per slow update: measured, and it works
+
+The user asked for a quick preflight on whether 10 comparison pairs per slow update is practical, with at most
+two paid DeepSeek attempts, and asked that the campaign configuration stay at four pairs pending review. Detail
+and every number: `EXPERIMENT_LOG.md` section OQA-SLOW-PROBE; state note section **A0-PROBE**.
+
+**Result: a realistic 10-pair request of 243,986 prompt tokens was accepted and returned 3,235 characters of
+parsed, usable guidance in 43.7 s for $0.041.** One of the two authorized attempts was used; one is unspent. The
+config is untouched at 4.
+
+**The measurement retires a framing I had been using.** The three-arm packet treated 173,060 tokens as an
+"envelope" because it was the largest optimizer prompt the project had successfully sent. That was never a limit,
+and saying so as if it bounded anything was the weak part of that analysis. DeepSeek accepted 1.41× it without
+complaint. What is established now is a demonstrated acceptance at 243,986 tokens; the real ceiling is still
+unknown, because the published figures for the DeepSeek chat family disagree and none of the sources is
+DeepSeek's own documentation.
+
+The offline half is worth keeping separate from the paid half. The prompts were rendered by calling the
+campaign's own `run_slow_update` and `run_meta_skill` with `chat_optimizer` replaced by a capture stub, so the
+rendering and the trace-inclusion rules are the planned run's rather than a reimplementation. That also settled
+a question the user had made conditional: **the meta-skill request is smaller, not larger** — the two user
+prompts are within 35 characters and the slow update's system prompt is 1,229 characters longer. So the larger
+of the two was the one tested and the second attempt stayed unspent, which is what their condition asked for.
+
+**The offline estimate was good to 0.09%.** 243,756 estimated against 243,986 reported, using the 3.228
+characters-per-token ratio taken from the A40 run's per-call records. Worth remembering: for this project's
+prompts that calibration is reliable enough to plan with, which is not something I could claim before a provider
+had confirmed a number at this size.
+
+**The first attempt cost nothing and taught something.** Job 66271190 configured the DeepSeek endpoint perfectly
+and sent nothing: `skillopt.model.chat_optimizer` is a router and `OPTIMIZER_BACKEND` defaults to `openai_chat`,
+which means Azure. The Azure path raised, `run_slow_update` swallowed the exception as it is written to do, and
+the probe dutifully recorded `no_content` — a result that reads like a DeepSeek failure and is nothing of the
+kind. This is the same trap I had already documented for the *target* role in the hosted-actor smoke test, and I
+walked into it on the *optimizer* role because the preflight checked the openai-compatible config without
+checking which backend the router would pick. The fix proves the dispatch path before anything is spent, by
+replacing `_chat_messages_impl` with a marker-raiser and making one call through the same wrapper chain — zero
+HTTP attempts, and it refuses under the default backend. Every campaign job that calls the optimizer needs the
+same pinning.
+
+**Where this leaves 10 versus 4.** Ten pairs costs +108 question-rollouts, +1,007 actor requests, +$0.49 actor
+and +$0.74 DeepSeek at peak over four — all inside the budget already requested. The honest limit is that at ten
+pairs the measured mix sits about 13,000 tokens under the proven point, less than half a pair, so there is no
+demonstrated room for longer epochs or for a draw in which every pair carries a trajectory (computed at
+~347,000 tokens). Overflow is graceful: `run_slow_update` catches it and the trainer records `no_content`,
+symmetrically across arms and at no cost. So I recommend ten with the post-run `no_content` check kept, and name
+six as the choice if the user wants nothing in unproven territory — six is the largest value whose worst case
+stays under the proven 243,986.
+
+Two small pieces of infrastructure came out of this and will be reused: `research/cluster/oqa_bundle.sh` builds
+and uploads a pinned staging bundle (the campaign needs 13 of them, and the steps had been living in a shell
+history), and the probe's job body **refuses to run on a requeue**, which is the safeguard the earlier
+API-spending jobs only documented.

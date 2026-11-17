@@ -1,11 +1,13 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-17 01:17 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-17 02:35 EST (from `date`).** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 
 **Nothing is running or queued. 0 GPUs held. Nothing has been submitted.** The A40 two-arm comparison, the
 held-out evaluation, the learned-contract port, the Lean compile (job 66259448) and the hosted-actor smoke test
 (job 66264849) are all COMPLETE. **The current step is the THREE-ARM campaign: the offline preparation is done
-and checked (verdict PASS), and it needs a budget and two decisions - see section A0-NEXT.**
+and checked (verdict PASS), and it needs a budget and two decisions - see section A0-NEXT.** The slow-update
+size question is now SETTLED BY MEASUREMENT - see section **A0-PROBE** (job 66271290: a 10-pair request of
+243,986 tokens was accepted and returned usable guidance; one authorized paid attempt remains unspent).
 **The report-cache defect is FIXED (`c353b99`) and the follow-up audit is done**: see
 `docs/research/OFFICEQA_EPOCH2_REPORT_AUDIT.md`. Correcting the eight stale reports changes the diagnosis for
 5 of 8 items but NOT the advice, so **no replay was run**; its exact cost is scoped in section 6 of that
@@ -86,6 +88,57 @@ untested for 48 of the 108 items**; **a push has not been authorized** (both pre
 because `OFFICEQA_LC_MODEL` is read from the environment and names a different frozen model each epoch. Reuse
 `research/cluster/oqa_api_body.sh` via `--wrap` with a node-local `/tmp`; a requeue respends the authorization
 because the attempt ledger is per-process.
+
+## A0-PROBE. DONE: is 10 paired questions per slow update practical? YES at the measured mix (user, 2026-11-17)
+
+**Job 66271290, COMPLETED, 49 s. One paid DeepSeek attempt of the two authorized; ONE STILL UNSPENT.**
+Artifacts: `runs/20261117-officeqa-slow-probe-66271190/` (RENDER.json, GROWTH.json, SEND_66271290.json, job log).
+**The campaign config is still at `slow_update_samples: 4`,** as the user asked, pending their review.
+
+**THE DECISIVE MEASUREMENT.** A realistic 10-pair slow-update request - rendered by the campaign's own
+`run_slow_update` from saved training traces - was **accepted**: `prompt_tokens` **243,986**, `finish_reason`
+`stop`, 7,562 completion tokens, 43.7 s, and `run_slow_update` returned **3,235 characters of parsed guidance**,
+so the trainer would record an accepted candidate and gate it on the selection set. Charge **$0.041 off-peak**
+($0.082 if peak). Prompt cache hits 512 of 243,986, so caching stays negligible.
+
+**THIS RETIRES THE "173,060-TOKEN ENVELOPE" FRAMING of section A0-NEXT.** That number was never a limit, only
+the largest prompt this project had tried. DeepSeek accepted 1.41x it. The real ceiling is still unknown.
+
+| pairs | slow prompt, measured mix | worst case (every pair showing) | against the 243,986 now proven |
+|---|---|---|---|
+| 4 | 92,230 | 138,276 | inside always |
+| **6** | 138,345 | **207,414** | **inside even in the worst mix** |
+| **10** | **230,575 (MEASURED 243,986)** | 345,690 | measured mix proven; worst case unproven |
+| 20 | 461,150 | 691,380 | far beyond anything tried |
+
+**Cost of 10 over 4, inside the budget already requested:** +108 question-rollouts (2x10 instead of 2x4 training
+rollouts per slow update x 9), +1,007 actor requests, +$0.49 actor, +$0.74 DeepSeek at peak, +20 min of
+rate-limited wall clock. Totals at 10 pairs: 1,368 question-rollouts, 12,763 actor requests, $6.22 actor, 102
+DeepSeek calls, $3.49 at peak, 255 min at the 50 RPM account limit.
+
+**RECOMMENDATION: go to 10, keep the `no_content` check.** An over-large prompt is NOT fatal -
+`run_slow_update` catches the provider error and the trainer records `action: "no_content"`, symmetrically across
+arms and at no cost - so the downside is a slow update that silently produces nothing, which the post-run check
+catches. If the user wants no unproven region at all, **6** is the largest value whose worst case stays under the
+proven 243,986 while still giving 1.5x the sample of 4.
+
+**NO DEMONSTRATED HEADROOM BEYOND THIS.** At 34,569 tokens per trajectory-showing pair, the measured 10-pair mix
+sits ~13,000 tokens under the proven point - less than half a pair. Longer epochs, longer trajectories as the
+skill grows, or a worse category mix all push into territory nothing has tested. A free `GET /models` or one
+deliberately oversized request would settle the real ceiling.
+
+**META-SKILL NOT TESTED, deliberately.** The user's condition was to test it only if its rendered request were
+larger. It is **smaller**: 785,649 characters against the slow update's 786,843, because its system prompt is
+1,229 characters shorter. The size question is therefore settled by the larger of the two. What stays untested is
+that `meta_skill_content` parses back, which the remaining authorized attempt could close.
+
+**INFRASTRUCTURE LESSON, cost 0.** Job **66271190** configured the DeepSeek endpoint perfectly and sent nothing:
+`skillopt.model.chat_optimizer` is a router and `OPTIMIZER_BACKEND` defaults to `openai_chat`, which means
+**AZURE**. The Azure path raised, `run_slow_update` swallowed it, and the probe recorded `no_content` after zero
+HTTP attempts - a result that looked like a DeepSeek failure and was not one. This is the trap already recorded
+for the TARGET role in the smoke test, hit on the OPTIMIZER role. The probe's preflight now calls
+`set_optimizer_backend`, reads it back, resets the cached per-role client, and proves the dispatch path with a
+check that costs no HTTP attempt. **Any campaign job that calls the optimizer must pin the backend the same way.**
 
 ## A-API. DONE: OfficeQA on a HOSTED ACTOR - smoke test PASSED (user, 2026-11-16) -> `docs/research/OFFICEQA_API_COMPARISON_PLAN.md`
 

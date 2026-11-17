@@ -48,14 +48,18 @@ M = {
                   "it was measured on the arm that carried a report.",
     },
     "slow_update_prompt_tokens_per_showing_pair": {
-        "value": 32782,
+        "value": 34569,
         "source": "MEASURED on the pre-launch dry run. build_comparison_pairs + format_comparison_text over the "
                   "12 pairs of the dry run's epoch-2 slow update gives 846,563 characters; the A40 run's "
                   "per-call records put this project's optimizer prompts at 3.228 characters per token, so "
-                  "262,257 tokens. Only pairs in the trajectory-showing categories contribute (regressed, "
-                  "persistent_fail, improved) and that run had 8 of 12, hence 32,782 tokens per SHOWING pair. "
-                  "Per-trajectory truncation is DISABLED in this repo on purpose "
-                  "(skillopt/optimizer/slow_update.py: 'Truncation disabled: return the full text').",
+                  "262,257 tokens. REFINED by job 66271290: the per-pair growth curve over the 7 showing pairs "
+                  "available in the saved collections averages 111,483 characters each, and that job's own reply "
+                  "pins this project's ratio at 3.225 characters per prompt token (243,986 tokens reported for a "
+                  "786,843-character request), so 34,569 tokens per SHOWING pair. Only regressed / "
+                  "persistent_fail / improved print a trajectory; stable_success does not. Per-trajectory "
+                  "truncation is DISABLED in this repo on purpose "
+                  "(skillopt/optimizer/slow_update.py: 'Truncation disabled: return the full text'). "
+                  "runs/20261117-officeqa-slow-probe-66271190/GROWTH.json",
     },
     "showing_pair_fraction": {
         "value": 0.667,
@@ -67,12 +71,19 @@ M = {
     "deepseek_usd_per_m_completion_offpeak": {"value": 0.60, "source": "same."},
     "deepseek_peak_multiplier": {"value": 2.0, "source": "same file: peak prices are exactly double."},
     "largest_prompt_this_project_has_sent": {
-        "value": 173060,
-        "source": "runs/20261116-160952_officeqa_arm_66228142/optimizer_calls_summary.json, the per-call record "
-                  "of arm B's second analyst call of step 2: 173,060 prompt tokens, outcome ok, off_peak. This "
-                  "is the largest optimizer prompt this project has sent successfully. An earlier version of "
-                  "this file said 104,000, which came from dividing a step's TOTAL analyst tokens by the number "
-                  "of calls in it; the per-call records are the right source.",
+        "value": 243986,
+        "source": "job 66271290, the 10-pair slow-update probe: DeepSeek reported 243,986 prompt tokens, "
+                  "finish_reason 'stop', 7,562 completion tokens, and run_slow_update returned 3,235 characters "
+                  "of parsed guidance. Two earlier figures in this file were wrong and are recorded so the "
+                  "revision is traceable: 104,000 came from dividing a step's TOTAL analyst tokens by the "
+                  "number of calls in it, and 173,060 was the largest prompt sent before this probe existed "
+                  "(arm B's second analyst call of step 2). Neither was a limit - only the largest thing tried.",
+    },
+    "deepseek_accepted_prompt_tokens": {
+        "value": 243986,
+        "source": "job 66271290. This is a DEMONSTRATED acceptance, not a provider limit: the real ceiling is "
+                  "still unknown and the published figures for the DeepSeek chat family disagree (128k for the "
+                  "V3 era, 1M for the current ones), with no official source among them.",
     },
     "deepseek_prompt_cache_is_negligible_here": {
         "value": True,
