@@ -1170,3 +1170,60 @@ variability and nothing more.
 
 Plus two test errors of mine: asserting every archived file still exists (`prepare` removes the markers it
 archives, deliberately), and dropping an `import re` while replacing the regexes.
+
+## 2026-11-17 (late) — the diagnostic read of the finished three-arm campaign (rule OQA-DIAG-1)
+
+Asked to prepare the evidence for a review of why the optimizer's edits scored badly, using only the saved
+training and validation records while the held-out chain finished. Built `research/officeqa/oqa_diagnose.py`
+(`gates`, `questions`, `replicates`, `contracts`, `chains`) and `research/cluster/oqa_diag_body.sh`, which
+drops every API key before Python starts — the phase cost 0 attempts, $0.00 and 0.13 CPU core-hours over 15
+jobs. Packet: `docs/research/OFFICEQA_DIAGNOSTIC_PACKET.md`. Final run job 66337036, commit `66b2b66`;
+tests 2,215 passed / 9 skipped / 368 subtests (job 66337037).
+
+**The finding that reframes the campaign.** Arms A and C rejected every candidate, so their in-force skill
+never changed and every epoch re-ran the SAME document over the SAME 24 training questions. That makes
+seven independent draws of one skill's score, because the actor runs at temperature 0.7 and **no sampling
+seed is sent to the API** (there is no `seed` key in `openai_compatible_backend.py`). The seven scores are
+1, 1, 2, 2, 3, 5, 6 — sd 1.95 questions, range 5. The gate accepted arm B's candidate on a margin of one
+question. The spread of a fixed document covers nearly the whole range of the 21 candidates' scores. The
+campaign measured its own noise floor for free and nobody had looked.
+
+**Three more, each from the files.** (a) The gate was largely scoring termination: of 504 candidate
+observations, 363 produced no answer at all and only 105 were wrong answers; a candidate's score correlates
+with its commitment rate at r = 0.78 and with its document length at r = -0.08. There are 211 calls to a
+nonexistent `answer` tool across the campaign and none in S0's own traces. (b) The only acceptance sits
+inside the scorer's formatting tolerance: S0 answered "39.31%" where the ground truth was "39.31" and was
+marked wrong; count it right and S0 is 5/24, the threshold is 5/24, arm B's candidate ties, and the campaign
+has zero acceptances. (c) Not one of 101 proposed-edit entries names anything from the contract vocabulary;
+arm B's 96 action-contract reports hold zero distinct diagnoses and one violated forecast in 2,676, and arm
+C's 11 violated obligations are all in a single report.
+
+**Deliberately left unread:** job 66332134's held-out number, although the job had finished, so that §9's
+proposed next tests were written without it. Nothing here was tuned on held-out.
+
+**Five mistakes of mine, each caught by a test or a smoke run before it reached the packet.**
+1. `score or -1` treats a score of exactly 0.0 as missing, and two candidates measured 0/24 — so the
+   recomputation check reported FAIL on exactly the two most interesting rows. Caught by a local smoke run
+   before any job.
+2. I read `agent_ok` as an execution-health flag. `rollout.py` sets `agent_ok = not fail_reason` on the
+   EXECUTION reason and then writes a SCORER reason into the `fail_reason` field, so `agent_ok` is False for
+   the commonest outcome in the campaign. That filed 354 of 528 observations as crashes. The classifier now
+   reads the reason text, whose four shapes are the only four present.
+3. My new test fixtures shadowed an existing `_row` helper and broke three passing tests (job 66336123).
+   Renamed with a `_dg_` prefix — and my own rename then matched inside `skill_from_system(`.
+4. The replicate scan counted epoch 1's training rollout three times and reported "3 draws, sd 0.00",
+   which reads as a deterministic actor. It is one rollout injected into all three arms; the three files
+   share one md5. Members are now identified by what the actor said.
+5. `n_turns` counts conversation messages, not tool turns — it reaches 55 against a budget of 24. Comparing
+   it to the budget said 5 of S0's questions hit the cap; the true number is 0, and only three observations
+   in the whole campaign ran out.
+Two further test failures were my expectations being wrong rather than the code: a miniature campaign's S0
+baseline legitimately joins a replicate group when the fixture gives it the same question ids, and a
+deterministic row builder makes every all-wrong fixture rollout the same measurement.
+
+**Proposed next, costed, nothing run** (packet §9): repeat the exact S0 evaluation 8 times on the 24
+selection questions (1,984 attempts, $1.26, 2.9 core-hours) to measure the spread on the gate's own split;
+then, only if that spread allows it, one-edit-at-a-time on arm B's accepted candidate (12 or 20 evaluations,
+$1.89 or $3.15). The power arithmetic says 5 draws per document resolves a 3.4-question difference and the
+accepted candidate's margin was one question, so the honest recommendation is that more ablation draws at
+n = 24 are not the useful next move — a better measurement is.

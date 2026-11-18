@@ -1,15 +1,50 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-17, prepared for a compaction. Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. HEAD `cd6cd5b` (NOT pushed; pushing is still not authorized).**
+**Last update: 2026-11-17 after the diagnostic read. Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`. HEAD `66b2b66`+ (NOT pushed; pushing is still not authorized).**
 
-## RIGHT NOW: the HELD-OUT chain is RUNNING. Do not resubmit it.
+## RIGHT NOW: the HELD-OUT chain's last job is RUNNING. Do not resubmit it.
 
 ```
 66332133  oqa-ho-S0                   COMPLETED   hard 0.0500 (3/60)
-66332134  oqa-ho-primary_B_selected   RUNNING
-66332135  oqa-ho-exploratory_A_last   PENDING (afterok 66332134)
+66332134  oqa-ho-primary_B_selected   COMPLETED   -- NUMBER DELIBERATELY NOT YET READ
+66332135  oqa-ho-exploratory_A_last   RUNNING
 ```
+
+**Why 66332134's number is unread:** the diagnostic packet's proposed next tests (§9) had to be written
+without seeing it, so that nothing in them is tuned on held-out. Read all three together when 66332135
+finishes, under `docs/research/OFFICEQA_RELEASE_PROTOCOL.md`.
+
+## THE DIAGNOSTIC READ IS DONE -> `docs/research/OFFICEQA_DIAGNOSTIC_PACKET.md`
+
+Rule OQA-DIAG-1, tool `research/officeqa/oqa_diagnose.py` (`gates`, `questions`, `replicates`,
+`contracts`, `chains`), job **66337036** commit `66b2b66`, bundle `oqa_diag_20261117`, outputs in
+`$CAMP/diagnostic/DIAG_{GATES,QUESTIONS,REPLICATES,CONTRACTS,CHAINS}.json`. **It spends nothing** -- every
+API key is dropped before Python starts. Whole phase: 0 attempts, $0.00, 0.13 CPU core-hours, 15 jobs.
+
+Four findings, all VERIFIED from files (the packet has the evidence and the caveats):
+
+1. **One identical skill document was measured SEVEN times on the same 24 training questions and scored
+   1, 1, 2, 2, 3, 5, 6** (sd 1.95, range 5). Arms A and C accepted nothing, so their in-force skill never
+   changed and every epoch re-ran it; the actor is at temperature 0.7 with **no sampling seed sent**. The
+   spread of one FIXED document covers nearly the whole range of the 21 candidates' scores (0 to 5), and
+   the gate accepted on a margin of ONE question.
+2. **The gate was largely measuring termination, not advice.** Of 504 candidate observations: 33 correct,
+   105 wrong answers, 363 no answer at all, 3 out of tool turns. Score vs commitment rate r = 0.78; score
+   vs skill length r = -0.08. 109 calls to a nonexistent `answer` tool on the selection evals (211
+   campaign-wide); S0's own traces have none.
+3. **The campaign's only acceptance sits inside the scorer's formatting tolerance.** S0 answered UID0159
+   "39.31%" against ground truth "39.31" and was scored wrong. Count it right and S0 is 5/24, the
+   threshold is 5/24, and arm B's 5/24 candidate TIES -- zero acceptances, all arms keep S0. (A
+   counterfactual about the scorer. The native exact-match scorer was required to stay unchanged and did.)
+4. **Nothing from either contract layer is traceable into an edit.** 0 of 101 proposed-edit entries name
+   any contract vocabulary. Arm B: 0 distinct diagnoses in all 96 reports, 1 violated forecast in 2,676.
+   Arm C: 11 violated obligations, all in one report. All three arms' analysts independently reported the
+   same dominant failure.
+
+All 21 gates pass every integrity check: candidate file verbatim in its own 24 system prompts, score and
+decision recomputed, question ids / user prompts / oracle pages / sources / system scaffold identical to
+the shared S0 baseline, arms' configs differing only in `out_root`.
 
 Bundle `oqa_heldout_20261117`, commit `251e9514beaefb88ed1ded997102c4769a2e23f1`. **Do not rebuild that
 bundle while 66332134/66332135 are queued** — the manifest is verified in-job. The recovery bundle

@@ -1486,3 +1486,41 @@ turn budget could not be checked because they predate the settings fingerprint; 
 3 failure and 1 success patch, 5 edits merged, 2 selected at budget 2, a candidate of 2,847 characters from a
 940-character skill; **zero** actor attempts for the training rollout and 48 so far, all from the gate pass in
 progress.
+
+## OQA-3ARM-DIAGNOSTIC — reading the finished campaign's own records (rule OQA-DIAG-1)
+
+**Date** 2026-11-17. **Cost** 0 actor attempts, 0 optimizer calls, $0.00, 0.13 CPU core-hours, 15 Slurm
+jobs. No API key is in scope in the job. **Commit** `66b2b66`, **bundle** `oqa_diag_20261117`,
+**final jobs** 66337036 (diagnostic) and 66337037 (tests: 2,215 passed, 9 skipped, 368 subtests).
+
+**Tool** `research/officeqa/oqa_diagnose.py`: `gates` (the 21-gate ledger, with every candidate document
+proved verbatim in its own 24 system prompts and every score and decision recomputed), `questions` (the
+24 × 22 outcome matrix with wrong / no-answer / execution-failure separated), `replicates` (groups every
+rollout by skill digest and question set and reports the spread), `contracts`, `chains`.
+**Outputs** `$CAMP/diagnostic/DIAG_{GATES,QUESTIONS,REPLICATES,CONTRACTS,CHAINS}.json`.
+
+| result | value |
+|---|---|
+| gates enumerated | 21 (12 ordinary + 9 slow), all integrity checks PASS |
+| S0 baseline | 4/24; the three arms' copies byte-identical (md5 b16ccc9c…) |
+| candidate outcomes, pooled 21 × 24 | 33 correct, 105 wrong answers, 363 no answer, 3 out of tool turns |
+| gains / losses vs S0 | 27 / 78; 6 of 84 chances to retain an S0-correct answer were taken |
+| **fixed document, 7 draws, same 24 training questions** | **1, 1, 2, 2, 3, 5, 6 — sd 1.95, range 5** |
+| arm B's accepted skill, 2 draws | 0/24 and 3/24 |
+| score vs commitment rate (21 candidates) | Pearson r = 0.775, Spearman 0.766 |
+| score vs candidate length | Pearson r = −0.075 |
+| calls to a nonexistent tool | 211 campaign-wide (`answer` 211, `calculate` 7, `tool` 3 of 10,814 calls); 109 on selection evals; 0 under S0 |
+| numerically-correct answers scored wrong | 5 of 528 — and under numeric equality the campaign has ZERO acceptances |
+| contract vocabulary in proposed edits | 0 of 101 entries (71 merged + 30 ranked) |
+| arm B action contracts | 96 reports, 0 distinct diagnoses, 1 violated forecast in 2,676 |
+| arm C stage obligations | 69 discharged / 130 outstanding / 252 unknown / 11 violated, the 11 all in one report |
+| sampling seed sent to the actor API | **none**; temperature 0.7 on every request |
+| truncation / exceptions | 0 / 0; 3 tool-turn-budget hits in the whole campaign |
+
+**Recovered stages verified**: A.4, B.4, C.3 and C.4 each made 4 analyst + 2 merge + 1 ranking + 1
+slow-update call. The only two rounds with fewer are B.3 (3 analyst / 1 merge — arm B scored 0/24 on that
+epoch's training rollout, so there was no success minibatch) and C.1 (0 ranking calls — 4 merged edits
+against a budget of 4). All twelve arm-epochs wrote a meta skill except the three documented epoch-1 skips.
+
+**Evidence packet** `docs/research/OFFICEQA_DIAGNOSTIC_PACKET.md`. Held-out job 66332134's number was left
+unread while the packet's proposals were written, so none of them is tuned on held-out.

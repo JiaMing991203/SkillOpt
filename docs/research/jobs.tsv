@@ -83,3 +83,5 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T23:08:07Z	66332133	oqa_heldout	PRIMARY S0 (887B, digest 9d377d1c2906)	251e9514beaefb88ed1ded997102c4769a2e23f1	bundle oqa_heldout_20261117; 2cpu 8G 60min; head of the chain
 2026-11-17T23:08:07Z	66332134	oqa_heldout	PRIMARY arm B selected (3603B, digest 95989ce5ebad)	251e9514beaefb88ed1ded997102c4769a2e23f1	afterok:66332133
 2026-11-17T23:08:07Z	66332135	oqa_heldout	EXPLORATORY arm A/C last (940B, digest 5bd17ea109bc) - same ADVICE as S0	251e9514beaefb88ed1ded997102c4769a2e23f1	afterok:66332134
+2026-11-18T00:44:00Z	66337036	oqa_diag	diagnostic read of the campaign (OQA-DIAG-1) - 0 attempts, $0.00	66b2b66
+2026-11-18T00:44:00Z	66337037	oqa_tests	full suite from the diagnostic bundle	66b2b66
