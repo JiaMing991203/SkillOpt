@@ -57,7 +57,11 @@ MONETARY, AMBIGUOUS, REJECTED = "MONETARY", "AMBIGUOUS", "REJECTED"
 
 SCALE_EXP = {"units": 0, "thousands": 3, "millions": 6, "billions": 9}
 
-_NUM = re.compile(r"(?<![\d.,])-?\$?\s?\d[\d,]*(?:\.\d+)?%?")
+# B-3.1. A number may not END in a comma. It could, and so "from odd years (2011, 2013, 2015)" gave the
+# token "2011," - whose comma then made `grouped` true and classified a YEAR as money by thousands
+# grouping, before any of the year tests was reached.
+_NUM = re.compile(r"(?<![\d.,])-?\$?\s?\d(?:[\d,]*\d)?(?:\.\d+)?%?")
+_GROUPED = re.compile(r"\d,\d{3}(?!\d)")        # a real thousands group, not any comma at all
 _SCALE_WORD = re.compile(r"\b(thousand|million|billion)s?\b", re.I)
 _MONTH = "|".join(sorted(CELLS.MONTHS, key=len, reverse=True))
 _MONTH_RE = re.compile(rf"\b({_MONTH})\b\.?", re.I)
@@ -93,7 +97,7 @@ def classify_number(text: str, start: int, end: int) -> dict:
     before, after = text[lo:start], text[end:hi]
     window = before + raw + after
     digits = raw.replace("$", "").replace(",", "").replace("%", "").strip()
-    grouped = "," in raw
+    grouped = bool(_GROUPED.search(raw))
     has_decimal = "." in digits
     # TWO STRENGTHS OF EVIDENCE, and the distinction is load-bearing. A year-shaped number must not
     # become "money" because the sentence mentions dollars somewhere - the very line that bound YEARS in
@@ -185,16 +189,42 @@ def tables_in(steps: list, supplied: list) -> list:
     return out
 
 
+def flat_references(steps: list, supplied: list) -> list:
+    """Every FLAT-form table of this prefix, from any of its texts.
+
+    B-3.2. `cells_of` documents `references` as "flat-form tables from elsewhere in the same record (for
+    example the tool observations) that may pair with a split-form table here", and `data_cells` used to
+    call it once per text with that argument omitted. The consequence is on the record: the oracle page's
+    SPLIT rendering of UID0014's receipts table could not be adjudicated by the FLAT rendering of the
+    same table that the actor's own `read` had already returned, so one figure appeared as two cells
+    disagreeing about the column and the operand was reported as an ambiguous match.
+
+    This supplies what the parameter documents. The pairing rule itself is the frozen `pair_tables`:
+    equal width and a shared data row, nothing looser.
+    """
+    out = []
+    for page in supplied or []:
+        out += [t for t in CELLS.tables(str(page.get("text") or "")) if t["header_form"] == "flat"]
+    for s in steps or []:
+        if s.get("kind") == "tool":
+            out += [t for t in CELLS.tables(str(s.get("obs") or "")) if t["header_form"] == "flat"]
+    return out
+
+
 def data_cells(steps: list, supplied: list, assumptions) -> tuple:
     """Data cells of the prefix, with the row-label column removed, plus what was dropped and why.
 
     AUDIT FINDING 1. `oqa_lc_cells.cells_of` yields every numeric cell of a row INCLUDING index 0, which
     is the row LABEL. In this corpus a label is very often a year, so the B-1 matcher could bind an
     operand to "the cell 1942" - which is a period, not an amount.
+
+    B-3.2. The prefix's own flat-form tables are passed as `references`, so a split rendering can be
+    adjudicated by a flat rendering of the same table observed elsewhere in the same record.
     """
     kept, dropped = [], []
+    refs = flat_references(steps, supplied)
     def _collect(text, src):
-        for c in CELLS.cells_of(str(text or ""), assumptions, source=src):
+        for c in CELLS.cells_of(str(text or ""), assumptions, references=refs, source=src):
             c = dict(c, table_key=_key(src, c.get("table_index")))
             period = CELLS.read_period(str(c.get("row_label") or ""))
             if int(c.get("col_index") or 0) == 0:

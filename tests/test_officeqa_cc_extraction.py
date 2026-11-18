@@ -36,6 +36,19 @@ def _mod(name):
 X = _mod("oqa_cc_extract")
 CELLS = _mod("oqa_lc_cells")
 CHAIN = _mod("oqa_lc_chain")
+IR = _mod("oqa_cc_ir")
+CHK = _mod("oqa_cc_check")
+
+
+def _contract():
+    """The frozen hypothesis's own shape: a table-level scale binding withdrawn by a nearer scale."""
+    return IR.contract(
+        "scale.binds",
+        IR.clause("scale_binds", ["table", "cell", "scale"]),
+        [IR.clause("table_states_scale", ["table", "scale"]),
+         IR.clause("cell_in_table", ["cell", "table"]),
+         IR.clause("nearer_scale_between", ["table", "cell"], value=False)],
+        witnesses="unit_match")
 
 # The actor's own words from arm C epoch 3, UID0014 - the message the B-1 prototype read "1942" out of.
 UID0014_MESSAGE = ("I have the data needed. Let me extract the values:\n"
@@ -324,3 +337,113 @@ def test_configuration_is_not_one_of_the_semantic_sections():
     for name in ("hypothesis", "vocabulary", "code_sha256", "function_sha256", "stage_definitions",
                  "learning_manifest"):
         assert name in B.SEMANTIC_SECTIONS, name
+
+
+# ───────────────────────── B-3: the three repairs, each on its real witness ─────────────────────────
+
+# The actor's own sentence from arm B epoch 3, UID0079 - the line that made FOUR YEARS into money.
+UID0079_SENTENCE = ("I need to get the budget outlay data from the FFO-4 tables in the December "
+                    "Treasury Bulletins from odd years (2011, 2013, 2015, 2017, 2019).")
+
+# UID0014's receipts table in the two renderings the corpus actually uses, trimmed to the header rows
+# and three data rows. The oracle page the harness supplies gives the SPLIT form, where the spanning
+# parent "Income and profit taxes" is printed once and the column spans are gone; the actor's own
+# `read` returns the SAME table in FLAT form, which states a path per column.
+UID0014_PAGE_SPLIT = (
+    "Internal revenue receipts (in thousands of dollars)\n"
+    "| Fiscal year or month | Total | Income and profit taxes | Employment taxes | Carriers' Taxing Act |  |  |  |  |  |\n"
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+    "| Total | Individual | Corporation, income and excess profits 2/ | Miscellaneous profits taxes 3/ | Total | Social Security taxes 4/ | Federal Unemployment Tax Act |  |  |  |\n"
+    "| 1929 | 2,939,054 | 2,331,274 | 1,095,541 | 1,235,733 | - | - | - | - | - |\n"
+    "| 1930 | 3,040,146 | 2,410,259 | 1,146,845 | 1,263,414 | - | - | - | - | - |\n"
+    "| 1931 | 2,428,229 | 1,860,040 | 833,648 | 1,026,392 | - | - | - | - | - |\n")
+UID0014_OBS_FLAT = (
+    "Internal revenue receipts (in thousands of dollars)\n"
+    "| Fiscal year or month > Fiscal year or month | Total > Total | Income and profit taxes > Total | "
+    "Income and profit taxes > Individual | Income and profit taxes > Corporation, income and excess profits 2/ | "
+    "Employment taxes > Miscellaneous profits taxes 3/ | Employment taxes > Total | "
+    "Employment taxes > Social Security taxes 4/ | Carriers > Total | Carriers > Act |\n"
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+    "| 1929 | 2939054 | 2331274 | 1095541 | 1235733 | - | - | - | - | - |\n"
+    "| 1930 | 3040146 | 2410259 | 1146845 | 1263414 | - | - | - | - | - |\n"
+    "| 1931 | 2428229 | 1860040 | 833648 | 1026392 | - | - | - | - | - |\n")
+
+
+def test_b31_a_comma_between_list_items_is_not_a_thousands_separator():
+    """The real witness: four of UID0079's "operands" were years admitted by a list comma."""
+    got = {o["raw"]: o for o in X.operands(_step(UID0079_SENTENCE))}
+    assert "2011," not in got, "a number may not end in a comma"
+    assert "2011" in got, got
+    for year in ("2011", "2013", "2015", "2017", "2019"):
+        assert got[year]["is_operand"] is False, (year, got[year])
+        assert got[year]["reason"] != "thousands_grouping"
+    assert [o["raw"] for o in X.operands(_step(UID0079_SENTENCE)) if o["is_operand"]] == []
+
+
+def test_b31_a_real_thousands_group_is_still_money():
+    got = {o["raw"]: o for o in X.operands(_step("the figure is 2,410,259 in thousands"))}
+    assert got["2,410,259"]["verdict"] == X.MONETARY
+    assert got["2,410,259"]["reason"] == "thousands_grouping"
+
+
+def test_b32_a_flat_header_elsewhere_in_the_record_binds_the_split_rendering():
+    """The real witness: UID0014's page gives the split form, the actor's own read gives the flat form.
+
+    Before the repair each text was bound in isolation, so the page's 2,410,259 had NO column and the
+    observation's 2410259 had one - and the operand "matched several cells that disagree".
+    """
+    supplied = [{"ref": "page", "text": UID0014_PAGE_SPLIT}]
+    steps = [{"i": 1, "kind": "tool", "tool": "read", "obs": UID0014_OBS_FLAT}]
+    refs = X.flat_references(steps, supplied)
+    assert [t["header_form"] for t in refs] == ["flat"], "the observation's rendering is the reference"
+
+    cells, _dropped = X.data_cells(steps, supplied, ("flat_header_authoritative",))
+    page_cells = [c for c in cells if c["value"] == 2410259.0
+                  and (c["source"] or {}).get("kind") == "supplied_page"]
+    assert page_cells, "the page's own copy of the figure"
+    assert page_cells[0]["column"] == "Income and profit taxes > Total"
+    assert page_cells[0]["column_basis"] == CELLS.COL_FLAT
+    assert page_cells[0]["header_known"] is True
+
+    op = [o for o in X.operands(_step("the 1930 figure is 2,410,259")) if o["is_operand"]][0]
+    assert X.match_operand(op, cells)["status"] == "repeated_identical_cell_match"
+    assert X.match_operand(op, cells)["cell"]["scale"] == "thousands"
+
+
+def test_b32_before_the_repair_the_same_record_gave_an_ambiguous_match():
+    """The pre-repair behaviour, kept in the audit tool, so the before/after is a test and not a claim."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "oqa_audit_bind", os.path.join(RESEARCH, "oqa_audit_bind.py"))
+    AB = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(AB)
+    supplied = [{"ref": "page", "text": UID0014_PAGE_SPLIT}]
+    steps = [{"i": 1, "kind": "tool", "tool": "read", "obs": UID0014_OBS_FLAT}]
+    iso, _d, _r = AB.data_cells_isolated(steps, supplied, ("flat_header_authoritative",))
+    op = [o for o in X.operands(_step("the 1930 figure is 2,410,259")) if o["is_operand"]][0]
+    assert X.match_operand(op, iso)["status"] == "ambiguous_cell_match"
+    candidates = X.match_operand(op, iso)["candidates"]
+    assert sorted({str(c["column"]) for c in candidates}) == ["Income and profit taxes > Total", "None"]
+
+
+def test_b33_the_step_after_the_operand_message_is_read():
+    """It was in neither window: the prefix ended at the operand's message and `beyond(i + 1)` began
+    one step later."""
+    packet = {
+        "id": "SYN0001", "question": "report the total in billions",
+        "oracle_pages": [{"ref": "page", "text": UID0014_OBS_FLAT}],
+        "steps": [
+            {"i": 1, "kind": "tool", "tool": "read", "obs": UID0014_OBS_FLAT},
+            {"i": 2, "kind": "message", "text": "The 1930 figure is 2,410,259 thousand."},
+            {"i": 3, "kind": "message", "text": "Converting: divide by 1000 gives 2410.259 billion."},
+        ],
+    }
+    model = IR.model([_contract()], epoch=1, scope="synthetic", learned_from=[])
+    res = CHK.check_attempt(packet, model)
+    preds = [p for p in res["predictions"] if p.get("binding")]
+    assert preds, res
+    conv = preds[0]["conversion"]
+    assert conv["stated_exp"] == -3, conv
+    assert conv["verdict"] == "incorrect_factor_stated", conv
+    assert preds[0]["resolution"]["state"] == "VIOLATED"
+    assert preds[0]["resolution"]["outcome"] == "actor_error"

@@ -392,7 +392,10 @@ def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative
             out["predictions"].append(pred)
             rev.open_prediction = False
 
-            later = rev.beyond(i + 1)
+            # B-3.3. The prefix is `steps[:i]`, which ends WITH the operand's own message, so the steps
+            # strictly after it are `steps[i:]`. `beyond(i + 1)` left the step immediately after the
+            # operand's message in neither window - read by nobody.
+            later = rev.beyond(i)
             conv = X.conversion(op, later, link_pre.get("required_exp"))
             pred["conversion"] = conv
             pred["resolution"] = stage_link(binding, asked, conv)

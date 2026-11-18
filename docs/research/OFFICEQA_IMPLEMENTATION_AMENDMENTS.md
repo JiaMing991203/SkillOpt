@@ -234,3 +234,91 @@ over every conversion verdict and carry state.
 and the scorer. The prototype is still wired into no arm and runs in no training loop. **Earlier recorded
 results stand as recorded**: the B-1 numbers were taken under the B-1 semantics, and this file is why the
 two sets of numbers differ.
+
+---
+
+## A-3 — 2026-11-18. The eight-pass aggregation, and a latent defect in the summariser
+
+**Recorded before the audit's analysis was run.** Rule **OQA-AUD-1**, tool
+`research/officeqa/oqa_audit_s0.py`, artifacts under `<campaign>/audit_20261118/`. **No measurement
+changes.** The 192 rows of the corrected-client S0 measurement are untouched, and this amendment changes
+only how they are aggregated and what the aggregation refuses to do.
+
+**Why.** `OFFICEQA_RECOVERY_PACKET.md` section 7 published four aggregates that cannot all describe one
+192-episode measurement: a per-pass table summing to 170 emitted answers, a per-question table summing
+to the same 170, a termination table over "179 completed question-rollouts" counting 158 answers, and a
+sentence claiming 20 of 24 questions were answered in every pass although one pass emitted 19.
+
+**Added — one authoritative manifest, and summaries that are functions of it.** The intended grid is
+DECLARED (the frozen split record's 24 validation ids x the eight pass labels), never derived from the
+rows, because a grid derived from the rows cannot notice a missing row. Each record carries its source
+file and row index, a content digest, the job that produced it — resolved from the row's own final
+response id matched against the call log, since the two S0 jobs ran concurrently and wall clock alone
+cannot separate them — the actor-visible prompt digests, the settings fingerprint, and an explicit
+uncertainty list. A duplicate is never resolved by score.
+
+**Added — consistency assertions, so a disagreement fails instead of being narrated.** Every pass has
+the intended 24 unique ids; every question has one observation per pass; termination categories sum to
+the episode count; answer-source categories sum to emitted answers; per-pass totals equal
+question-level totals; and "always answered" may not exceed the smallest per-pass emission count.
+
+**Changed — a missing observation is never evidence.** `oqa_s0repeat.summarise` computes
+`questions_always_correct` as `times_correct == passes_seen`, so a question observed in seven passes and
+correct in all seven counts as "always correct". That is latent in the published artifact, because all
+eight passes are in fact complete; it was live in the intermediate aggregation that produced the
+published termination table. The audit's classifier reports `always` / `never` / `sometimes` only over a
+COMPLETE row of observations and lists anything short of that as `undetermined`.
+
+**Added — abandoned attempts and unresolved requests, kept apart from episode outcomes.** A killed job's
+in-flight rollouts are re-run from scratch by the resuming job, so their HTTP attempts back no record; a
+request whose reply never arrived has no call-log record at all and exists only as the gap between the
+ledger's `attempt` and `usage` counts for that process. Neither is a provider error and neither is an
+episode outcome.
+
+**Not changed.** `oqa_s0repeat.py` itself, the measurement's artifacts, the frozen campaign, the gate
+and the scorer. The published figures stand as published and this file is why the corrected ones differ.
+
+---
+
+## B-3 — 2026-11-18. Three extraction repairs against the extractor's own stated semantics
+
+**Recorded before the change.** Rule **OQA-AUD-2**, tool `research/officeqa/oqa_audit_bind.py`. Each
+repair is a case where the code contradicts what its own docstring says it does, each has a witness from
+a real record, and each is reported with a before/after. The B-2 artifacts (`CC_BUNDLE_v3`, the v3 check
+documents, `CC_COMPARE`, `CC_LEAN`) are preserved; the repaired semantics are frozen under a NEW label
+and re-run beside them.
+
+**B-3.1 — a comma between list items was read as a thousands separator.** `_NUM` allowed a match to end
+in a comma, so in "from odd years (2011, 2013, 2015, 2017, 2019)" the token is `2011,`, `grouped` is
+true, and `classify_number` returns MONETARY with reason `thousands_grouping` — before the year tests
+are ever reached. Amendment B-2 claims years are "rejected BY NAME"; four of UID0079's operands and
+eleven of UID0014's are years admitted this way, 26 across all audited records. The repair: a number may
+not end in a comma, and grouping means a real `d,ddd` group.
+
+**B-3.2 — the record's own flat headers were never offered as references.**
+`oqa_lc_cells.cells_of` takes a `references` argument documented as "flat-form tables from elsewhere in
+the same record (for example the tool observations) that may pair with a split-form table here", and
+`oqa_cc_extract.data_cells` calls it once per text without that argument. So the oracle page's SPLIT
+rendering of a table could not be adjudicated by the FLAT rendering of the same table that the actor's
+own `read` had already returned. Witness: UID0014's `8,006,880` matched two cells, identical in value,
+row and scale, differing only in that the page's copy had no bound column — reported as an ambiguous
+match, which silenced the one record that contains the campaign's real 1,000x error. The repair passes
+the prefix's own flat tables as references, using the frozen `pair_tables` rule unchanged.
+
+**B-3.3 — the step after the operand's message was read by nobody.** `check_attempt` takes the prefix as
+`steps[:i]` and the later steps as `rev.beyond(i + 1)`, which is `steps[i+1:]`; the step at index `i` is
+in neither. The repair is `rev.beyond(i)`. Measured effect on these records: none, because in each one
+the operand's message is the last step.
+
+**NOT changed, and recorded as a proposal instead (P-1).** The conversion is resolved only from steps
+STRICTLY AFTER the operand's message. This actor writes the operand, the factor and the answer in one
+final message — on UID0014 the operand message is step 45 of 45 — so the resolution has nothing to read
+and reports OUTSTANDING ("no later step states a factor"). Reading the operand's own message as well
+turns that into `incorrect_factor_stated`, VIOLATED, "wrong by 10^3": the actual error. That changes
+what "committed before the later steps are read" means and so stays a proposal, measured and labelled,
+for the user to accept or refuse.
+
+**Also NOT changed.** `oqa_lc_cells` and `oqa_lc_chain` stay byte-identical; `match_operand`'s treatment
+of an unbound duplicate as a disagreeing candidate is left in place because B-3.2 removes the case that
+mattered; `nearer_scale`'s refusal to infer an absence from an unobserved column stays as it is, and the
+measured cost of that refusal is reported rather than legislated away.
