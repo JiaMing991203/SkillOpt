@@ -364,6 +364,7 @@ def cmd_send(selection_path: str, out_dir: str, setting: str, reps: int, max_sen
                     "content_chars": len(str(getattr(msg, "content", "") or "")),
                     "content_prefix": str(getattr(msg, "content", "") or "")[:400],
                     "reasoning_content_is_none": getattr(msg, "reasoning_content", None) is None,
+                    "model_extra_keys": sorted((getattr(msg, "model_extra", None) or {}).keys()),
                     "n_tool_calls": len(getattr(msg, "tool_calls", None) or []),
                 }
                 compat = compat_message_from_chat_message(msg, parsed, choice)
@@ -392,7 +393,13 @@ def cmd_send(selection_path: str, out_dir: str, setting: str, reps: int, max_sen
 
 
 def _outcome(rec: dict) -> str:
-    """Which of the four distinguishable outcomes this exchange is."""
+    """Which of the four distinguishable outcomes this exchange is.
+
+    The order matters. "content in the body lost in client handling" is tested FIRST and against the
+    message's text WHEREVER it is, because that is the finding: on 2026-11-18 the text was in
+    `message.reasoning` with `content` null, and an outcome function that looked only at `content` would
+    have called the same exchange "the response carries no usable answer".
+    """
     http_body = (rec.get("http") or {}).get("body")
     sdk = rec.get("sdk") or {}
     compat = rec.get("compat_message") or {}
@@ -402,8 +409,20 @@ def _outcome(rec: dict) -> str:
     http_text = str(msg.get("content") or "")
     http_other = {k: v for k, v in msg.items()
                   if k not in ("role", "content", "tool_calls") and v not in (None, "", [], {})}
-    if http_text.strip() and compat.get("content_chars", 0) == 0:
-        return "content_in_the_http_body_lost_in_client_handling"
+    # the model's text, wherever the provider put it
+    alt_text = ""
+    alt_field = ""
+    for name in ("reasoning", "reasoning_content", "thinking"):
+        v = msg.get(name)
+        if isinstance(v, str) and v.strip():
+            alt_text, alt_field = v, name
+            break
+    any_text = http_text if http_text.strip() else alt_text
+    if any_text.strip() and compat.get("content_chars", 0) == 0:
+        return ("content_in_the_http_body_lost_in_client_handling"
+                + (f" (field {alt_field})" if alt_field and not http_text.strip() else ""))
+    if alt_text.strip() and compat.get("content_chars", 0) > 0:
+        return f"content_recovered_from_{alt_field}_by_the_fallback"
     if not http_text.strip() and not msg.get("tool_calls"):
         if http_other:
             return "no_usable_content_but_an_alternate_field_is_present"

@@ -80,11 +80,17 @@ export SKILLOPT_LEDGER_PRICE_TARGET="0.04,0.07,0.02"
 export SKILLOPT_LEDGER_JOB_MAX_ATTEMPTS_TARGET="${OQA_PROBE_MAX_SENDS:-9}"
 export SKILLOPT_LEDGER_JOB_MAX_USD_TARGET=0.50
 export TARGET_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/probe_calls.jsonl"
+# OQA-HTTP-1's correction, checked live when the caller asks for it. Off by default, as in the library.
+if [ -n "${OQA_PROBE_CONTENT_FALLBACK:-}" ]; then
+    export SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK="$OQA_PROBE_CONTENT_FALLBACK"
+    log "content fallback ENABLED for this job: $OQA_PROBE_CONTENT_FALLBACK"
+fi
 
 cd "$WORK" && PYTHONPATH="$WORK" "$OQA_PY" research/officeqa/oqa_http_probe.py send \
     --selection "$FU/http_probe/SELECTION.json" --out "$FU/http_probe" \
     --setting "${OQA_PROBE_SETTING:-historical}" --reps "${OQA_PROBE_REPS:-3}" \
-    --max-sends "${OQA_PROBE_MAX_SENDS:-9}" 2>&1 | tee "$OUTDIR/send.txt"
+    --max-sends "${OQA_PROBE_MAX_SENDS:-9}" ${OQA_PROBE_LABEL:+--label "$OQA_PROBE_LABEL"} \
+    2>&1 | tee "$OUTDIR/send.txt"
 status=${PIPESTATUS[0]}
 log "done status=$status"
 exit $status
