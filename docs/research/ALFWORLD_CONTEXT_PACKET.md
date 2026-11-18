@@ -19,6 +19,56 @@ revisions. *tr:NNNN* = an ALFWorld training-split task id. *hard* = the benchmar
 
 ---
 
+## CORRECTIONS, 2026-11-18 (read these before the numbers below)
+
+**Three corrections, all raised by the ALFWorld session's own audit (ORD-1) and each verified here
+independently. None reverses a conclusion; two change a denominator and one changes how the result
+should be read.**
+
+**C-1. 736 is attempt ROWS, not episodes: there are 432 distinct episodes.** Every arm of a campaign
+rolls out the same task set, and the same episode is written into each arm's run directory. Deduplicating
+by sha256 of the trace file: **736 rows → 432 distinct episodes; 304 rows are copies.** (The ALFWorld
+session reported 414 under a different dedup key; I report my own measurement and the method, and have
+not reconciled the two keys.)
+
+**The corrected headline, by episode:** the context-aware reading changes **9 of 432 distinct episodes
+(2.1%)**, not 19 of 736. The 19 changed *rows* are 9 episodes, because tr:3287 is **one** episode copied
+into eleven arms:
+
+| episode | steps | hard | current | context | direction | in-sample |
+|---|---|---|---|---|---|---|
+| tr:0293 | 42 | 1 | never | @41 | **looser** (corrected recognition) | yes |
+| tr:3287 (×11 copies) | 41 | 1 | @31 | @40 | stricter | yes |
+| tr:2785 | 31 | 1 | @28 | @30 | stricter | yes |
+| tr:2658 | 50 | 1 | @44 | @49 | stricter | yes |
+| tr:3042 | 20 | 1 | @13 | @19 | stricter | no |
+| tr:3042 | 25 | 1 | @19 | @24 | stricter | no |
+| tr:2395 | 46 | 1 | @28 | @45 | stricter | no |
+| tr:2456 | 27 | 1 | @15 | @26 | stricter | no |
+| tr:2986 | 50 | **0** | @45 | never | **stricter** (false claim removed) | no |
+
+**8 of 9 stricter, 1 looser. 4 in-sample episodes, 5 out-of-sample.** The per-type table in §5 keeps its
+row counts, which are inflated by copies; the episode counts above are the ones to quote.
+
+**C-2. The `AwcContext.lean` and `AWC_LEAN.json` in the LOCAL run directory were the FAILED job's
+version.** The `rfl` fix was applied and then generated only on the cluster, so the local copy still
+carried `simp [heatContext]` and a `"ran": false` record — a reader of the local directory alone would
+have seen an uncompiled, failing file. The compiled artifacts (job 66385916, Lean 4.20.0, **rc 0**) have
+been copied down and now sit in the local run directory; the failing pair is kept beside them as
+`AwcContext.FAILED_simp_66385775.lean` / `AWC_LEAN.FAILED_66385775.json`. **The compile result reported
+in §8 was always the cluster one and is unchanged.**
+
+**C-3. "Current" is a PRE-A4 baseline, so these changes are historical, not a gap in the live
+campaign.** The later action-contract campaign (AC-1) froze `a4_reading.py` with the **identical digest**
+`70b707f4f10a434f`, and its `lc_epoch.py` records `P_INSPECT = ("revised INSPECT reading",)` as "the P
+block's goal reading note (shared progress tracker; **both arms**)". So **AC-1 already rendered the
+revised reading in every condition.** The 9 changed episodes describe what the A4 revision did to the
+tracker *before* AC-1 ran — they are not something AC-1 lacked. This strengthens §10 rather than
+weakening it: the context connection was already live in the most recent campaign, so there is even less
+reason to study it again.
+
+---
+
 ## The five answers, first
 
 **1. What did the current checker already do?** **Almost all of it.** The behaviour this study was

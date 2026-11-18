@@ -11,10 +11,20 @@
   ADDITIONAL-vs-OVERLAP label) and A4 §3.4 (`a4_reading.ReadingA4`, the lamp connection under
   `lamp_stays_on` and `same_place`, plus same-receptacle and temperature-override). Nothing was claimed
   as new and **no checker was changed**.
-* **What was missing was the evidence**, and this study supplies it: over **736 saved training
-  attempts** the context-aware reading changes **19** (2.6%). **18 of 19 make it STRICTER** (a premature
-  completion claim withdrawn or delayed) and 1 more permissive (the lamp). **False completion claims
-  introduced: 0. Removed: 1** (tr:2986, out-of-sample).
+* **What was missing was the evidence**, and this study supplies it. **CORRECTED by the ALFWorld
+  session's ORD-1 audit and re-verified here:** 736 is attempt ROWS; deduplicated by trace digest they
+  are **432 distinct episodes** (304 rows are copies of an episode into another arm's directory). The
+  context-aware reading changes **9 of 432 distinct episodes (2.1%)** - the 19 changed rows are 9
+  episodes, tr:3287 being one episode copied eleven times. **8 of 9 make it STRICTER**, 1 more permissive
+  (the lamp). **False completion claims introduced: 0. Removed: 1** (tr:2986, out-of-sample). 4 in-sample
+  episodes, 5 out-of-sample.
+* **ALSO CORRECTED: "current" is a PRE-A4 baseline.** AC-1 froze `a4_reading.py` at the identical digest
+  `70b707f4f10a434f` and rendered the revised reading in BOTH arms (`lc_epoch.P_INSPECT`), so the 9
+  changed episodes are a historical tracker revision, **not** something the live campaign lacked. That
+  strengthens "do not study this again".
+* **ALSO CORRECTED: the LOCAL Lean artifacts were the FAILED job's.** The compiled pair (job 66385916,
+  rc 0) is now in the local run dir; the failing pair is kept as `*.FAILED_*`. The §8 compile result was
+  always the cluster one and is unchanged.
 * **The frozen 24-attempt diagnostic set shows ZERO differences** — a 24-attempt set cannot see a 2.6%
   phenomenon. That is the methodological result.
 * **Two defects found while building the baseline:** `ReadingA4(rev=1)` does NOT reproduce the
