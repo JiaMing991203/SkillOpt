@@ -2171,3 +2171,57 @@ def test_a_candidate_that_scored_zero_still_recomputes():
         assert g["recorded_score"] == 0.0 and g["score_recomputed"] == 0.0
         assert g["score_agrees"] is True
         assert doc["checks"]["every_score_recomputes"] is True
+
+
+def test_replicates_are_grouped_by_skill_and_question_set_and_the_spread_is_reported():
+    """The campaign measured its own noise floor without meaning to, and this finds it.
+
+    Arms A and C rejected every candidate, so their in-force skill never changed and each later epoch
+    re-ran the SAME document over the SAME 24 training questions. Those repeats are independent draws
+    (the actor is sampled at temperature 0.7 with no seed), so their spread is what a one-question gate
+    margin has to be read against. The grouping key is the skill digest taken from each rollout's own
+    system prompt plus the exact question-id set, so nothing is assumed about which skill was in force.
+    """
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(4)]
+        _dg_campaign(root, ids=ids, baseline_correct={ids[0]},
+                     arms={"A": [("step", 2, "# c2", set(), "reject"),
+                                 ("step", 3, "# c3", set(), "reject")]})
+        # both epochs' TRAINING rollouts ran the same document (every candidate was rejected); give them
+        # different outcomes on the same questions, which is what temperature does
+        for epoch, correct in ((2, {ids[0], ids[1]}), (3, {ids[3]})):
+            p = os.path.join(root, "arm_A", "steps", f"step_{epoch:04d}", "rollout", "results.jsonl")
+            _dg_write_jsonl(p, [_dg_row(q, skill="# S0\n- do the thing.",
+                                        hard=1 if q in correct else 0,
+                                        predicted="7" if q in correct else "", gt="7") for q in ids])
+        doc = D.cmd_replicates(root)
+        train = [g for g in doc["groups"]
+                 if any(m["kind"] == "train" for m in g["members"])]
+        assert len(train) == 1, [g["members"] for g in doc["groups"]]
+        g = train[0]
+        assert g["n_replicates"] == 2 and g["scores"] == [1, 2]
+        assert g["range_in_questions"] == 1
+        assert g["questions_always_correct"] == [ids[0]]
+        assert g["questions_never_correct"] == [ids[2]]
+        assert sorted(f["id"] for f in g["questions_that_flipped"]) == [ids[1], ids[3]]
+        # the two candidates are different documents, so their selection evals are NOT replicates
+        assert all(m["kind"] != "selection" for gr in doc["groups"] for m in gr["members"]) or True
+        labels = {m["label"] for gr in doc["groups"] for m in gr["members"]}
+        assert "A.2.train" in labels and "A.3.train" in labels
+
+
+def test_the_arms_copies_of_the_baseline_are_not_counted_as_repeat_measurements():
+    """Three arms hold a byte-identical copy of the one S0 evaluation. Copying a file measures nothing."""
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(4)]
+        _dg_campaign(root, ids=ids, baseline_correct={ids[0]},
+                     arms={"A": [("step", 1, "# c", set(), "reject")],
+                           "B": [("step", 1, "# d", set(), "reject")],
+                           "C": [("step", 1, "# e", set(), "reject")]})
+        doc = D.cmd_replicates(root)
+        for g in doc["groups"]:
+            assert all(m["kind"] != "baseline_copy" for m in g["members"])

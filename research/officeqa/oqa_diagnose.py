@@ -775,6 +775,114 @@ def cmd_contracts(campaign: str) -> dict:
     return out
 
 
+# ───────────────────────── subcommand: replicates ─────────────────────────
+
+def all_rollout_dirs(campaign: str) -> list[dict]:
+    """Every saved rollout in the campaign, whatever its purpose, with where it came from."""
+    out = []
+    for arm in ARMS:
+        root = os.path.join(campaign, f"arm_{arm}")
+        if not os.path.isdir(root):
+            continue
+        for epoch in (1, 2, 3, 4):
+            sd = os.path.join(root, "steps", f"step_{epoch:04d}")
+            for sub, kind in (("rollout", "train"), ("selection_eval", "selection")):
+                p = os.path.join(sd, sub, "results.jsonl")
+                if os.path.isfile(p):
+                    out.append({"arm": arm, "epoch": epoch, "kind": kind,
+                                "label": f"{arm}.{epoch}.{kind}", "path": p})
+            ud = os.path.join(root, "slow_update", f"epoch_{epoch:02d}")
+            for sub, kind in (("rollout_prev", "slow_prev"), ("rollout_curr", "slow_curr"),
+                              ("selection_eval", "slow_selection")):
+                p = os.path.join(ud, sub, "results.jsonl")
+                if os.path.isfile(p):
+                    out.append({"arm": arm, "epoch": epoch, "kind": kind,
+                                "label": f"{arm}.{epoch}.{kind}", "path": p})
+        p = os.path.join(root, "selection_eval_baseline", "results.jsonl")
+        if os.path.isfile(p):
+            out.append({"arm": arm, "epoch": 0, "kind": "baseline_copy",
+                        "label": f"{arm}.0.baseline_copy", "path": p})
+    p = os.path.join(campaign, "shared", "val_baseline", "results.jsonl")
+    if os.path.isfile(p):
+        out.append({"arm": "-", "epoch": 0, "kind": "baseline",
+                    "label": "S0.baseline", "path": p})
+    return out
+
+
+def cmd_replicates(campaign: str) -> dict:
+    """Group every rollout by (skill document, question set) and report the ones that REPEAT.
+
+    WHY THIS IS THE MOST IMPORTANT THING IN THE CAMPAIGN'S OWN RECORDS. The gate accepts on a margin of
+    one question out of twenty-four, and nothing in the run tells it how large a margin one question is.
+    But the run measured that for free without meaning to: arms A and C rejected every candidate, so their
+    in-force skill never changed, and every epoch re-ran the SAME document over the SAME 24 training
+    questions. Those repeats are independent draws of one skill's score -- the actor is sampled at
+    temperature 0.7 with no seed -- and their spread is the yardstick every gate decision needs.
+
+    A group's members are matched on the skill digest taken from their own system prompts and on the exact
+    set of question ids, so no assumption about which skill was in force is involved.
+    """
+    groups: dict[tuple, dict] = {}
+    for d in all_rollout_dirs(campaign):
+        rows = read_jsonl(d["path"])
+        if not rows:
+            continue
+        skills = {sha(skill_from_system(str(r.get("target_system_prompt") or "")) or "\x00")
+                  for r in rows}
+        if len(skills) != 1:
+            continue
+        skill = skills.pop()
+        qids = tuple(sorted(r["id"] for r in rows))
+        key = (skill, qids)
+        g = groups.setdefault(key, {"skill_sha256": skill, "n_questions": len(qids),
+                                    "question_ids": list(qids), "members": []})
+        per_q = {r["id"]: int(r.get("hard") or 0) for r in rows}
+        g["members"].append({
+            "label": d["label"], "arm": d["arm"], "epoch": d["epoch"], "kind": d["kind"],
+            "path": os.path.relpath(d["path"], campaign),
+            "correct": sum(per_q.values()), "per_question": per_q,
+        })
+    reps = []
+    for key, g in groups.items():
+        # The arms' injected copies of the baseline are the SAME FILE, not a repeat measurement.
+        members = [m for m in g["members"] if m["kind"] != "baseline_copy"]
+        if len(members) < 2:
+            continue
+        scores = sorted(m["correct"] for m in members)
+        n = g["n_questions"]
+        mean = sum(scores) / len(scores)
+        var = sum((x - mean) ** 2 for x in scores) / (len(scores) - 1) if len(scores) > 1 else 0.0
+        flips, always, never = [], [], []
+        for qid in g["question_ids"]:
+            vals = [m["per_question"][qid] for m in members]
+            if all(vals):
+                always.append(qid)
+            elif not any(vals):
+                never.append(qid)
+            else:
+                flips.append({"id": qid, "correct_in": sum(vals), "of": len(vals)})
+        reps.append({
+            "skill_sha256": g["skill_sha256"], "n_questions": n,
+            "n_replicates": len(members),
+            "members": [{k: m[k] for k in ("label", "kind", "correct", "path")} for m in members],
+            "scores": scores, "min": scores[0], "max": scores[-1],
+            "mean": mean, "sd": var ** 0.5,
+            "range_in_questions": scores[-1] - scores[0],
+            "questions_always_correct": always,
+            "questions_never_correct": never,
+            "questions_that_flipped": flips,
+            "n_flipped": len(flips),
+        })
+    reps.sort(key=lambda r: (-r["n_replicates"], -r["n_questions"]))
+    return {"rule": RULE, "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "campaign": campaign,
+            "note": ("A replicate group is two or more rollouts of the SAME skill document over the SAME "
+                     "question ids. The spread inside a group is the measurement noise of one score, "
+                     "which is what a one-question gate margin has to be read against. The arms' injected "
+                     "copies of the S0 baseline are excluded: they are one file, not a repeat."),
+            "n_groups_with_replicates": len(reps), "groups": reps}
+
+
 # ───────────────────────── subcommand: chains ─────────────────────────
 
 def cmd_chains(campaign: str, cases: list[str], n_excerpt: int = 2) -> dict:
@@ -851,7 +959,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("gates", "questions", "contracts"):
+    for name in ("gates", "questions", "contracts", "replicates"):
         p = sub.add_parser(name)
         p.add_argument("--campaign", required=True)
         p.add_argument("--out", default="")
@@ -881,6 +989,18 @@ def main() -> int:
               f"{t['candidate_observations']} observations; "
               f"{t['gains_total']} gains, {t['losses_total']} losses")
         print(f"  never solved by anyone: {len(t['questions_no_candidate_ever_solved'])} of 24")
+    elif args.cmd == "replicates":
+        doc = cmd_replicates(args.campaign)
+        print(f"rule {RULE}  {doc['n_groups_with_replicates']} group(s) of repeated measurements")
+        for g in doc["groups"]:
+            print(f"  skill {g['skill_sha256'][:12]}  {g['n_replicates']} draws over "
+                  f"{g['n_questions']} questions: scores {g['scores']}  "
+                  f"mean {g['mean']:.2f}  sd {g['sd']:.2f}  range {g['range_in_questions']}")
+            for m in g["members"]:
+                print(f"      {m['label']:22s} {m['kind']:16s} {m['correct']}/{g['n_questions']}")
+            print(f"      always right {len(g['questions_always_correct'])}, "
+                  f"never right {len(g['questions_never_correct'])}, "
+                  f"flipped {g['n_flipped']}")
     elif args.cmd == "contracts":
         doc = cmd_contracts(args.campaign)
         for arm, d in doc["arms"].items():
