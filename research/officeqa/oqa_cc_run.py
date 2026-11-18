@@ -312,7 +312,8 @@ def main() -> int:
     c = sub.add_parser("check")
     c.add_argument("--model", required=True)
     c.add_argument("--records", required=True)
-    c.add_argument("--which", default="checking", choices=("learning", "checking"))
+    c.add_argument("--which", default="checking",
+                   choices=("learning", "checking", "descriptive"))
     c.add_argument("--out", required=True)
     r = sub.add_parser("repair")
     r.add_argument("--model", required=True)

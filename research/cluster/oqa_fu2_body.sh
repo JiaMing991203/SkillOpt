@@ -256,6 +256,26 @@ cc)
         --model "$CC18/CC_MODEL_v1.json" --check "$CC/CC_CHECK_checking.json" \
         --records "$CC18/CC_RECORDS_v2.json" --out "$CC" \
         2>&1 | tee "$OUTDIR/cc_repair.txt" || status=$?
+    # DESCRIPTIVE ONLY, and labelled as such: the twelve new episode traces did not exist when the
+    # semantic bundle was frozen, nothing about them was reserved in advance, and three questions test
+    # nothing. What a check over them produces is a description.
+    if [ -d "$FU/episodes/A1/predictions" ]; then
+        log "6/6 a DESCRIPTIVE check over the twelve new episode traces"
+        RUNS=()
+        for COND in A B; do for REP in 1 2; do
+            [ -d "$FU/episodes/${COND}${REP}/predictions" ] \
+                && RUNS+=(--run "${COND}${REP}=$FU/episodes/${COND}${REP}")
+        done; done
+        "$OQA_PY" -I research/officeqa/oqa_episodes.py records "${RUNS[@]}" \
+            --out "$CC/CC_RECORDS_episodes.json" 2>&1 | tee "$OUTDIR/cc_episode_records.txt" \
+            || log "NOTE: the descriptive records could not be built"
+        if [ -f "$CC/CC_RECORDS_episodes.json" ]; then
+            "$OQA_PY" -I research/officeqa/oqa_cc_run.py check \
+                --model "$CC18/CC_MODEL_v1.json" --records "$CC/CC_RECORDS_episodes.json" \
+                --which descriptive --out "$CC" 2>&1 | tee "$OUTDIR/cc_descriptive.txt" \
+                || log "NOTE: the descriptive check failed"
+        fi
+    fi
     LEAN_BIN="${OQA_LEAN_BIN:-/nfs/turbo/umms-csriram/yaojm/lean/elan/toolchains/leanprover--lean4---v4.20.0/bin/lean}"
     "$OQA_PY" -I research/officeqa/oqa_cc_lean.py --check "$CC/CC_CHECK_checking.json" \
         --out "$CC" --lean-bin "$LEAN_BIN" 2>&1 | tee "$OUTDIR/cc_lean.txt" || status=$?

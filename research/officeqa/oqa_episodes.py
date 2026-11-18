@@ -363,6 +363,42 @@ def cmd_summarize(plan_path: str, runs: list, out_dir: str) -> dict:
     return doc
 
 
+# ───────────────────────── records for a descriptive contract check ─────────────────────────
+
+def cmd_records(runs: list, out_path: str) -> dict:
+    """A records file naming the NEW episode traces, for a DESCRIPTIVE connected-contract check.
+
+    These traces are not learning records and not the reserved checking records: they are new material
+    collected after the semantic bundle was frozen, and a check over them describes what the contract
+    says about them. It is not a test of the hypothesis - nothing here was reserved in advance, and
+    three questions cannot test anything.
+    """
+    _tree_on_path()
+    import oqa_trace as TR
+    rows = []
+    for spec in runs:
+        label, _, d = spec.partition("=")
+        pred = os.path.join(d, "predictions")
+        if not os.path.isdir(pred):
+            continue
+        for item in sorted(os.listdir(pred)):
+            if not os.path.isfile(os.path.join(pred, item, "conversation.json")):
+                continue
+            rows.append({"item": item, "epoch": 0, "arm": "-", "run": label,
+                         "predictions": os.path.abspath(pred),
+                         "trace_sha256": TR.trace_digest(pred, item)})
+    doc = {"rule": RULE, "utc": _utc(), "kind": "descriptive_only",
+           "note": ("new episode traces, collected AFTER the semantic bundle was frozen; a check over "
+                    "them is descriptive and tests nothing"),
+           "descriptive": rows, "learning": [], "checking": [],
+           "records_sha256": sha_text(json.dumps(
+               [{k: r[k] for k in ("item", "run", "trace_sha256")} for r in rows], sort_keys=True))}
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1, sort_keys=True)
+    doc["written_to"] = out_path
+    return doc
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -374,7 +410,19 @@ def main() -> int:
     s.add_argument("--plan", required=True)
     s.add_argument("--run", action="append", required=True)
     s.add_argument("--out", required=True)
+    rc = sub.add_parser("records")
+    rc.add_argument("--run", action="append", required=True)
+    rc.add_argument("--out", required=True)
     args = ap.parse_args()
+
+    if args.cmd == "records":
+        doc = cmd_records(args.run, args.out)
+        print(f"rule {RULE}  {len(doc['descriptive'])} new episode trace(s), digest "
+              f"{doc['records_sha256'][:16]}")
+        for r in doc["descriptive"]:
+            print(f"  {r['run']:3s} {r['item']:8s} trace {r['trace_sha256'][:12]}")
+        print(f"wrote {doc['written_to']}")
+        return 0
 
     if args.cmd == "freeze":
         plan = cmd_freeze(args.selection, args.frozen_sets, args.split3, args.docs, args.skill,
