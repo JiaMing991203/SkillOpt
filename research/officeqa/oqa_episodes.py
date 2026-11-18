@@ -374,6 +374,10 @@ def cmd_records(runs: list, out_path: str) -> dict:
     three questions cannot test anything.
     """
     _tree_on_path()
+    # `oqa_trace` is a SIBLING of this file, not a package module, so the repo root is not enough.
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
     import oqa_trace as TR
     rows = []
     for spec in runs:

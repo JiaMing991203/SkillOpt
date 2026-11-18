@@ -296,7 +296,7 @@ cc)
             [ -f "$d/results.jsonl" ] && PASSARGS+=(--pass "$(basename "$d")=$d")
         done
         if [ "${#PASSARGS[@]}" -gt 0 ]; then
-            log "summarising the corrected-client S0 measurement (${#PASSARGS[@]} pass(es) found)"
+            log "summarising the corrected-client S0 measurement ($(( ${#PASSARGS[@]} / 2 )) passes)"
             "$OQA_PY" -I research/officeqa/oqa_s0repeat.py "${PASSARGS[@]}" --out "$FU/s0_repeat" \
                 2>&1 | tee "$OUTDIR/s0_summary.txt" || log "NOTE: the S0 summary failed"
         fi
