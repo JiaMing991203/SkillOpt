@@ -36,6 +36,35 @@ The same message authorizes the recovery and the planned evaluations without fur
 requires the shared account rate limit to be respected and a specific resource gap to be reported rather than
 crossed.
 
+### Grant 3 — 2026-11-18, the OQA-FOR-1 follow-up allocation (user message)
+
+A SEPARATE allocation for two bounded investigations, **added to** the cumulative ceilings of Grant 2
+without resetting any previous usage:
+
+| resource | follow-up allowance | cumulative ceiling after it |
+|---|---|---|
+| EmpirioLabs (actor) | **24 HTTP attempts and $1.00** | 30,024 attempts / $17.00 |
+| DeepSeek (optimizer) | **6 HTTP attempts and $2.00** | 266 attempts / $10.00 |
+| CPU | **4 requested job-hours, at most 2 CPUs per job** | 44 requested job-hours |
+| GPUs | **zero** | zero |
+
+Retries and preflight requests count against the HTTP allowances. Existing endpoint guards and provider
+concurrency limits stay in force. Scope: (A) repair observability offline and inspect the actual HTTP
+response for the empty replies; (B) prototype ONE richer connected action-to-stage contract from saved
+training traces. **Not** authorized by it: new gameplay, full validation repeats, skill evolution, or
+another campaign.
+
+Held-out questions, answers and trajectories are out of scope for this follow-up; the existing held-out
+work continues under its own authorization (Grant 2, released 2026-11-17).
+
+Spent against Grant 3 — measured, updated as the work proceeds:
+
+| | attempts | charged | of the follow-up allowance |
+|---|---|---|---|
+| EmpirioLabs, HTTP response probe | 0 | $0.0000 | 0 of 24 / $1.00 |
+| DeepSeek, hypothesis proposals | 0 | $0.0000 | 0 of 6 / $2.00 |
+| CPU requested | 0.00 h | — | 0 of 4 job-hours |
+
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 
 `research/cluster/oqa_campaign_body.sh` sets the caps the spend ledger enforces. They are not the grant's
