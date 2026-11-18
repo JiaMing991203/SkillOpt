@@ -1,8 +1,7 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-18, prepared for a compaction. Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. HEAD `a7f2681`+ (NOT pushed; pushing is still not authorized). Tracked tree clean;
-no OfficeQA job running.**
+**Last update: 2026-11-18 (second follow-up finished). Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`. HEAD `bacf6d0`+ (NOT pushed; pushing is still not authorized). Tracked tree clean.**
 
 ## THE HELD-OUT RESULT IS RELEASED -> `docs/research/OFFICEQA_RELEASE_PROTOCOL.md` (end of file)
 
@@ -24,98 +23,90 @@ advice scored **3/60 and 8/60** — five questions, 8.3 points apart. Arm B's +3
 that. **Verified:** the scores. **Interpretation:** nothing here separates a skill effect from a draw, and
 the design could not have separated the arms at all, because only arm B has an edited selected skill.
 
-## RESUME HERE: the next instruction is about the `reasoning`-field defect
+## RESUME HERE -> `docs/research/OFFICEQA_RECOVERY_PACKET.md`
 
-Everything needed to continue on it is in this section. Full evidence:
-`docs/research/OFFICEQA_FOLLOWUP_PACKET.md` §3. Branch `officeqa-contracts`, HEAD below, tree clean, no
-OfficeQA job running (the six `e3m-*` held jobs belong to Experiment 3 and are not mine to touch).
+**The `reasoning`-field defect is FIXED, VERIFIED ON COMPLETE EPISODES, and its effect on a score is now
+MEASURED.** Rules OQA-REC-2 and OQA-CC-2; amendments A-2 and B-2. Everything new is under
+`<campaign>/followup_20261119/`; the frozen campaign and `followup_20261118/` are untouched.
 
-### The defect in one paragraph
+### The three results that matter
 
-EmpirioLabs returns the model's text in `choices[0].message.`**`reasoning`**. The OpenAI SDK exposes an
-unmodelled field only through `model_extra`, so `getattr(msg, "reasoning_content")` is None and
-`msg.content` is null. `skillopt/model/common.py::compat_message_from_chat_message` read `content`, the
-OfficeQA loop in `skillopt/envs/officeqa/rollout.py` did `response = message.content or ""`, found no
-tool call and no `<answer>`, and ended the episode with "Model neither produced a tool request nor a
-final answer". That is **331 of the campaign's 528 selection observations**. Two replayed requests (job
-66340531) returned 944 and 1,550 characters of `reasoning`, each ending in a complete
-`<answer>[10102000000, 4.73]</answer>`. DeepSeek uses `reasoning_content` instead, and the optimizer hit
-the same shape when a 2,000-token cap was spent entirely on reasoning.
+1. **Twelve complete episodes, twelve answers, twelve correct.** Three frozen TRAINING questions
+   (UID0017, UID0063, UID0163 — membership checked against the frozen split record), two reps, two
+   conditions. Under condition A (the historical generation payload) **all six answers came out of
+   `message.reasoning`**, and under the old client all six episodes would have ended with no answer.
+   Job 66346256.
+2. **S0 on the 24 validation questions, through the corrected client: the answer-emission rate went from
+   6 of 24 to about 21 of 24, and the score from 4 of 24 to a mean near 10.** Eight passes, jobs
+   66346539 / 66346540 / 66351468. **The campaign's entire gate was run at a quarter of the actor's real
+   answer rate**, and its one acceptance was on a margin of ONE question against a draw-to-draw sd of
+   about 1.5.
+3. **The connected contract's extraction was repaired and its one apparent gain disappeared with it.**
+   The repaired reader rejects the years B-1 bound (`1942`, `07`) and keeps the money operands
+   (`2,410,259`, `3,471,122`). On these records it produces **no actionable diagnosis at all** — which is
+   the honest outcome, not a failure of the run.
 
-### What is already in force (committed, tested, OFF by default)
+### What is in force now (all OFF by default, so the frozen campaign still reproduces)
 
-* `common.py::reasoning_text()` looks for `reasoning`, `reasoning_content`, `thinking`, including through
-  `model_extra`, and `response_metadata()` always reports `reasoning_field_name` and
-  `reasoning_has_answer_tag`.
-* The content fallback uses that text when `content` is empty AND there is no tool call, behind
-  **`SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK`** (accepts `1/true/yes/on/reasoning`). **Default OFF**,
-  so the frozen campaign still reproduces. It is not a nudge and not a retry.
-* The row now carries `termination_cause`, `response_metadata`, `last_completion_tokens`,
-  `last_provider_cost_usd`; the ledger records `provider_cost_usd` without using it in the guard.
-* `enable_thinking: false` is documented for qwen3-5-4b (default **true**; `thinking_budget` 4096;
-  `reasoning_effort` default "medium", `none` disables) and was verified on the wire — transmitted,
-  accepted (200), effective: the `reasoning` key vanishes, completion tokens fall ~5x.
+* **The narrow recovery policy.** `SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK=committed_answer` (also
+  `1/true/yes/on/answer`) recovers only an unambiguous, complete, **terminal** `<answer>…</answer>` block
+  from `reasoning` / `reasoning_content` / `thinking`, and recovers **the block alone**. `reasoning` /
+  `reasoning_text` still selects yesterday's permissive promotion, kept only so the OQA-HTTP-1 probe's
+  recorded outcomes reproduce. Every declined case has its own name and it reaches `termination_cause`.
+* **`TARGET_OPENAI_COMPATIBLE_EXTRA_BODY`** (JSON) transmits serving controls — this is how
+  `{"enable_thinking": false}` is sent. Invalid JSON refuses the request.
+* **`TARGET_OPENAI_COMPATIBLE_RAW_CAPTURE`** (a JSONL path) records four layers of one exchange: the
+  transmitted request (with the digests that name the episode), the complete HTTP body, the SDK view and
+  the compatibility message. Headers are filtered to an allow-list; no credential can reach it.
+* **The repaired `oqa_cc_extract`** beside the untouched `oqa_lc_*`, the stage link's REOPENED / "no
+  conversion required" / "stated but not carried through", the `_well_bound` verdict rule, and
+  `oqa_cc_bundle.py`, which freezes what a hypothesis MEANS (vocabulary, extractor and evaluator source
+  digests, stage definitions, renderer, learner prompt, learning manifest) rather than only what it says.
 
-### What CAN be answered from saved records, with zero new requests
+### The decision that is yours, and the one thing I would not do without it
 
-* Re-classify any saved exchange: `<campaign>/followup_20261118/http_probe/EXCHANGES_*.json` holds 23
-  exchanges with the complete HTTP body, the SDK view, the compat message and the loop decision.
-  `oqa_http_probe.py rederive --out <dir>` recomputes outcomes offline.
-* Prove the correction deterministically: `tests/test_officeqa_followup_observability.py` replays the
-  real captured shape; `_extract_answer` returns `[10102000000, 4.73]` with the fallback on.
-* Count what the loop would have done differently **only for those 23 exchanges**, not for the campaign.
+**The frozen campaign's numbers were all taken at a quarter of the actor's real answer rate.** Nothing in
+this follow-up changed them, and nothing should without your word. Three options, cheapest first:
 
-### What CANNOT be recovered, and why — state this before any plan assumes otherwise
+1. **Leave the campaign as a recorded negative result** with the defect documented. $0.
+2. **Re-measure the held-out comparison only** — the two distinct documents of the primary comparison on
+   the 60 held-out questions, through the corrected client. 120 question-rollouts, about 1,240 attempts,
+   **$0.79**, ~1.5 core-hours. This is the only number that was ever the primary result.
+3. **Re-run the three-arm campaign.** I would advise against it until the sample-size question below is
+   settled: the client defect is fixed, but the design's other problem is not.
 
-The historical `reasoning` text is **gone**. `openai_compatible_backend._log_call` recorded `content` and
-`reasoning_content` only, so all 7,909 logged attempts show `reasoning_content: null` and nothing else;
-`conversation.json` stored the assistant `content`, which was `""`. So **how many of the 331 empty
-replies carried a usable answer is unknowable from the records.** It can only be estimated by new
-sampling, which costs attempts.
+**The sample-size arithmetic, from this measurement.** Draw-to-draw sd ≈ 1.5 of 24. With one draw per
+arm a difference below about 6 questions of 24 is undetectable at 80% power; with four draws, about 3;
+with eight, about 2. **The campaign accepted a candidate on a margin of one question with one draw.**
 
-### What a further step needs
+### And the one finding that constrains any future contract experiment
 
-**Grant 3 is effectively spent: 1 EmpirioLabs attempt, 3 DeepSeek attempts, 0 CPU job-hours** (4.00 of 4
-requested, exhausted). Any run needs a new allocation. The three candidates, cheapest first, with
-measured constants ($0.006558 and 10.32 attempts per question-rollout; a 24-question evaluation = 248
-attempts, $0.157, ~0.36 core-hours):
-
-1. **Re-sample the empty-reply rate with the corrected client** on the frozen selection or a wider
-   mechanical sample — N attempts, no episodes, answers the "how often" question the records cannot.
-2. **One 24-question S0 evaluation with the fallback ON**, against the recorded 4/24 — 248 attempts,
-   $0.16, ~0.36 core-hours. The smallest thing that shows whether the correction changes a SCORE.
-3. **Repeat that 8 times** for a noise floor through the corrected client — 1,984 attempts, $1.26,
-   ~2.9 core-hours. `OFFICEQA_DIAGNOSTIC_PACKET.md` §9 has the power arithmetic; its own numbers were
-   measured through the broken client.
-
-### Open questions, ranked
-
-1. How often does the provider return text in `reasoning` with no tool call? (2 of 9 replays; unknown
-   campaign-wide.)
-2. Does the fallback change an episode's outcome end to end? Nothing here ran an episode to completion.
-3. Should the gate decisions, the noise floor and the held-out comparison be re-measured through the
-   corrected client? **A decision about the frozen result, not a bug fix — it is yours.**
-4. Is `enable_thinking: false` (or `reasoning_effort: none`) preferable to the fallback? Both avoid the
-   loss; the first changes what the actor does, the second only what the client reads.
+A trace-based checker can read **20–36 characters** of actor text per episode with thinking ON (the
+recovered answer block, and nothing else — the policy deliberately does not promote reasoning prose),
+against **575–8,864** with `enable_thinking: false`. **So the contract layer cannot be evaluated on
+traces recorded with thinking on.** Restoring that text means changing what the actor does, which is a
+condition that needs its own comparison. That is a design decision, not a defect.
 
 ### Standing prohibitions, unchanged
 
 Pushing this branch; GPUs; weakening the validation gate; unsealing job 66234927; using held-out
-questions, answers or trajectories for this investigation; empty-response nudges or episode retries
-(each changes the actor harness and needs its own specified comparison); another training campaign;
-altering the frozen campaign's artifacts — new output goes under `<campaign>/followup_20261118/`.
+questions, answers or trajectories outside the released protocol; empty-response nudges or episode
+retries; another training campaign; altering the frozen campaign's artifacts.
 
 ### Ready to run
 
 ```
 R=/nfs/turbo/umms-csriram/yaojm/lean_skillopt ; CAMP=$R/runs/20261117-officeqa-3arm-campaign
-FU=$CAMP/followup_20261118            # all follow-up artifacts
-# the five layers of any saved exchange, offline:
-python3 -I research/officeqa/oqa_http_probe.py rederive --out $FU/http_probe
-# a new probe, if an allowance exists (selection already frozen, digest 25718e4ed2f16c8c):
-#   bundle oqa_fu_20261118, body oqa_probe_body.sh, OQA_PROBE_PHASE=send,
-#   OQA_PROBE_SETTING=historical|no_thinking, OQA_PROBE_MAX_SENDS=<cap>,
-#   OQA_PROBE_CONTENT_FALLBACK=reasoning to exercise the correction
+FU=$CAMP/followup_20261119 ; D=$R/oqa_fu2_20261118        # bundle, commit in $D/COMMIT
+# every phase, free unless marked:
+OQA_BUNDLE=$D bash $D/oqa_fu2_submit.sh tests             # 0:12
+OQA_BUNDLE=$D OQA_BACKFILL_APPLY=1 bash $D/oqa_fu2_submit.sh prep
+OQA_BUNDLE=$D bash $D/oqa_fu2_submit.sh episodes          # PAID, 12 episodes, ~$0.02
+OQA_BUNDLE=$D bash $D/oqa_fu2_submit.sh cc                # free; OQA_CC_PROPOSE=1 allows 2 DeepSeek calls
+OQA_BUNDLE=$D bash $D/oqa_fu2_submit.sh s0                # PAID, 8 passes; top up with OQA_S0_FIRST=<n>
+# offline, no key, no cost:
+python3 -I research/officeqa/oqa_recovery.py replay --exchanges <dir|file> --out <dir>
+python3 -I research/officeqa/oqa_cc_bundle.py verify --bundle $FU/connected_contract/CC_BUNDLE_v3.json
 ```
 
 ## THE FOLLOW-UP IS DONE -> `docs/research/OFFICEQA_FOLLOWUP_PACKET.md`
@@ -325,24 +316,33 @@ included.** It does NOT separate the arms, and it does NOT turn arm B's acceptan
 Caveat applied to both tails: all gates in an arm share the same 24 questions, so 0.001 could be several times
 larger; a 56-question pooled deficit is far too large for within-arm correlation to explain.
 
-## THE AUTHORIZATION, AS AMENDED 2026-11-17, and what is left
+## THE AUTHORIZATION, AS AMENDED, and what is left after Grant 4
 
-TOTALS including everything already spent. `docs/research/OFFICEQA_AUTHORIZATION.md` is authoritative;
-`oqa_budget.py --headroom` prints it from measured figures.
+TOTALS including everything already spent. `docs/research/OFFICEQA_AUTHORIZATION.md` is authoritative and
+records all four grants; the figures below are the ledger's own reading plus the two paid calls that ran
+outside it (both accounted: the 23 probe sends are now back-filled INTO the ledger, and the one
+pre-ledger DeepSeek probe of job 66271290 is subtracted from the enforced cap).
 
-| resource | ceiling | spent | left | used |
+| resource | cumulative ceiling | spent, measured | left | used |
 |---|---|---|---|---|
-| EmpirioLabs attempts | 30,000 | 8,394 | 21,606 | 28% |
-| EmpirioLabs charge | $16.00 | $5.6241 | $10.3759 | 35% |
-| DeepSeek calls | 260 | 103 | 157 | 40% |
-| DeepSeek charge | $8.00 | $3.5016 | $4.4984 | 44% |
-| CPU core-hours | 40 | 23.47 | 16.53 | 59% |
+| EmpirioLabs attempts | 30,024 | _see the packet §8_ | | |
+| EmpirioLabs charge | $17.00 | _see the packet §8_ | | |
+| DeepSeek calls | 266 | 106 | 160 | 40% |
+| DeepSeek charge | $10.00 | $3.5100 | $6.4900 | 35% |
+| CPU requested job-hours | 44 | _see the packet §8_ | | |
 | GPUs | 0 | 0 | — | — |
 
-**These do not yet include the three held-out jobs** (~$1.18 and ~1,900 attempts projected). The enforced
-optimizer cap is **$7.95 / 259**, one request below the grant, because the size probe (job 66271290) spent
-$0.0411 outside the ledger. CPU has two readings — 23.47 core-hours or ~11.7 wall-clock job-hours — because
-every job asked for 2 CPUs; **planning uses the larger**.
+**Grant 4's own suballocation** (5,000 attempts / $4.00 actor, 4 / $1.00 optimizer, 8 requested CPU
+job-hours, 0 GPUs) was drawn from that headroom and verified against it before anything was submitted.
+The caps the jobs enforce are ABSOLUTE and were computed once: **target 15,181 / $10.8626, optimizer
+109 / $4.4688**. A cap derived from "what has been spent so far" would hand every job a fresh allowance.
+
+**Two field-name defects, same class, one corrected and one deliberately not.** The client read `content`
+and `reasoning_content` where this provider uses `reasoning` — corrected (amendment A-2). The spend
+ledger reads `prompt_cache_hit_tokens`, which is DeepSeek's name, where EmpirioLabs reports
+`prompt_tokens_details.cached_tokens` — **left alone on purpose**, because it makes the ledger
+conservative by about 38% on the actor side ($5.3159 charged against $3.2768 billed over the campaign),
+and the safe direction for a cap is to overcharge.
 
 ## THE ACCOUNTING FIX IS FINISHED AND PROVEN IN PRODUCTION
 

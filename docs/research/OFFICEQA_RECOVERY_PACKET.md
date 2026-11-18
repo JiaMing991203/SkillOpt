@@ -27,7 +27,9 @@ must be, and 21 ordinary-content turns were untouched.
    replies had non-null `content`** — not just the terminal ones. The client lost the actor's *entire*
    written reasoning, every turn, which is why `conversation.json` holds empty assistant messages and why
    Workstream B's operand extraction had almost nothing to read (B-1: "only 7 of 24 traces contain any
-   number the actor wrote in a message"). The two workstreams' findings are the same defect.
+   number the actor wrote in a message"). The two workstreams' findings are the same defect. (Across the
+   wider S0 measurement the provider is not that uniform — 47 of 158 answers did arrive in `content` —
+   so "always" is the wrong word for three questions; see §7.)
 3. **Thinking-off is a different actor, not a fix to the client.** With `enable_thinking: false` the
    `reasoning` key disappears and `content` is populated, so no recovery is needed — but completion
    tokens fall about fivefold and unsupported tool calls rose from 0 to 12. It is not the primary
