@@ -105,3 +105,6 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66356410	oqa-aud-audit	ba53007	FAILED	all work done; NameError in the audit tool's interpret step
 66356411	oqa-aud-tests	ba53007	COMPLETED	2326 passed, 9 skipped, 368 subtests
 66356437	oqa-aud-audit	3974433	COMPLETED	audit complete; Lean rc0; 7s
+66385774	awc-tests	d98fd6a	COMPLETED	2353 passed, 9 skipped, 368 subtests
+66385775	awc-lean	d98fd6a	FAILED	Lean rc1: heatContextEmptyIsSilent needed rfl
+66385916	awc-lean	7abbb91	COMPLETED	Lean 4.20.0 rc0, 46 statements, 20 evidence examples

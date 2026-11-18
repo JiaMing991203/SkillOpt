@@ -1682,3 +1682,60 @@ return code 0**, 15 statements, 7 evidence examples.
 UID0014 findings become `incorrect_factor_stated`, VIOLATED, wrong by 10^3. P-2 (a fully observed header
 row naming no money scale witnesses the absence of a nearer scale): 29 cells decidable, 8 reach a
 binding.
+
+---
+
+## 2026-11-18 — ALFWorld context-aware stage checking (rule AWC-1)
+
+**Jobs 66385774 (tests, COMPLETED), 66385775 (lean, FAILED rc1), 66385916 (lean, COMPLETED rc0).**
+Bundle `$PROJECT_ROOT/awc_20261118`, commits `d98fd6a` then `7abbb91`. Artifacts
+`$RUNS/20261118-alfworld-context/` (local and cluster). **0 API calls, 0 GPUs, 0 new gameplay, 0.6 of 2
+requested CPU job-hours.** Tests **2,353 passed, 9 skipped, 368 subtests**; **Lean 4.20.0 rc 0**, 46
+statements, 20 evidence examples, 0 skipped.
+
+**Conditions.** `current` = `stage_common.Reading` (the frozen shared reading; INSPECT clause (a) only).
+`context_aware` = `a4_reading.ReadingA4(rev=2)` (A4 §3.4: lamp clause (b), same-receptacle (c),
+temperature-override (d)). `a4_rev1` recorded as a third condition because it does NOT reproduce the
+pre-revision reading for `look_at_obj_in_light`. Frozen snapshot digests: `stage_common.py`
+`570f2049205c7c99`, `a4_reading.py` `70b707f4f10a434f`, `vocab.py` `e857150a39a166bd`, `tor_record.py`
+`b40c448ebaa07f2e`. Manifest `5517922e569456b2`; semantic bundle `db73dae18d5acf41`; vocabulary
+`lc.vocab.v1` `5005c74b9dbd409b`.
+
+**Frozen set (24 attempts, 12 tasks, two per type, all outcome-balanced): 0 differences** between the
+two readings. Every success recognised at the same step; no failure claimed by either.
+
+**Supplementary scans, every saved `tr:` training attempt with a trace in a `*_evolve_*` rollout:**
+
+| type | attempts | changed | success | failure |
+|---|---|---|---|---|
+| pick_and_place | 155 | 0 | 0 | 0 |
+| pick_two_obj_and_place | 157 | 15 | 14 | 1 |
+| pick_clean_then_place_in_recep | 132 | 0 | 0 | 0 |
+| pick_heat_then_place_in_recep | 100 | 3 | 3 | 0 |
+| pick_cool_then_place_in_recep | 112 | 0 | 0 | 0 |
+| look_at_obj_in_light | 80 | 1 | 1 | 0 |
+| **total** | **736** | **19** | **18** | **1** |
+
+Examine-in-Light discharges: 28 on clause (a), 1 on clause (b).
+
+**Classification of the 19:** `corrected_progress_recognition` 1 (tr:0293, in-sample);
+`more_precise_or_earlier_existing` 17 (every one *later*, not earlier);
+`removal_of_a_false_diagnosis` 1 (tr:2986, out-of-sample);
+`valid_additional_execution_diagnosis` 0; `redundant_information` 0;
+**`unsupported_inference_or_unresolved_unknown` 0.** By distinct task: 8 tasks, 4 in-sample
+(tr:0293, tr:3287, tr:2785, tr:2658), 4 out-of-sample (tr:3042, tr:2986, tr:2395, tr:2456).
+
+**The lamp witness (tr:0293, 42 steps, scored 1).** take tissuebox 1 (t=1) → 35 steps of search →
+arrive dresser 1 (t=37) → move tissuebox 1 to dresser 1 (t=38) → **use desklamp 1** (t=39, hands empty)
+→ examine dresser 1 (t=40) → **take tissuebox 1 from dresser 1** (t=41). Current: never discharged
+(missed completion). Context: discharged at t=41 on basis (b), assumptions `lamp_stays_on` + `same_place`.
+
+**The failure witness (tr:2986, 50 steps, scored 0).** cup 1 → cabinet 3 (t=29, confirmed t=39, t=49);
+cup 4 → cabinet 6 (t=45, confirmed t=46). Current: goal reached at t=45. Context (clause c): never
+reached. The saved ordinary analysis names this attempt under `navigation_loop` — "they never find the
+goal object" — which is false of it.
+
+**Relationship to the saved ordinary analysis:** `failure_patterns[].task_ids` lists only the failing
+attempts of a step, so 18 of the 19 changes (all on successes) are not named there by construction; every
+affected step's digest reports the single pattern `navigation_loop`. The context-aware reading improves
+*when* a success is recognised and produces no failure diagnosis the ordinary analysis lacked.

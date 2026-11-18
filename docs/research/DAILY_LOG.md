@@ -1493,3 +1493,59 @@ thinking on" conflated four interventions. A checker whose evidence is tool obse
 committed answer can be evaluated on them today; only a checker that needs the actor's INTERMEDIATE
 numbers cannot. The unit-binding contract is of the second kind because it binds the operand the actor
 wrote — a design choice about the contract, not a property of the trace.
+
+---
+
+## 2026-11-18 (later still) — ALFWorld context-aware checking: the mechanism existed, the evidence did not
+
+Rule **AWC-1**, plan `docs/research/ALFWORLD_CONTEXT_STUDY_PLAN.md`, report
+`docs/research/ALFWORLD_CONTEXT_PACKET.md`, artifacts `$RUNS/20261118-alfworld-context/`. Jobs 66385774
+/ 66385775 / 66385916. **0 API calls, 0 GPUs, 0 gameplay, 0.6 of 2 authorized CPU job-hours.**
+
+**The first thing I did was look for the capability, and it was there.** The OfficeQA P2 idea — let an
+already-observed scope witness a fact — is amendment A4 §3.1–3.4 in ALFWorld, written on 2026-11-11.
+`fact_ledger.py` already attaches to every fact its object, source, supporting contract and assumptions,
+the step from which it is valid, and the later observation that withdraws or contradicts it, and it
+already labels whether an inference added anything or merely agreed with the ordinary tracker.
+`a4_reading.ReadingA4` already connects an earlier lamp-on to a later holding under two **named** rules,
+`lamp_stays_on` and `same_place` — and a pre-freeze review had already deleted an unsound branch of it
+because "an object can be listed at two receptacles and the actor may pick it up elsewhere", which is
+the same caution the instruction raises. So I wrote no extension and claimed none.
+
+**What was missing was the measurement.** The revision's effect had been checked once by hand and
+written up as prose. So: a frozen manifest (12 training tasks, two per type, six types, 24
+outcome-balanced attempts, mechanical rule recorded first, digest `5517922e569456b2`), a replay with
+PRE(t) computed before step t is applied, a per-change classification with witnesses, 27 constructed
+regressions, and Lean.
+
+**The result, over 736 saved training attempts: 19 changes, and 18 of them make the reading STRICTER.**
+That is the opposite of what "context transfer" sounds like. Only the lamp case adds a recognition
+(and it is the counterexample the rule was written from); the other 18 withdraw or delay a completion
+claim the old reading made too early. **False completion claims introduced: 0. Removed: 1.** By distinct
+task the 19 changes are 8 tasks, 4 in-sample and 4 out-of-sample.
+
+**The frozen 24-attempt set showed zero differences**, which is the methodological finding: a
+24-attempt diagnostic set has no power to see a 2.6% phenomenon. The supplementary scans over every
+saved attempt are where it is visible at all, and they are labelled supplementary.
+
+**Two defects, both found by trying to build an honest baseline rather than by reading the data.**
+(1) `ReadingA4(rev=1)` does not reproduce the pre-revision reading for `look_at_obj_in_light`:
+`goal_now` gates clause (c) on `self.rev` and applies the lamp clause (b) unconditionally, so a rev-1
+vs rev-2 A/B would have reported "no change" for the one task type the revision was written for. The
+real baseline is `stage_common.Reading`. Reported, not repaired — the module belongs to a closed track
+and changing it would alter frozen Study A/B/C provenance. (2) My own `ordinary_analysis` lookup was
+two `dirname` calls where the path needs four, so every comparison with the saved SkillOpt analysis came
+back empty for the wrong reason.
+
+**Fixing (2) changed a conclusion.** On tr:2986 — the one change on a scored failure — the saved
+ordinary analysis names the attempt under `navigation_loop`: "they never find the goal object". It had
+found both cups and put them in **cabinet 3 and cabinet 6**. So the withdrawn progress claim also
+contradicts the failure attribution. That is the only result here with a plausible route to an
+optimizer, and the smallest experiment that would test it — counting how often the stage reading
+contradicts the saved attribution, offline — is proposed and **not run**.
+
+**Boundaries kept:** no `*_evaluate_*` run, no `seen:`/`unseen:` id, no held-out task directory. The
+live ALFWorld implementation is uncommitted in the sibling worktree and was read only; its own state
+note was not touched. Pending user decisions that predate this study (INSPECT rev 3, a lamp-state atom,
+a co-location relation) are untouched, because implementing a rule against a counterexample that is
+already known would be fitting the checker to a known failure.

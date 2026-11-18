@@ -1,5 +1,37 @@
 # Research Development State
 
+## 2026-11-18 — ALFWORLD CONTEXT-CHECKING STUDY: DONE -> `ALFWORLD_CONTEXT_PACKET.md`
+
+**Rule AWC-1. Offline, 0 API calls, 0 GPUs, 0 gameplay, 0.6 of 2 authorized CPU job-hours. Jobs
+66385774 (tests, 2,353 passed), 66385916 (Lean 4.20.0 rc 0). Artifacts
+`$RUNS/20261118-alfworld-context/`; frozen manifest `5517922e569456b2`, bundle `db73dae18d5acf41`.**
+
+* **The proposed context connection was ALREADY IMPLEMENTED** — amendment A4 §3.1–3.2 (the fact ledger,
+  with supports, validity, withdrawal, contradiction, persistence as a named assumption and an
+  ADDITIONAL-vs-OVERLAP label) and A4 §3.4 (`a4_reading.ReadingA4`, the lamp connection under
+  `lamp_stays_on` and `same_place`, plus same-receptacle and temperature-override). Nothing was claimed
+  as new and **no checker was changed**.
+* **What was missing was the evidence**, and this study supplies it: over **736 saved training
+  attempts** the context-aware reading changes **19** (2.6%). **18 of 19 make it STRICTER** (a premature
+  completion claim withdrawn or delayed) and 1 more permissive (the lamp). **False completion claims
+  introduced: 0. Removed: 1** (tr:2986, out-of-sample).
+* **The frozen 24-attempt diagnostic set shows ZERO differences** — a 24-attempt set cannot see a 2.6%
+  phenomenon. That is the methodological result.
+* **Two defects found while building the baseline:** `ReadingA4(rev=1)` does NOT reproduce the
+  pre-revision reading for `look_at_obj_in_light` (clause (b) is ungated), so the honest baseline is
+  `stage_common.Reading`; and my own ordinary-analysis lookup was one directory too shallow.
+* **The one result worth acting on:** on tr:2986 the saved ordinary analysis blames a navigation loop in
+  which the agent "never find[s] the goal object"; it had found both cups and put them in **cabinet 3
+  and cabinet 6**. The stage reading contradicts the attribution. A cheap offline count of how often
+  that happens is **proposed and not run**.
+* **NOT MINE, read only:** the live ALFWorld implementation is uncommitted in
+  `~/dev/lean_skillopt/SkillOpt-learned-contract` (branch `contract/learned-contract`). Its own state
+  note `CONTRACT_IMPLEMENTATION_STATE.md` was **not modified**; that track is closed and owns its notes.
+  Pending USER decisions that predate this study and are untouched: INSPECT rev 3, a lamp-state atom,
+  a co-location relation.
+
+---
+
 **Last verified:** 2026-10-20 18:02 EDT (git, `squeue`; planning only, no jobs)
 **Current milestone (user priority change, 2026-10-20):** the Lean-guided
 contract-feedback prototype (Option B), milestones L0–L7 in
