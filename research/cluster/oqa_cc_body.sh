@@ -36,10 +36,11 @@ cd "$WORK" || exit 1
 status=0
 case "$PHASE" in
   select)
-    "$OQA_PY" -I research/officeqa/oqa_cc_learn.py select --campaign "$CAMP" --arm C --out "$FU" \
+    "$OQA_PY" -I research/officeqa/oqa_cc_learn.py select --campaign "$CAMP" --arm C \
+        --rule-version "${OQA_CC_RULE:-2}" --out "$FU" \
         2>&1 | tee "$OUTDIR/select.txt" ; status=${PIPESTATUS[0]} ;;
   prompt)
-    "$OQA_PY" -I research/officeqa/oqa_cc_learn.py prompt --records "$FU/CC_RECORDS.json" \
+    "$OQA_PY" -I research/officeqa/oqa_cc_learn.py prompt --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" \
         --out "$FU/CC_PROMPT.txt" 2>&1 | tee "$OUTDIR/prompt.txt" ; status=${PIPESTATUS[0]} ;;
   propose)
     : "${OQA_OPTIMIZER_ENV_FILE:?}"
@@ -68,18 +69,18 @@ import json,sys; print(json.load(open(sys.argv[1])).get('optimizer_openai_compat
     export OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl"
     log "endpoint $OPTIMIZER_OPENAI_COMPATIBLE_BASE_URL model $OPTIMIZER_MODEL; job cap ${OQA_CC_MAX_CALLS:-2} call(s)"
     PYTHONPATH="$WORK" "$OQA_PY" research/officeqa/oqa_cc_learn.py propose \
-        --records "$FU/CC_RECORDS.json" --out "$FU" 2>&1 | tee "$OUTDIR/propose.txt"
+        --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" --out "$FU" 2>&1 | tee "$OUTDIR/propose.txt"
     status=${PIPESTATUS[0]} ;;
   demo)
     R="research/officeqa/oqa_cc_run.py"
-    "$OQA_PY" -I $R freeze --proposal "$FU/PROPOSAL.json" --records "$FU/CC_RECORDS.json" --out "$FU" \
+    "$OQA_PY" -I $R freeze --proposal "$FU/PROPOSAL.json" --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" --out "$FU" \
         2>&1 | tee "$OUTDIR/freeze.txt" || status=1
-    "$OQA_PY" -I $R check --model "$FU/CC_MODEL_v1.json" --records "$FU/CC_RECORDS.json" \
+    "$OQA_PY" -I $R check --model "$FU/CC_MODEL_v1.json" --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" \
         --which learning --out "$FU" 2>&1 | tee "$OUTDIR/check_learning.txt" || status=1
-    "$OQA_PY" -I $R check --model "$FU/CC_MODEL_v1.json" --records "$FU/CC_RECORDS.json" \
+    "$OQA_PY" -I $R check --model "$FU/CC_MODEL_v1.json" --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" \
         --which checking --out "$FU" 2>&1 | tee "$OUTDIR/check_checking.txt" || status=1
     "$OQA_PY" -I $R repair --model "$FU/CC_MODEL_v1.json" --check "$FU/CC_CHECK_checking.json" \
-        --records "$FU/CC_RECORDS.json" --out "$FU" 2>&1 | tee "$OUTDIR/repair.txt" || status=1
+        --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" --out "$FU" 2>&1 | tee "$OUTDIR/repair.txt" || status=1
     "$OQA_PY" -I $R compare --campaign "$CAMP" --check "$FU/CC_CHECK_checking.json" --arm C \
         --out "$FU" 2>&1 | tee "$OUTDIR/compare.txt" || status=1
     LEAN="${OQA_LEAN_BIN:-/nfs/turbo/umms-csriram/yaojm/lean/elan/bin/lean}"

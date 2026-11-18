@@ -66,34 +66,61 @@ def _usable(pk: dict) -> dict:
             "usable": bool(scaled and ops)}
 
 
-def cmd_select(campaign: str, arm: str = "C") -> dict:
-    root = os.path.join(campaign, f"arm_{arm}")
-    e2 = os.path.join(root, "steps", "step_0002", "rollout", "predictions")
-    e3 = os.path.join(root, "steps", "step_0003", "rollout", "predictions")
-    items = sorted(set(os.listdir(e2)) & set(os.listdir(e3))) if (os.path.isdir(e2)
-                                                                  and os.path.isdir(e3)) else []
-    rows = []
-    for item in items:
-        pk2 = _packet(e2, item, 2)
-        u = _usable(pk2)
-        rows.append({"item": item, **u, "trace_sha256_e2": pk2["trace_sha256"]})
-    usable = [r for r in rows if r["usable"]]
-    learn = usable[:N_LEARN]
-    check = usable[N_LEARN:N_LEARN + N_CHECK]
+def cmd_select(campaign: str, arm: str = "C", rule_version: int = 2) -> dict:
+    """Pick the permitted records.
+
+    RULE v1 (recorded, and its outcome is a finding rather than a failure): arm C only, items present in
+    both epoch 2 and epoch 3, learning = the first four items' epoch-2 traces, checking = the next
+    four's epoch-3 traces. It produced THREE usable traces of 24 and an EMPTY checking set, because the
+    binding constraint is not tables - 14 of 24 had a scaled table - but OPERANDS: only 7 of 24 traces
+    contain any number the actor wrote in a message, and NONE contains a stated conversion factor. That
+    is Workstream A's finding arriving here: the actor's visible text never reached the record, so the
+    "evidence use" this relationship is about is largely unobservable in these traces.
+
+    RULE v2, used below: the same usability test over a WIDER pool - arms C and B, epochs 2 (learning)
+    and 3 (checking) - which is still all saved TRAINING material. Learning and checking stay disjoint
+    by epoch, and a checking item may not appear in the learning set, so its question id is reserved.
+    """
+    rows, by_epoch = [], {2: [], 3: []}
+    arms = [arm] if rule_version == 1 else ["C", "B"]
+    for a in arms:
+        for epoch in ((2, 3) if rule_version != 1 else (2,)):
+            pred = os.path.join(campaign, f"arm_{a}", "steps", f"step_{epoch:04d}", "rollout",
+                                "predictions")
+            if not os.path.isdir(pred):
+                continue
+            for item in sorted(os.listdir(pred)):
+                pk = _packet(pred, item, epoch)
+                u = _usable(pk)
+                row = {"arm": a, "item": item, "epoch": epoch, "predictions": pred,
+                       "trace_sha256": pk["trace_sha256"], **u}
+                rows.append(row)
+                if u["usable"]:
+                    by_epoch[epoch].append(row)
+    learn = sorted(by_epoch[2], key=lambda r: (r["arm"], r["item"]))[:N_LEARN]
+    learn_items = {r["item"] for r in learn}
+    check = [r for r in sorted(by_epoch[3], key=lambda r: (r["arm"], r["item"]))
+             if r["item"] not in learn_items][:N_CHECK]
     doc = {
         "rule": RULE, "utc": _utc(), "campaign": campaign, "arm": arm,
+        "rule_version": rule_version,
         "selection_rule": (
-            "arm C TRAINING items present in both epoch 2 and epoch 3, usable = at least one table with "
-            "a stated money scale and at least one operand in a message; item ids ascending; the first "
-            f"{N_LEARN} items' EPOCH-2 traces learn, the next {N_CHECK} items' EPOCH-3 traces check."),
-        "n_candidates": len(rows), "n_usable": len(usable),
+            f"v{rule_version}: TRAINING traces of arms {'/'.join(arms)}, usable = at least one table "
+            "with a stated money scale AND at least one number the actor wrote in a message; ordered by "
+            f"(arm, item); the first {N_LEARN} usable EPOCH-2 traces learn, the first {N_CHECK} usable "
+            "EPOCH-3 traces whose item is not in the learning set check."),
+        "rule_v1_outcome": ("3 usable of 24 and an EMPTY checking set; the binding constraint is "
+                            "operands (7 of 24 traces contain any number the actor wrote, 0 contain a "
+                            "stated conversion factor), not tables (14 of 24 have a scaled table)"),
+        "n_candidates": len(rows), "n_usable": len(learn) + len(check),
         "candidates": rows,
-        "learning": [{"item": r["item"], "epoch": 2,
-                      "predictions": e2, "trace_sha256": r["trace_sha256_e2"]} for r in learn],
-        "checking": [{"item": r["item"], "epoch": 3, "predictions": e3,
-                      "trace_sha256": TR.trace_digest(e3, r["item"])} for r in check],
-        "reserved_for_checking_only": sorted({r["item"] for r in check}
-                                             - {r["item"] for r in learn}),
+        "learning": [{"arm": r["arm"], "item": r["item"], "epoch": r["epoch"],
+                      "predictions": r["predictions"], "trace_sha256": r["trace_sha256"]}
+                     for r in learn],
+        "checking": [{"arm": r["arm"], "item": r["item"], "epoch": r["epoch"],
+                      "predictions": r["predictions"], "trace_sha256": r["trace_sha256"]}
+                     for r in check],
+        "reserved_for_checking_only": sorted({r["item"] for r in check} - learn_items),
         "development_material": ("ALL OF IT IS REUSED DEVELOPMENT MATERIAL: these are the campaign's own "
                                  "training traces, already seen by the campaign's analyst and by the "
                                  "restricted learner. Nothing here is a fresh sample."),
@@ -239,6 +266,7 @@ def main() -> int:
     s = sub.add_parser("select")
     s.add_argument("--campaign", required=True)
     s.add_argument("--arm", default="C")
+    s.add_argument("--rule-version", type=int, default=2)
     s.add_argument("--out", required=True)
     p = sub.add_parser("propose")
     p.add_argument("--records", required=True)
@@ -249,9 +277,10 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "select":
-        doc = cmd_select(args.campaign, args.arm)
+        doc = cmd_select(args.campaign, args.arm, args.rule_version)
         os.makedirs(args.out, exist_ok=True)
-        path = os.path.join(args.out, "CC_RECORDS.json")
+        path = os.path.join(args.out, "CC_RECORDS.json" if args.rule_version == 1
+                            else f"CC_RECORDS_v{args.rule_version}.json")
         if os.path.exists(path):
             old = json.load(open(path, encoding="utf-8"))
             if old.get("records_sha256") != doc["records_sha256"]:
@@ -261,8 +290,8 @@ def main() -> int:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(doc, f, indent=1, sort_keys=True)
         print(f"rule {RULE}  {doc['n_usable']} usable of {doc['n_candidates']} candidate item(s)")
-        print(f"  learning (epoch 2): {[r['item'] for r in doc['learning']]}")
-        print(f"  checking  (epoch 3): {[r['item'] for r in doc['checking']]}")
+        print(f"  learning (epoch 2): {[(r['arm'], r['item']) for r in doc['learning']]}")
+        print(f"  checking  (epoch 3): {[(r['arm'], r['item']) for r in doc['checking']]}")
         print(f"  reserved for checking only: {doc['reserved_for_checking_only']}")
         print(f"frozen: {path}   records {doc['records_sha256'][:16]}")
         return 0
