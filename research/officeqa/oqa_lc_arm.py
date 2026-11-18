@@ -77,6 +77,9 @@ def load_attempts(pred_dir: str, order: list, tag: str = "") -> list:
         pk["answer_kind"] = (OB.derive(pk["question"])["answer_kind"]["kind"]) if pk.get("question") else None
         pk["trace_key"] = f"{uid}/{tag}" if tag else uid
         pk["collection"] = os.path.abspath(pred_dir)
+        # AMENDMENT A-1: the content digest of the attempt, so "learned from" can be checked against the
+        # attempt rather than against the question id, which recurs in every epoch.
+        pk["trace_sha256"] = TR.trace_digest(pred_dir, uid)
         out.append(pk)
     return out
 
@@ -142,10 +145,12 @@ def _snapshot(model: dict) -> dict:
             "n_rejected": len(model.get("rejected") or [])}
 
 
-def _freeze(model: dict, path: str) -> dict:
+def _freeze(model: dict, path: str, *, parent_sha256: str | None = None,
+            frozen_at_epoch: int | None = None) -> dict:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
-        model["sha256"] = IR.freeze(model, path)
+        model["sha256"] = IR.freeze(model, path, parent_sha256=parent_sha256,
+                                    frozen_at_epoch=frozen_at_epoch)
         problem = None
     except RuntimeError as exc:
         model["sha256"] = IR.model_sha(model)
@@ -183,8 +188,12 @@ def seed(pred_dir: str, order_path: str, out_dir: str) -> dict:
     model, events = _learn_over(model, ev, epoch=1, seed_assumptions=True)
     # Recorded so a report on one of these items can say in its own text that its forecasts are in-sample.
     model["evidence_items"] = [a["id"] for a in attempts]
+    model["evidence_attempts"] = sorted(
+        ({"trace_key": a.get("trace_key"), "trace_sha256": a.get("trace_sha256"),
+          "collection": a.get("collection")} for a in attempts),
+        key=lambda d: str(d["trace_key"]))
     model["evidence_scope"] = "shared epoch-1 rollout"
-    frozen = _freeze(model, os.path.join(out_dir, "model_M0.json"))
+    frozen = _freeze(model, os.path.join(out_dir, "model_M0.json"), frozen_at_epoch=1)
     rec = {"kind": "seed", "generated": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
            "vocab_digest": VOCAB.vocab_digest(),
            "collection": os.path.abspath(pred_dir), "order": order,
@@ -259,6 +268,10 @@ def evolve(prev_path: str, pred_dir: str, order_path: str, epoch: int, arm: str,
     # The new model has seen every trace in `ev`, so a report built under it on any of those items is in-sample.
     # A report in epoch N+1 is about a trace that does not exist yet, which is the point of freezing here.
     model["evidence_items"] = sorted({a["id"] for a in prior_attempts + attempts})
+    model["evidence_attempts"] = sorted(
+        ({"trace_key": a.get("trace_key"), "trace_sha256": a.get("trace_sha256"),
+          "collection": a.get("collection")} for a in prior_attempts + attempts),
+        key=lambda d: str(d["trace_key"]))
     model["evidence_scope"] = (f"arm {arm}: the shared epoch-1 rollout and this arm's own epochs "
                                f"2..{epoch} training traces")
     after = _snapshot(model)
@@ -268,7 +281,10 @@ def evolve(prev_path: str, pred_dir: str, order_path: str, epoch: int, arm: str,
     # carries the version, the epoch, the parent digest and the evidence scope, and all of those move.
     digest_moved_by = sorted(k for k in set(prev) | set(model)
                              if k not in ("sha256", "frozen_utc") and prev.get(k) != model.get(k))
-    frozen = _freeze(model, os.path.join(out_dir, f"model_arm{arm}_epoch{epoch:02d}.json"))
+    # AMENDMENT A-1: the model this one was frozen FROM, and the epoch the freeze happened at. The
+    # campaign recorded neither, and the existing `epoch` field is the last CHANGE, not the freeze.
+    frozen = _freeze(model, os.path.join(out_dir, f"model_arm{arm}_epoch{epoch:02d}.json"),
+                     parent_sha256=str(prev.get("sha256") or "") or None, frozen_at_epoch=epoch)
     now = _snapshot(model)   # after the freeze, so `sha256` is the digest the file carries
 
     rec = {"kind": "evolve", "arm": arm, "epoch": epoch,

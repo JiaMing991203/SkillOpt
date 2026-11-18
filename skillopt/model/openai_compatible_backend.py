@@ -36,6 +36,7 @@ from openai import OpenAI
 
 from skillopt.model.common import (
     TokenTracker,
+    _unmodelled_message_fields,
     compat_message_from_chat_message,
     default_model_for_backend,
     usage_from_openai_usage,
@@ -200,6 +201,10 @@ def _log_call(
         if resp is not None:
             choice = (getattr(resp, "choices", None) or [None])[0]
             message = getattr(choice, "message", None)
+            # OQA-FOR-1: the previous shape omitted the reply's TOOL CALLS and any field this client
+            # does not model, so the log could not say which tool a reply asked for, nor whether the
+            # answer had arrived somewhere nobody read.
+            tcs = getattr(message, "tool_calls", None) or []
             record["response"] = {
                 "id": getattr(resp, "id", None),
                 "model": getattr(resp, "model", None),
@@ -208,6 +213,14 @@ def _log_call(
                 "content": getattr(message, "content", None),
                 "reasoning_content": getattr(message, "reasoning_content", None),
                 "usage": _plain(getattr(resp, "usage", None)),
+                "tool_calls": [{
+                    "id": getattr(tc, "id", None),
+                    "type": getattr(tc, "type", None),
+                    "name": getattr(getattr(tc, "function", None), "name", None),
+                    "arguments": getattr(getattr(tc, "function", None), "arguments", None),
+                } for tc in tcs],
+                "n_tool_calls": len(tcs),
+                "unmodelled_message_fields": _unmodelled_message_fields(message),
             }
         if error is not None:
             record["error"] = {
@@ -293,10 +306,18 @@ def _chat_messages_impl(
                 raise RuntimeError(
                     f"OpenAI-compatible API returned no choices: {resp!r}"
                 )
-            message = choices[0].message
+            choice = choices[0]
+            message = choice.message
             text = message.content or ""
             raw_usage = getattr(resp, "usage", None)
             usage_info = usage_from_openai_usage(raw_usage)
+            # The provider's own charge when it reports one. Recorded beside the computed figure; the
+            # cap is still enforced on the computed figure, so this cannot weaken the guard.
+            provider_cost = getattr(raw_usage, "cost_usd", None)
+            try:
+                provider_cost = float(provider_cost) if provider_cost is not None else None
+            except (TypeError, ValueError):
+                provider_cost = None
             tracker.record(
                 stage,
                 usage_info["prompt_tokens"],
@@ -307,12 +328,13 @@ def _chat_messages_impl(
                 usage_info["prompt_tokens"],
                 usage_info["completion_tokens"],
                 cached_tokens=int(getattr(raw_usage, "prompt_cache_hit_tokens", 0) or 0),
+                provider_cost_usd=provider_cost,
             )
             if call_log:
                 _log_call(call_log, role=role, stage=stage, attempt=attempt, retries=retries,
                           kwargs=kwargs, started=started, resp=resp)
             if return_message:
-                return compat_message_from_chat_message(message), usage_info
+                return compat_message_from_chat_message(message, resp, choice), usage_info
             return text, usage_info
         except Exception as e:  # noqa: BLE001
             last_err = e

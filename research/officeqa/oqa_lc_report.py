@@ -132,7 +132,30 @@ def render_action(replay: dict, model: dict) -> str:
     # An item whose own trace is part of the evidence this model was learned from cannot be predicted by it. The
     # arms' epoch-1 model is learned on the shared epoch-1 rollout, so epoch 1 is exactly this case, and saying so
     # in the report is cheaper than hoping a later reader remembers.
-    if str(replay.get("item")) in set(model.get("evidence_items") or []):
+    # AMENDMENT A-1. This test used to be the item ID alone, and the campaign drew the same 24 training
+    # ids in all four epochs, so the note printed on 96 of 96 reports per arm when it was true of 24.
+    # When the model records WHICH ATTEMPTS it learned from, the attempt is tested instead; when it does
+    # not, the id test and its exact wording are kept, so no historical report's text moves.
+    ev_attempts = model.get("evidence_attempts") or []
+    if ev_attempts:
+        keys = {str(a.get("trace_key")) for a in ev_attempts}
+        digests = {str(a.get("trace_sha256")) for a in ev_attempts if a.get("trace_sha256")}
+        this_key = str(replay.get("trace_key") or replay.get("item"))
+        this_digest = str(replay.get("trace_sha256") or "")
+        if this_key in keys:
+            lines.append("")
+            lines.append("NOTE: this very attempt is part of the evidence this model was learned from "
+                         f"({model.get('evidence_scope') or 'see the model record'}). The forecasts "
+                         "below are in-sample: they were induced to hold of these very observations, so "
+                         "a confirmation here is not a successful prediction.")
+        elif this_digest and this_digest in digests:
+            lines.append("")
+            lines.append("NOTE: an attempt with this attempt's exact recorded content is part of the "
+                         "evidence this model was learned from, although it is not this collection's "
+                         "attempt. The saved record keeps only the assistant's content and the tool "
+                         "commands, so two different attempts can share one digest; treat the forecasts "
+                         "below as possibly in-sample.")
+    elif str(replay.get("item")) in set(model.get("evidence_items") or []):
         lines.append("")
         lines.append("NOTE: this item's own trace is part of the evidence this model was learned from "
                      f"({model.get('evidence_scope') or 'see the model record'}). The forecasts below are "

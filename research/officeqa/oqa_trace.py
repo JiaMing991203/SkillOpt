@@ -21,9 +21,33 @@ target produced outside its message content is NOT in the record and cannot be c
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+
+
+def trace_digest(pred_root: str, item_id: str) -> str:
+    """Digest of the exact attempt a report must describe: its conversation plus the prompt it was given.
+
+    ONE definition, here in the shared module, because three callers need it: `oqa_reports` writes it
+    into every report record, the learner records which attempts it learned from, and the forensics audit
+    compares the two. A second copy would make a provenance check a statement about the copy.
+
+    It is deliberately NOT sufficient on its own to identify an attempt. `conversation.json` keeps the
+    assistant's content and the tool commands, so when the content is empty two different provider
+    interactions save one identical file -- arm C's epoch-3 UID0019 trace is byte-identical to the shared
+    epoch-1 trace. Pair it with the collection it came from and the saved result row.
+    """
+    h = hashlib.sha256()
+    for name in ("conversation.json", "target_user_prompt.txt"):
+        h.update(b"\x00" + name.encode() + b"\x00")
+        try:
+            with open(os.path.join(pred_root, item_id, name), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b"<missing>")
+    return h.hexdigest()
 
 _SECTION = re.compile(r"^## (.+)$", re.M)
 

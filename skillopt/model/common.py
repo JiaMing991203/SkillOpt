@@ -201,7 +201,108 @@ def usage_from_responses_usage(usage: Any) -> dict[str, int]:
     }
 
 
-def compat_message_from_chat_message(message: Any) -> CompatAssistantMessage:
+# Message fields this adapter models. Anything else the provider returns is carried through in
+# `metadata["unmodelled_message_fields"]` rather than dropped, because OQA-FOR-1 could not tell an empty
+# reply from one whose text arrived in a field nobody looked at.
+_MODELLED_MESSAGE_FIELDS = ("role", "content", "tool_calls", "function_call", "refusal",
+                            "annotations", "audio", "parsed")
+
+
+def _unmodelled_message_fields(message: Any) -> dict[str, Any]:
+    """Every field the provider's message carries that this adapter does not model.
+
+    Values are summarised, not copied: a type, a length, and a short prefix for a string. The point is
+    to make a surprising field VISIBLE without putting an unbounded blob into a row or a log.
+    """
+    out: dict[str, Any] = {}
+    raw: dict[str, Any] = {}
+    extra = getattr(message, "model_extra", None)
+    if isinstance(extra, dict):
+        raw.update(extra)
+    dump = getattr(message, "model_dump", None)
+    if callable(dump):
+        try:
+            d = dump()
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    if k not in _MODELLED_MESSAGE_FIELDS:
+                        raw.setdefault(k, v)
+        except Exception:  # noqa: BLE001 - diagnostics must never affect a call
+            pass
+    for k, v in raw.items():
+        if v is None:
+            continue
+        if isinstance(v, str):
+            out[k] = {"type": "str", "chars": len(v), "prefix": v[:200]}
+        elif isinstance(v, (int, float, bool)):
+            out[k] = {"type": type(v).__name__, "value": v}
+        elif isinstance(v, (list, tuple)):
+            out[k] = {"type": "list", "len": len(v), "prefix": str(v)[:200]}
+        elif isinstance(v, dict):
+            out[k] = {"type": "dict", "keys": sorted(v)[:20]}
+        else:
+            out[k] = {"type": type(v).__name__, "prefix": str(v)[:200]}
+    return out
+
+
+def response_metadata(message: Any, response: Any = None, choice: Any = None) -> dict[str, Any]:
+    """What the provider said about a reply, beyond its content and tool calls.
+
+    WHY IT EXISTS. `rollout.py` already reads `message.metadata` through
+    `_message_debug_metadata`, and the three non-local-tools branches already record it; the local-tools
+    branch could not, because the adapter never filled it. So a campaign ran to completion with
+    `last_finish_reason` empty on every row, and twelve truncations at the token cap were invisible.
+    """
+    usage = getattr(response, "usage", None)
+    usage_plain: dict[str, Any] = {}
+    if usage is not None:
+        dump = getattr(usage, "model_dump", None)
+        if callable(dump):
+            try:
+                d = dump()
+                if isinstance(d, dict):
+                    usage_plain = {k: v for k, v in d.items() if v is not None}
+            except Exception:  # noqa: BLE001
+                usage_plain = {}
+        if not usage_plain:
+            for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                v = getattr(usage, k, None)
+                if v is not None:
+                    usage_plain[k] = v
+    content = getattr(message, "content", None)
+    reasoning = getattr(message, "reasoning_content", None)
+    tool_calls = getattr(message, "tool_calls", None) or []
+    meta: dict[str, Any] = {
+        "finish_reason": getattr(choice, "finish_reason", None),
+        "response_id": getattr(response, "id", None),
+        "response_model": getattr(response, "model", None),
+        "system_fingerprint": getattr(response, "system_fingerprint", None),
+        "usage": usage_plain,
+        "completion_tokens": usage_plain.get("completion_tokens"),
+        "prompt_tokens": usage_plain.get("prompt_tokens"),
+        # The provider's own charge when it reports one. RECORDED, never substituted for the ledger's
+        # computed figure, which is what the cap is enforced on.
+        "provider_cost_usd": usage_plain.get("cost_usd"),
+        "content_present": content is not None and bool(str(content).strip()),
+        "content_chars": len(str(content)) if content is not None else 0,
+        "content_is_null": content is None,
+        "reasoning_content_present": reasoning is not None and bool(str(reasoning).strip()),
+        "reasoning_content_chars": len(str(reasoning)) if reasoning is not None else 0,
+        "n_tool_calls": len(tool_calls),
+        "tool_names": [getattr(getattr(tc, "function", None), "name", "") or "" for tc in tool_calls],
+        "unmodelled_message_fields": _unmodelled_message_fields(message),
+        "metadata_source": "live",
+    }
+    return meta
+
+
+def compat_message_from_chat_message(message: Any, response: Any = None,
+                                     choice: Any = None) -> CompatAssistantMessage:
+    """The adapter. With `response` supplied it also carries the reply's metadata; without it, unchanged.
+
+    The default keeps every other backend's behaviour exactly as it was: `metadata` stays empty unless a
+    caller hands over the response object the fields have to come from.
+    """
     content = getattr(message, "content", "") or ""
     tool_calls = []
     for tool_call in getattr(message, "tool_calls", None) or []:
@@ -215,7 +316,8 @@ def compat_message_from_chat_message(message: Any) -> CompatAssistantMessage:
                 ),
             )
         )
-    return CompatAssistantMessage(content=content, tool_calls=tool_calls)
+    meta = response_metadata(message, response, choice) if response is not None or choice is not None else {}
+    return CompatAssistantMessage(content=content, tool_calls=tool_calls, metadata=meta)
 
 
 def compat_message_from_responses_output(output: list[Any]) -> CompatAssistantMessage:

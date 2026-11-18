@@ -223,7 +223,11 @@ def replay_attempt(attempt: dict, model: dict, sink=None) -> dict:
         rec["witnesses"] = (CELLS.disagreement_witnesses(step, supplied, "leaf")
                             if atoms.get("col_leaf_sound") is False else [])
         records.append(rec)
-    return {"item": attempt.get("id"), "attempts": records, "reveal_log": rev.log}
+    # AMENDMENT A-1: carry the attempt's identity through, so a report can test whether THIS attempt
+    # was in the learning corpus rather than whether its question id was.
+    return {"item": attempt.get("id"), "trace_key": trace_key(attempt),
+            "trace_sha256": attempt.get("trace_sha256"), "collection": attempt.get("collection"),
+            "attempts": records, "reveal_log": rev.log}
 
 
 COVERED_CLASSES = ("refuted_requires", "confirmed_fail", "refuted_suffices", "confirmed_ok", "conflict")

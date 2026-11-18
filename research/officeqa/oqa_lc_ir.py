@@ -212,10 +212,29 @@ def model_sha(model: dict) -> str:
     return sha(canon(m))
 
 
-def freeze(model: dict, path: str) -> str:
-    """Write the model read-only under its own digest. Refuses to overwrite with different content."""
+def freeze(model: dict, path: str, *, parent_sha256: str | None = None,
+           frozen_at_epoch: int | None = None) -> str:
+    """Write the model read-only under its own digest. Refuses to overwrite with different content.
+
+    AMENDMENT A-1. Two provenance fields, both optional so that a caller that passes neither gets the
+    byte-identical behaviour and digest it got before:
+
+      parent_sha256   the model this one was frozen FROM. It was null in all seven of the 2026-11-17
+                      campaign's models, so the chain of models was reconstructible only from
+                      MODEL_EVOLUTION.jsonl.
+      frozen_at_epoch the epoch the freeze happened at, which is NOT what the existing `epoch` field
+                      records: that one holds the epoch of the last model-CHANGING decision, so every
+                      arm-C model in the campaign says 1 although they were frozen at epochs 2, 3 and 4.
+                      Deriving a learning corpus from `epoch` understates it.
+
+    Both are covered by the digest, so a frozen model cannot have its provenance edited afterwards.
+    """
     m = copy.deepcopy(model)
-    m["sha256"] = model_sha(model)
+    if parent_sha256 is not None and not m.get("parent_sha256"):
+        m["parent_sha256"] = str(parent_sha256)
+    if frozen_at_epoch is not None:
+        m["frozen_at_epoch"] = int(frozen_at_epoch)
+    m["sha256"] = model_sha(m)
     m["frozen_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:

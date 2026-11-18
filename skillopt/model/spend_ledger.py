@@ -379,8 +379,14 @@ def reserve(role: str, stage: str = "") -> None:
 
 
 def record_usage(role: str, stage: str, prompt_tokens: int, completion_tokens: int,
-                 cached_tokens: int = 0) -> float:
-    """Charge one completed attempt against this process's claimed money. Returns the USD charged."""
+                 cached_tokens: int = 0, provider_cost_usd: float | None = None) -> float:
+    """Charge one completed attempt against this process's claimed money. Returns the USD charged.
+
+    `provider_cost_usd` is the provider's OWN figure when it reports one. It is recorded and never used:
+    the charge, the cap and every refusal stay on `cost_usd(...)` computed from this project's price
+    table, which on the OfficeQA campaign was conservative by about 38% because the provider does not
+    bill cache reads. Recording both is what lets that be checked without trusting either in the guard.
+    """
     if not active():
         return 0.0
     role = role.lower()
@@ -393,9 +399,11 @@ def record_usage(role: str, stage: str, prompt_tokens: int, completion_tokens: i
         over = st["used_usdmicro"] > st["claimed_usdmicro"]
         if over:
             st["reserve_exceeded"] += 1
+        rec_extra = ({} if provider_cost_usd is None
+                     else {"provider_cost_usd": round(float(provider_cost_usd), 8)})
         _record({"schema": SCHEMA, "kind": "usage", "role": role, "stage": stage,
                  "prompt_tokens": int(prompt_tokens), "completion_tokens": int(completion_tokens),
-                 "cached_prompt_tokens": int(cached_tokens), "usd": round(usd, 8),
+                 "cached_prompt_tokens": int(cached_tokens), "usd": round(usd, 8), **rec_extra,
                  "used_usd_in_process": round(st["used_usdmicro"] / 1e6, 6),
                  "claimed_usd_in_process": round(st["claimed_usdmicro"] / 1e6, 6),
                  "reserve_exceeded": bool(over),

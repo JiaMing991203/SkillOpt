@@ -138,6 +138,27 @@ def _build_round_instruction(
         f"inside `<search_queries>...</search_queries>`. "
         f"After this response, at most {remaining_rounds} model rounds remain."
     )
+def _no_answer_cause(response: str, metadata: dict, suffix: str) -> str:
+    """Why a turn ended with neither a tool call nor an `<answer>`, from the reply itself.
+
+    The campaign's one fail_reason covered three different provider behaviours, and OQA-FOR-1 had to go
+    to the raw call log to separate them: 331 of 528 selection observations were an empty reply after the
+    model had generated a median of 920 billed completion tokens, 7 were a truncation at the token cap,
+    and none at all were prose without a tag. Naming the cause here records that distinction at the
+    point where it is known.
+    """
+    finish = str((metadata or {}).get("finish_reason") or "")
+    if finish == "length":
+        cause = "completion_truncated_at_cap"
+    elif (metadata or {}).get("content_is_null") is True:
+        cause = "empty_reply_content_null"
+    elif not str(response or "").strip():
+        cause = "empty_reply_content_blank"
+    else:
+        cause = "prose_without_answer_tag"
+    return cause + (("+" + suffix) if suffix else "")
+
+
 def _message_debug_metadata(message: object) -> dict:
     metadata = getattr(message, "metadata", None)
     if isinstance(metadata, dict):
@@ -652,7 +673,13 @@ def process_one(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ]
+            # OQA-FOR-1 (amendment A-1). The control flow below is UNCHANGED. What is new is that the
+            # reply's metadata is kept and the exit is named: the campaign recorded one fail_reason for
+            # an empty reply, prose without a tag and a truncation alike, and recorded nothing at all
+            # when the loop simply ran out of turns while still calling tools.
+            turns_used = 0
             for turn in range(1, max_tool_turns + 1):
+                turns_used = turn
                 message, _ = chat_target_messages(
                     messages=messages,
                     max_completion_tokens=max_completion_tokens,
@@ -662,6 +689,7 @@ def process_one(
                     tool_choice="auto",
                     return_message=True,
                 )
+                last_response_metadata = _message_debug_metadata(message)
                 response = message.content or ""
                 final_response = response
                 assistant_message = {"role": "assistant", "content": response}
@@ -680,17 +708,30 @@ def process_one(
                             "tool_call_id": tool_call.id,
                             "content": obs,
                         })
+                    termination = "tool_call_issued"
                     continue
                 if "<answer>" in response.lower():
                     final_answer = _extract_answer(response)
+                    termination = "answer_emitted"
                     break
                 if turn == max_tool_turns:
                     fail_reason = f"Exceeded tool-turn budget ({max_tool_turns})"
+                    termination = _no_answer_cause(response, last_response_metadata,
+                                                   "final_turn_without_answer")
                 else:
                     fail_reason = "Model neither produced a tool request nor a final answer"
+                    termination = _no_answer_cause(response, last_response_metadata, "")
                     break
+            else:
+                # The `for` ran to completion, which happens only when the last allowed turn issued a
+                # tool call. The campaign left fail_reason EMPTY here and the record then carried the
+                # scorer's message instead, so this exit was invisible. fail_reason is still left
+                # alone - naming the exit must not change which episodes count as failures.
+                if termination == "tool_call_issued":
+                    termination = "tool_turn_budget_exhausted_after_tool_call"
     except Exception as e:  # noqa: BLE001
         fail_reason = f"error: {e}"
+        termination = "exception"
     with open(os.path.join(pred_dir, "target_system_prompt.txt"), "w", encoding="utf-8") as f:
         f.write(system)
     with open(os.path.join(pred_dir, "target_user_prompt.txt"), "w", encoding="utf-8") as f:
@@ -725,7 +766,18 @@ def process_one(
         "fail_reason": fail_reason or ("" if eval_result["em"] else f"predicted '{eval_result['predicted_answer']}' but the scorer marked it incorrect"),
         "agent_ok": not fail_reason,
         "n_turns": len(conversation),
-        "last_finish_reason": last_response_metadata.get("finish_reason", ""),
+        "last_finish_reason": last_response_metadata.get("finish_reason", "") or "",
+        # Amendment A-1. New, additive fields; nothing above changed meaning. `termination_cause` names
+        # the loop exit, and `response_metadata` is what the provider said about the last reply. On a
+        # historical row neither exists, and a reader must treat their absence as "unavailable" rather
+        # than as a value.
+        "termination_cause": termination or "unknown",
+        "model_turns_used": turns_used,
+        "last_completion_tokens": last_response_metadata.get("completion_tokens"),
+        "last_provider_cost_usd": last_response_metadata.get("provider_cost_usd"),
+        "response_metadata": last_response_metadata or {},
+        "response_metadata_source": (last_response_metadata.get("metadata_source")
+                                     if last_response_metadata else "unavailable"),
         "target_system_prompt": system,
         "target_user_prompt": user,
         "rollout_settings_fingerprint": rollout_settings_fingerprint(

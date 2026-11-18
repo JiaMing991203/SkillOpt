@@ -149,6 +149,10 @@ def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
     # silently empty.
     packet["answer_kind"] = (OB.derive(packet.get("question") or "")["answer_kind"]["kind"]
                              if packet.get("question") else None)
+    # AMENDMENT A-1: the report's own replay must know which attempt it is, by content and by
+    # collection, not only by question id.
+    packet["trace_sha256"] = TR.trace_digest(pred_root, item_id)
+    packet["collection"] = os.path.abspath(pred_root)
     replay = REPLAY.replay_attempt(packet, model)
     chain = CHAIN.build(packet, model)
     if condition == LC_ACTION:
@@ -162,6 +166,8 @@ def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
         text = REPORT.render(chain, model, replay=replay if condition == LC_STAGE else None)
     ledger = CHAIN.summary(chain["ledger"])
     fc = REPLAY.score(replay["attempts"])
+    counts = diagnosis_counts(replay, chain, condition, REPORT, REPLAY, CHAIN)
+    prov = attempt_provenance(pred_root, item_id, results_path)
     record = {
         "id": item_id,
         "condition": condition,
@@ -170,29 +176,125 @@ def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
         "tool_steps": fc["steps"],
         "report_chars": len(text),
         "report_sha256": hashlib.sha256(text.encode()).hexdigest(),
-        "trace_sha256": trace_digest(pred_root, item_id),
+        "trace_sha256": prov["trace_sha256"],
         "model_sha256": str(model.get("sha256") or ""),
         "model_version": model.get("version"),
         "model_assumptions": list(model.get("assumptions") or []),
         "boundary_audit": audit["verdict"],
         "boundary_problems": audit.get("problems", []),
         "obligations": ledger if condition != LC_ACTION else None,
-        "n_distinct_diagnoses": len(REPORT.group(chain["ledger"])) if condition != LC_ACTION else 0,
+        # AMENDMENT A-1. `n_distinct_diagnoses` used to be
+        #     len(REPORT.group(chain["ledger"])) if condition != LC_ACTION else 0
+        # and the `else 0` meant every Action-Only report read zero whatever it contained. It now means
+        # the number of distinct ACTIONABLE diagnoses - things the ACTOR did or failed to do - and is
+        # defined for both conditions; the stage group count has its own field; and the four kinds are
+        # reported separately, because a confirmed forecast is not a diagnosis and a refuted rule is a
+        # correction to the checker rather than to the agent.
+        "n_distinct_diagnoses": counts["execution_diagnoses"],
+        "n_stage_diagnosis_groups": (len(REPORT.group(chain["ledger"]))
+                                     if condition != LC_ACTION else None),
+        "diagnosis_counts": counts,
+        # AMENDMENT A-1, provenance. A question id alone is insufficient (the same 24 ids recur in all
+        # four epochs) and a digest of a lossy trace alone is insufficient (two different interactions
+        # saved one identical trace). An attempt is the tuple below; a model is its digest, its parent's
+        # and the epoch it was frozen at.
+        "attempt": prov,
+        "model_parent_sha256": (str(model.get("parent_sha256")) if model.get("parent_sha256")
+                                else "unavailable"),
+        "model_frozen_at_epoch": (model.get("frozen_at_epoch")
+                                  if model.get("frozen_at_epoch") is not None else "unavailable"),
+        "model_last_change_epoch": model.get("epoch"),
     }
     return text, record
 
 
+def diagnosis_counts(replay: dict, chain: dict, condition: str, REPORT, REPLAY, CHAIN) -> dict:
+    """The four kinds of thing a contract report can say, counted separately (amendment A-1).
+
+      confirmations       a forecast the observation bore out, or a DISCHARGED obligation. NOT a
+                          diagnosis: the report itself says an in-sample confirmation is not a
+                          successful prediction.
+      model_refutations   an observation that refuted a learned rule. A correction to the CHECKER'S
+                          model, not to the agent, and no skill edit follows from it.
+      execution_diagnoses something the ACTOR did or failed to do: a VIOLATED or OUTSTANDING obligation.
+                          This is the actionable count.
+      unknowns            the records cannot settle it.
+
+    An Action-Only report still reports 0 execution diagnoses - but now because the action vocabulary
+    cannot express one, which is a measured fact about the representation rather than a literal.
+    """
+    rows = REPORT._forecast_rows(replay)
+    confirmations = sum(1 for r in rows if r["class"] == REPLAY.FORECAST_CONFIRMED)
+    refutations = sum(1 for r in rows if r["class"] == REPLAY.FORECAST_VIOLATED)
+    unknowns = sum(1 for r in rows if r["class"] == REPLAY.FORECAST_UNRESOLVED)
+    execution = 0
+    if condition != LC_ACTION:
+        for g in REPORT.group(chain["ledger"]):
+            if g["state"] in (CHAIN.VIOLATED, CHAIN.OUTSTANDING):
+                execution += 1
+            elif g["state"] == CHAIN.UNKNOWN:
+                unknowns += 1
+            else:
+                confirmations += 1
+    return {"confirmations": confirmations, "model_refutations": refutations,
+            "execution_diagnoses": execution, "unknowns": unknowns,
+            "actionable": execution,
+            "note": ("confirmations and unknowns are not diagnoses; a model refutation corrects the "
+                     "checker, not the agent")}
+
+
+def attempt_provenance(pred_root: str, item_id: str, results_path: str) -> dict:
+    """Who this report is about, in a form that cannot be confused with another attempt.
+
+    `trace_sha256` alone is not enough: it hashes `conversation.json` plus the user prompt, and that
+    record keeps only the assistant's (often empty) content and the tool commands, so two different
+    provider interactions can produce one identical digest - arm C's UID0019 epoch-3 trace is
+    byte-identical to the shared epoch-1 trace. `row_sha256` covers the saved result row, which carries
+    the response text and, on rows written from amendment A-1 on, the reply's metadata. The epoch comes
+    from the directory, and an absent field is reported as absent.
+    """
+    import re as _re
+    trace = trace_digest(pred_root, item_id)
+    row_sha, row_fields, availability = "unavailable", [], "unavailable"
+    try:
+        with open(results_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                if str(row.get("id")) == str(item_id):
+                    row_sha = hashlib.sha256(
+                        json.dumps(row, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+                    row_fields = sorted(row)
+                    availability = ("live" if "response_metadata" in row else "unavailable")
+                    break
+    except OSError:
+        pass
+    m = _re.search(r"step_(\d+)", pred_root or "")
+    epoch = int(m.group(1)) if m else None
+    return {
+        "item_id": item_id,
+        "prediction_dir": pred_root,
+        "trace_sha256": trace,
+        "row_sha256": row_sha,
+        "epoch": epoch if epoch is not None else "unavailable",
+        "epoch_source": "parsed from the prediction directory" if epoch is not None else "unavailable",
+        "response_metadata_availability": availability,
+        "row_has_termination_cause": "termination_cause" in row_fields,
+        "attempt_key": hashlib.sha256(
+            ("\x00".join([str(pred_root), str(item_id), trace, row_sha])).encode()).hexdigest()[:24],
+        "attempt_key_inputs": ["prediction_dir", "item_id", "trace_sha256", "row_sha256"],
+    }
+
+
 def trace_digest(pred_root: str, item_id: str) -> str:
-    """Digest of the exact attempt a report must describe: its conversation plus the prompt the actor was given."""
-    h = hashlib.sha256()
-    for name in ("conversation.json", "target_user_prompt.txt"):
-        h.update(b"\x00" + name.encode() + b"\x00")
-        try:
-            with open(os.path.join(pred_root, item_id, name), "rb") as f:
-                h.update(f.read())
-        except OSError:
-            h.update(b"<missing>")
-    return h.hexdigest()
+    """Delegates to `oqa_trace.trace_digest`, which is the one definition (amendment A-1).
+
+    It used to be a second copy of the same eight lines here. Identical bytes, identical digests, so no
+    recorded report's `trace_sha256` changes; there is simply only one place to change it now.
+    """
+    return TR.trace_digest(pred_root, item_id)
 
 
 def verify_report_provenance(records: list, pred_root: str, model_path: str) -> dict:
