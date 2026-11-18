@@ -53,8 +53,13 @@ case "$PHASE" in
     export OPTIMIZER_OPENAI_COMPATIBLE_BASE_URL="$("$OQA_PY" -I -c "
 import json,sys; print(json.load(open(sys.argv[1])).get('optimizer_openai_compatible_base_url') or '')
 " "$CAMP/arm_B/config.json")"
+    # The backend resolves the model from OPTIMIZER_OPENAI_COMPATIBLE_MODEL, then
+    # OPENAI_COMPATIBLE_MODEL, then OPTIMIZER_DEPLOYMENT, then its own neutral default - which is
+    # gpt-4o-mini, and DeepSeek answers that with a 400 naming the models it does accept. The first
+    # attempt of this phase (job 66341443) spent one allowance attempt learning that.
     export OPTIMIZER_MODEL="${OPTIMIZER_MODEL:-deepseek-flash}"
-    export OPENAI_COMPATIBLE_OPTIMIZER_MODEL="$OPTIMIZER_MODEL"
+    export OPTIMIZER_OPENAI_COMPATIBLE_MODEL="$OPTIMIZER_MODEL"
+    export OPTIMIZER_DEPLOYMENT="$OPTIMIZER_MODEL"
     export MODEL_BACKEND=openai_compatible
     export OPTIMIZER_BACKEND=openai_compatible
     export SKILLOPT_SPEND_LEDGER_DIR="$CAMP/ledger"
@@ -67,7 +72,7 @@ import json,sys; print(json.load(open(sys.argv[1])).get('optimizer_openai_compat
     export SKILLOPT_LEDGER_JOB_MAX_ATTEMPTS_OPTIMIZER="${OQA_CC_MAX_CALLS:-2}"
     export SKILLOPT_LEDGER_JOB_MAX_USD_OPTIMIZER=1.00
     export OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl"
-    log "endpoint $OPTIMIZER_OPENAI_COMPATIBLE_BASE_URL model $OPTIMIZER_MODEL; job cap ${OQA_CC_MAX_CALLS:-2} call(s)"
+    log "endpoint $OPTIMIZER_OPENAI_COMPATIBLE_BASE_URL model $OPTIMIZER_OPENAI_COMPATIBLE_MODEL; job cap ${OQA_CC_MAX_CALLS:-2} call(s)"
     PYTHONPATH="$WORK" "$OQA_PY" research/officeqa/oqa_cc_learn.py propose \
         --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" --out "$FU" 2>&1 | tee "$OUTDIR/propose.txt"
     status=${PIPESTATUS[0]} ;;
