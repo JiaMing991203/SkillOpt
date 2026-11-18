@@ -35,6 +35,15 @@ mkdir -p "$FU/http_probe" || exit 3
 log "manifest ok; commit $(cat "$B/COMMIT")"
 tar -xzf "$B"/oqa_tree_*.tar.gz -C "$WORK" || exit 3
 
+if [ "$PHASE" = "rederive" ]; then
+    unset TARGET_OPENAI_COMPATIBLE_API_KEY OPTIMIZER_OPENAI_COMPATIBLE_API_KEY EMPIRIOLABS_API_KEY \
+          DEEPSEEK_API_KEY OPENAI_API_KEY
+    log "every API key dropped: re-deriving saved outcomes sends nothing"
+    cd "$WORK" && "$OQA_PY" -I research/officeqa/oqa_http_probe.py rederive \
+        --out "$FU/http_probe" 2>&1 | tee "$OUTDIR/rederive.txt"
+    exit ${PIPESTATUS[0]}
+fi
+
 if [ "$PHASE" = "select" ]; then
     unset TARGET_OPENAI_COMPATIBLE_API_KEY OPTIMIZER_OPENAI_COMPATIBLE_API_KEY EMPIRIOLABS_API_KEY \
           DEEPSEEK_API_KEY OPENAI_API_KEY

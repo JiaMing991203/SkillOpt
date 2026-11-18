@@ -418,18 +418,50 @@ def _outcome(rec: dict) -> str:
             alt_text, alt_field = v, name
             break
     any_text = http_text if http_text.strip() else alt_text
+    tooled = bool(msg.get("tool_calls") or compat.get("tool_names"))
+    if alt_text.strip() and compat.get("content_chars", 0) > 0:
+        return f"content_recovered_from_{alt_field}_by_the_fallback"
+    if tooled:
+        # A turn that requested a tool is not a lost answer: the loop continues on the tool call. The
+        # reasoning text going unread still matters, and is named, but it cost nothing here.
+        return ("tool_call_returned" if not alt_text.strip()
+                else f"tool_call_returned_with_unread_{alt_field}")
     if any_text.strip() and compat.get("content_chars", 0) == 0:
         return ("content_in_the_http_body_lost_in_client_handling"
                 + (f" (field {alt_field})" if alt_field and not http_text.strip() else ""))
-    if alt_text.strip() and compat.get("content_chars", 0) > 0:
-        return f"content_recovered_from_{alt_field}_by_the_fallback"
     if not http_text.strip() and not msg.get("tool_calls"):
         if http_other:
             return "no_usable_content_but_an_alternate_field_is_present"
         return "http_response_itself_carries_no_usable_answer_or_tool_call"
-    if msg.get("tool_calls") or compat.get("tool_names"):
-        return "tool_call_returned"
     return "usable_content_returned"
+
+
+def cmd_rederive(out_dir: str) -> dict:
+    """Recompute every saved exchange's outcome with the current taxonomy. Sends nothing.
+
+    The first taxonomy tested only `content`, so a tool-calling turn whose reasoning text went unread
+    was labelled "content lost in client handling" - alarming and wrong, because the loop continues on
+    the tool call. Re-deriving from the saved bodies is free, and it keeps the artifacts and the
+    taxonomy in step without another request.
+    """
+    changed, files = [], sorted(glob.glob(os.path.join(out_dir, "EXCHANGES_*.json")))
+    for path in files:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+        for r in doc.get("records") or []:
+            if not r.get("http"):
+                continue
+            was = r.get("outcome")
+            now = _outcome(r)
+            if now != was:
+                changed.append({"file": os.path.basename(path), "label": r.get("label"),
+                                "rep": r.get("rep"), "was": was, "now": now})
+                r["outcome"] = now
+                r["outcome_rederived_utc"] = _utc()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=1, sort_keys=True, default=str)
+    return {"rule": RULE, "utc": _utc(), "files": [os.path.basename(p) for p in files],
+            "changed": changed}
 
 
 def main() -> int:
@@ -447,7 +479,16 @@ def main() -> int:
     d.add_argument("--reps", type=int, default=3)
     d.add_argument("--max-sends", type=int, required=True)
     d.add_argument("--label", action="append", default=[])
+    rd = sub.add_parser("rederive")
+    rd.add_argument("--out", required=True)
     args = ap.parse_args()
+
+    if args.cmd == "rederive":
+        doc = cmd_rederive(args.out)
+        print(f"rule {RULE}  {len(doc['files'])} file(s), {len(doc['changed'])} outcome(s) re-derived")
+        for c in doc["changed"]:
+            print(f"  {c['label']:11s} rep {c['rep']}  {c['was']}  ->  {c['now']}")
+        return 0
 
     if args.cmd == "select":
         doc = cmd_select(args.logs, args.campaign)
