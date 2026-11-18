@@ -12,6 +12,7 @@ every correction lives in `oqa_cc_extract` above them. Two tests below pin that 
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 
@@ -270,3 +271,56 @@ def test_the_checker_uses_the_repaired_extraction():
     src = inspect.getsource(CHK)
     assert "import oqa_cc_extract as X" in src
     assert "X.monetary_operands" in src and "X.data_cells" in src and "X.nearer_scale" in src
+
+
+# ───────────────────────── the semantic bundle ─────────────────────────
+
+def test_the_bundle_keeps_itself_when_only_the_provenance_moved(tmp_path, monkeypatch):
+    """A different digest is not necessarily a different MEANING.
+
+    The digest covers `configuration`, which records the deployed commit and the Slurm job, so
+    re-running the same check from a later commit changes it while every semantic component is
+    identical. Job 66352245 exited non-zero for exactly that reason. A real change to the meaning must
+    still refuse.
+    """
+    B = _mod("oqa_cc_bundle")
+    IR = _mod("oqa_cc_ir")
+    c = IR.contract("scale.binds", IR.clause("scale_binds", ["table", "cell", "scale"]),
+                    [IR.clause("table_states_scale", ["table", "scale"]),
+                     IR.clause("cell_in_table", ["cell", "table"]),
+                     IR.clause("nearer_scale_between", ["table", "cell"], value=False)],
+                    witnesses="unit_match")
+    m = IR.model([c], epoch=2, scope="test", learned_from=[{"trace_key": "UID1/e2"}])
+    model_path = str(tmp_path / "CC_MODEL_v1.json")
+    IR.freeze(m, model_path)
+    records = tmp_path / "CC_RECORDS_v2.json"
+    records.write_text(json.dumps({"records_sha256": "abc", "rule": "OQA-CC-1",
+                                   "learning": [], "checking": []}))
+    monkeypatch.setenv("OQA_COMMIT", "aaaaaaa")
+    first = B.cmd_freeze(model_path, str(records), None, str(tmp_path), "vt")
+    assert "written_to" in first
+
+    monkeypatch.setenv("OQA_COMMIT", "bbbbbbb")       # a later commit, identical semantics
+    again = B.cmd_freeze(model_path, str(records), None, str(tmp_path), "vt")
+    assert again["bundle_sha256"] == first["bundle_sha256"], "the frozen file is kept"
+    assert again["provenance_only_difference"]["configuration_now"]["commit"] == "bbbbbbb"
+
+    # and `verify` ignores provenance, so it still verifies
+    v = B.cmd_verify(str(tmp_path / "CC_BUNDLE_vt.json"))
+    assert v["verifies"] is True and v["changed_components"] == []
+
+    # a real change to the meaning still refuses: edit the recorded manifest
+    doc = json.loads((tmp_path / "CC_BUNDLE_vt.json").read_text())
+    os.chmod(tmp_path / "CC_BUNDLE_vt.json", 0o644)
+    doc["learning_manifest"]["records_sha256"] = "something else"
+    (tmp_path / "CC_BUNDLE_vt.json").write_text(json.dumps(doc))
+    with pytest.raises(RuntimeError, match="DIFFERENT meaning"):
+        B.cmd_freeze(model_path, str(records), None, str(tmp_path), "vt")
+
+
+def test_configuration_is_not_one_of_the_semantic_sections():
+    B = _mod("oqa_cc_bundle")
+    assert "configuration" not in B.SEMANTIC_SECTIONS
+    for name in ("hypothesis", "vocabulary", "code_sha256", "function_sha256", "stage_definitions",
+                 "learning_manifest"):
+        assert name in B.SEMANTIC_SECTIONS, name

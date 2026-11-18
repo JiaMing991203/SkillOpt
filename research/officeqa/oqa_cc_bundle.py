@@ -54,6 +54,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SEMANTIC_MODULES = ("oqa_cc_ir.py", "oqa_cc_check.py", "oqa_cc_extract.py", "oqa_cc_run.py",
                     "oqa_cc_lean.py", "oqa_lc_cells.py", "oqa_lc_chain.py", "oqa_obligations.py")
 
+# The sections that ARE the meaning. `configuration` is deliberately not among them: it records the
+# deployed commit and the Slurm job, which are provenance.
+SEMANTIC_SECTIONS = ("hypothesis", "vocabulary", "code_sha256", "function_sha256", "stage_definitions",
+                     "learner_prompt_sha256", "learning_manifest")
+
 
 def _utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -163,11 +168,26 @@ def cmd_freeze(model: str, records: str, prompt: str | None, out_dir: str, label
     path = os.path.join(out_dir, f"CC_BUNDLE_{label}.json")
     if os.path.exists(path):
         old = json.load(open(path, encoding="utf-8"))
-        if old.get("bundle_sha256") != doc["bundle_sha256"]:
-            raise RuntimeError(f"{path} is already frozen with a DIFFERENT meaning "
-                               f"({old.get('bundle_sha256', '')[:16]} vs "
-                               f"{doc['bundle_sha256'][:16]}); refusing to overwrite it")
-        return old
+        if old.get("bundle_sha256") == doc["bundle_sha256"]:
+            return old
+        # A DIFFERENT DIGEST IS NOT NECESSARILY A DIFFERENT MEANING. The digest covers
+        # `configuration`, which carries the deployed commit and the Slurm job id, so re-running the
+        # same check from a later commit changes it while every semantic component is identical. That
+        # case keeps the existing file and says so; a real change to the MEANING still refuses.
+        moved = [k for k in SEMANTIC_SECTIONS if old.get(k) != doc.get(k)]
+        if not moved:
+            out = dict(old)
+            out["provenance_only_difference"] = {
+                "recorded_configuration": old.get("configuration"),
+                "configuration_now": doc.get("configuration"),
+                "note": ("the frozen file is kept: every semantic component is identical and only the "
+                         "recorded provenance differs"),
+            }
+            return out
+        raise RuntimeError(f"{path} is already frozen with a DIFFERENT meaning "
+                           f"({old.get('bundle_sha256', '')[:16]} vs "
+                           f"{doc['bundle_sha256'][:16]}); the components that moved are "
+                           f"{', '.join(moved)}; refusing to overwrite it")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1, sort_keys=True)
     os.chmod(path, 0o444)
@@ -183,8 +203,7 @@ def cmd_verify(bundle_path: str) -> dict:
                      doc.get("records_path") or _records_path_from(doc),
                      doc.get("learner_prompt_path"))
     moved = []
-    for section in ("vocabulary", "code_sha256", "function_sha256", "stage_definitions",
-                    "learning_manifest", "hypothesis"):
+    for section in SEMANTIC_SECTIONS:
         a, b = doc.get(section), now.get(section)
         if isinstance(a, dict) and isinstance(b, dict):
             for k in sorted(set(a) | set(b)):
@@ -238,6 +257,9 @@ def main() -> int:
         print(f"  manifest    learning {len(doc['learning_manifest']['learning'])}, "
               f"checking {len(doc['learning_manifest']['checking'])}, "
               f"records {str(doc['learning_manifest']['records_sha256'])[:16]}")
+        if doc.get("provenance_only_difference"):
+            print("  the frozen file is KEPT: every semantic component is identical and only the "
+                  "recorded provenance (commit, job) differs")
         print(f"wrote {doc.get('written_to', 'already frozen, unchanged')}")
     else:
         doc = cmd_verify(args.bundle)
