@@ -67,12 +67,30 @@ original chain, the four recovery jobs, and the test jobs.
 |---|---|---|---|
 | EmpirioLabs, original chain | 7,313 | $4.9441 | |
 | EmpirioLabs, recovery chain | 1,081 | $0.6800 | |
+| EmpirioLabs, held-out chain (66332133/4/5) | 1,764 | $1.2314 | |
 | EmpirioLabs, outside the ledger | 0 | $0.0000 | |
-| **EmpirioLabs total** | **8,394 of 30,000** | **$5.6241 of $16.00** | 28% / 35% |
+| **EmpirioLabs total** | **10,158 of 30,000** | **$6.8554 of $16.00** | 34% / 43% |
 | DeepSeek, original chain | 66 | $2.1913 | |
 | DeepSeek, recovery chain | 36 | $1.2692 | |
 | DeepSeek, size probe (job 66271290) | 1 | $0.0411 | |
 | **DeepSeek total** | **103 of 260** | **$3.5016 of $8.00** | 40% / 44% |
+
+Read from the ledger on 2026-11-17 after the held-out chain finished: target 10,158 attempts /
+$6.855447, optimizer 102 / $3.460519 in the ledger plus the probe, **zero unresolved requests, zero
+reserve breaches, verdict PASS.** The held-out line is the arithmetic difference between that reading and
+the post-recovery one; the three jobs' own claims could not be released because of a defect in
+`oqa_ledger_reconcile.py` that this session found and fixed (it took the spend to be the larger of two
+roundings, which exceeds the net claim once claims have been reconciled down to equal the spend). The
+money is counted either way: the figures above are **recorded spend**, not reservations.
+
+**A conservatism worth knowing about, from the provider's own accounting.** The raw actor call logs carry
+the provider's `cost_usd` per attempt. Over the 16 jobs that have a log, the provider charged **$3.2768**
+where the ledger charged **$5.3159** for exactly the same 7,909 attempts (the two agree exactly on the
+attempt count and on 8,503,592 completion tokens). The difference is cache reads: the provider bills
+`prompt_tokens - cached_tokens` and the ledger's price table bills all prompt tokens. **The ledger is
+therefore conservative by roughly 38% on the actor side**, which is the safe direction for a cap. The
+ceilings above are not adjusted for it; doing so would need the user's decision, and the measured figures
+stay as the ledger reports them.
 
 DeepSeek is charged at **peak** prices in the ledger on purpose, so its dollar figure is an upper bound on the
 real invoice; off-peak is exactly half.
@@ -91,10 +109,14 @@ recovered, and `oqa_recover.py audit` reports those stages as `repaired`, not `s
 "CPU job-hours" reads two ways and the two differ by a factor of two here, because every job asked for 2 CPUs.
 Both are recorded; **planning uses the larger, conservative reading**:
 
-| reading | spent (32 OfficeQA jobs) | of 40 |
+| reading | spent (57 OfficeQA jobs) | of 40 |
 |---|---|---|
-| wall-clock hours summed over jobs (`Elapsed`) | ~11.7 | 29% |
-| CPU-core-hours (`CPUTimeRAW`) | **23.47** | 59% |
+| wall-clock hours summed over jobs (`Elapsed`) | ~13.8 | 35% |
+| CPU-core-hours (`CPUTimeRAW`) | **27.61** | 69% |
+
+By phase: the three arms 18.80 core-hours, the recovery 3.52, the held-out chain 3.84, the shared
+epoch-1 job 1.08, and everything else — tests, the diagnostic read, the forensics audit, the preflights
+and the probes — 0.37 between them.
 
 The recovery chain itself was cheap: 26:20 + 20:14 + 24:52 + 27:01 of wall time, **3.28 core-hours** in total.
 

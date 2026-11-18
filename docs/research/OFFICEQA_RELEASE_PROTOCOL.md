@@ -60,3 +60,62 @@ consulted, not compared against, and not used to calibrate anything here.
 | 4. frozen by digest | `heldout/SKILLS_FROZEN.json`, verified by the submitter before submission |
 | 5. scored once, reused | deduplicated by digest; `PROVENANCE.json` per result; the submitter skips a matching digest+settings pair |
 | 6. sealed stays sealed | job 66234927 unread; `docs/research/OFFICEQA_AUTHORIZATION.md` §6 records it as not authorized to unseal |
+
+---
+
+## THE RESULT, released 2026-11-17 under these six rules
+
+The chain finished: 66332133 (S0) COMPLETED, 66332134 (arm B's selected skill) COMPLETED, 66332135
+(arm A's and C's last skill, exploratory) COMPLETED. All three ran at commit
+`251e9514beaefb88ed1ded997102c4769a2e23f1`, config `officeqa_api3.yaml` digest `9ff823b2043a`, settings
+fingerprint `d58cf3b59bbc2928`, split `valid_unseen` of `split_sel3`, n = 60. Each carries a
+`PROVENANCE.json` naming its skill digest.
+
+### Verified — the observed scores
+
+| | skill | digest | bytes | hard | soft | questions |
+|---|---|---|---|---|---|---|
+| **PRIMARY** | S0 | `9d377d1c2906` | 887 | **0.0500** | 0.0500 | **3 of 60** |
+| **PRIMARY** | arm B's validation-selected skill | `95989ce5ebad` | 3,603 | **0.1000** | 0.1000 | **6 of 60** |
+| exploratory | arm A's and C's last skill | `5bd17ea109bc` | 940 | **0.1333** | 0.1500 | **8 of 60** |
+
+One question on this split is **1.7 percentage points**. Arms A and C selected S0 itself, so the primary
+comparison has two distinct documents, not four; the third row is their *last* skill, which their own
+gates rejected, and is labelled exploratory because of that.
+
+**Distinct by advice, not only by digest.** The exploratory skill differs from S0 by exactly two HTML
+comment lines — the empty `<!-- SLOW_UPDATE_START -->` / `<!-- SLOW_UPDATE_END -->` placeholder — so its
+advice digest (`3e70328ffb65`) is **identical to S0's**. It carries the actor the same advice. Of the
+three documents scored here, **two are the same advice** and one (arm B's) differs.
+
+### Verified — the measurement's own resolution, from this same table
+
+Two documents that give the actor **identical advice** scored **3 of 60** and **8 of 60**: a five-question,
+8.3-percentage-point spread with no difference in advice at all. That is a held-out measurement of the
+same instrument noise the training-split replicates showed (one fixed document, seven draws, 1 to 6 of 24,
+sd 1.95 — `OFFICEQA_DIAGNOSTIC_PACKET.md` §3). The actor is sampled at temperature 0.7 with no seed.
+
+### Interpretation, and what this design could not have detected
+
+* Arm B's selected skill scored **three questions above S0** on the primary comparison. Under rule 2 that
+  number is reported whatever it shows — and under rule 3 it is **not a finding**: the S0-advice pair in
+  the same table differs by five questions, which is larger. Nothing here separates a skill effect from a
+  draw.
+* The comparison **cannot** separate the arms. Arms A and C selected S0, so there is no arm-A or arm-C
+  *selected* skill to score; the only edited document in the primary comparison is arm B's.
+* The design had no power to resolve differences of this size. At the measured spread, detecting a
+  three-question difference on 60 questions would need many repeated evaluations per document
+  (`OFFICEQA_DIAGNOSTIC_PACKET.md` §9 gives the arithmetic on the 24-question set).
+* Reported for completeness because rule 2 requires it: the exploratory document scored highest of the
+  three. It carries S0's advice, so it is evidence about the instrument, not about any arm's optimizer.
+
+### Compliance
+
+| rule | how it was met here |
+|---|---|
+| 1. read once, nothing tuned on it | read once, after the chain finished; `eval_test: false` throughout; and the two evidence packets' proposed next tests were written **before** these numbers were opened |
+| 2. pre-registered primary | S0 + each arm's `best_skill.md`, fixed before any arm ran; arms A and C selected S0, so the primary set has 2 distinct documents |
+| 3. exploratory labelled | job name, output directory and this table all say exploratory for the last skill |
+| 4. frozen by digest | `heldout/SKILLS_FROZEN.json`, record `f26ba852b9e59dc4`, verified by the submitter before submission; each result's `PROVENANCE.json` repeats its skill digest |
+| 5. scored once, reused | three evaluations for three distinct digests at one settings fingerprint; no digest scored twice |
+| 6. sealed stays sealed | job 66234927 remains unread |
