@@ -2,7 +2,7 @@
 
 Prepared 2026-11-17 for review. Everything here is read from the saved training and validation records of
 the 2026-11-17 three-arm campaign. **No paid request was made:** every API key is dropped before the
-diagnostic job starts Python, and the whole phase cost 0 attempts, $0.00 and 0.10 CPU core-hours over 13
+diagnostic job starts Python, and the whole phase cost 0 attempts, $0.00 and 0.128 CPU core-hours over 15
 Slurm jobs. The held-out evaluation kept running throughout and **its numbers are deliberately not read
 into this packet** — the proposals in §9 were written before any held-out result was opened, so nothing
 here is tuned on it.
@@ -10,7 +10,7 @@ here is tuned on it.
 Tool: `research/officeqa/oqa_diagnose.py` (rule OQA-DIAG-1), subcommands `gates`, `questions`,
 `replicates`, `contracts`, `chains`. Job 66337036, commit `66b2b66`, bundle `oqa_diag_20261117`.
 Outputs: `<campaign>/diagnostic/DIAG_{GATES,QUESTIONS,REPLICATES,CONTRACTS,CHAINS}.json`.
-Tests: 2,215 passed, 9 skipped, 368 subtests (job 66337037).
+Tests: 2,215 passed, 9 skipped, 368 subtests (job 66337037). Packet committed as `18d61d3`.
 
 ```text
 ════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -526,6 +526,8 @@ Headroom, projected after the held-out chain finishes (ledger reconciliation pen
    actor attempts  ~19,700 of 30,000 left        actor charge  ~$9.19 of $16.00 left
    optimizer       157 calls / $4.50 left (none of the proposals below needs the optimizer)
    CPU             ~12.9 of 40 core-hours left   GPUs 0, and none wanted
+   (measured so far: 23.47 core-hours to the end of the recovery, + 3.4 for the held-out chain,
+    + 0.128 for this diagnostic phase)
 
 T1 — REPEAT THE EXACT S0 EVALUATION.  **Recommended first, and on its own.**
    What: the baseline document b2f8624c8da8 (886 B), the same 24 selection questions, 8 independent draws.
