@@ -1986,7 +1986,11 @@ def test_the_four_real_outcome_shapes_are_separated_though_the_gate_scores_three
     assert right["outcome"] == "correct" and right["relation"] == ""
     assert budget["outcome"] == "execution_failure" and budget["why"] == "turn_budget_exceeded"
     assert empty["outcome"] == "no_answer" and empty["why"] == "empty_parse"
-    assert D.classify(_dg_row("U6", skill="s", turns=24), 24)["at_turn_cap"] is True
+    # `n_turns` counts conversation MESSAGES, not tool turns. The rows reach 55 against a tool-turn
+    # budget of 24, so comparing the two reported that 5 of S0's 24 questions hit the cap when the true
+    # number is 0. Only a row that says it ran out really did.
+    assert D.classify(_dg_row("U6", skill="s", turns=50), 24)["turn_budget_hit"] is False
+    assert budget["turn_budget_hit"] is True
     assert D.classify(_dg_row("U7", skill="s", finish="length"), 24)["truncated"] is True
     assert D.classify(_dg_row("U8", skill="s", ok=False, fail="error: boom"), 24)["why"] == "exception"
 

@@ -271,9 +271,14 @@ def classify(row: dict, max_turns: int) -> dict:
     return {
         "outcome": outcome, "why": why,
         "predicted": pred[:200], "hard": hard, "soft": float(row.get("soft") or 0.0),
-        "n_turns": n_turns, "finish_reason": finish, "agent_ok": agent_ok,
+        # `n_turns` counts CONVERSATION MESSAGES, not tool turns: the rows run up to 55 against a
+        # `max_tool_turns` of 24, and the observed relation is n_turns ~ 2 * tool calls + 2. Comparing it
+        # to the turn budget said 5 of S0's 24 questions hit the cap when the true number is 0; the only
+        # rows that really ran out say so in their own reason, and there are three of them.
+        "n_messages": n_turns, "n_turns": n_turns,
+        "finish_reason": finish, "agent_ok": agent_ok,
         "fail_reason": fr[:200],
-        "at_turn_cap": n_turns >= max_turns,
+        "turn_budget_hit": ("turn budget" in low or "ended without" in low),
         "truncated": finish == "length",
         "relation": (numeric_relation(pred, str(row.get("ground_truth") or ""))
                      if outcome in ("wrong_answer", "no_answer", "execution_failure") else ""),
@@ -494,8 +499,9 @@ def cmd_gates(campaign: str) -> dict:
                 "execution_failure": sum(1 for c in cls if c["outcome"] == "execution_failure"),
                 "silent_turn": sum(1 for c in cls if c["why"] == "silent_turn"),
                 "empty_parse": sum(1 for c in cls if c["why"] == "empty_parse"),
-                "at_turn_cap": sum(1 for c in cls if c["at_turn_cap"]),
+                "turn_budget_hit": sum(1 for c in cls if c["turn_budget_hit"]),
                 "truncated": sum(1 for c in cls if c["truncated"]),
+                "max_messages": max([c["n_messages"] for c in cls] or [0]),
             }
             whys: dict[str, int] = {}
             for c in cls:
@@ -545,8 +551,9 @@ def cmd_gates(campaign: str) -> dict:
                 "execution_failure": sum(1 for c in bcls if c["outcome"] == "execution_failure"),
                 "silent_turn": sum(1 for c in bcls if c["why"] == "silent_turn"),
                 "empty_parse": sum(1 for c in bcls if c["why"] == "empty_parse"),
-                "at_turn_cap": sum(1 for c in bcls if c["at_turn_cap"]),
+                "turn_budget_hit": sum(1 for c in bcls if c["turn_budget_hit"]),
                 "truncated": sum(1 for c in bcls if c["truncated"]),
+                "max_messages": max([c["n_messages"] for c in bcls] or [0]),
             },
         },
         "n_gates": len(gates),
