@@ -405,8 +405,6 @@ def tally(results: list) -> dict:
 
 def interpret(audits: list) -> dict:
     results = [r for a in audits for g in a.get("groups") or [] for r in g["results"]]
-    tables_with_header = sum(1 for r in results
-                             for _ in [0] if r.get("prefix", {}).get("n_tables"))
     header_forms: dict = {}
     for r in results:
         for k, v in (r.get("prefix", {}).get("table_header_forms") or {}).items():
@@ -417,9 +415,20 @@ def interpret(audits: list) -> dict:
                     for r in results)
     cells_total = sum(int(r.get("prefix", {}).get("n_data_cells") or 0) for r in results)
 
-    monetary_year_shaped, nearer_states, conv_verdicts = [], {}, {}
+    monetary_year_shaped, nearer_states = [], {}
+    conv_verdicts = {"from_later_steps": {}, "under_proposal_P1": {}, "stage_states": {},
+                     "stage_states_under_proposal_P1": {}}
     for r in results:
         for c in r.get("candidates") or []:
+            for b in c.get("bindings") or []:
+                lat = b.get("resolution_from_later_steps") or {}
+                p1 = b.get("resolution_if_the_operand_message_were_read_too_PROPOSAL_P1") or {}
+                for key, src in (("from_later_steps", lat), ("under_proposal_P1", p1)):
+                    v = str(src.get("conversion"))
+                    conv_verdicts[key][v] = conv_verdicts[key].get(v, 0) + 1
+                for key, src in (("stage_states", lat), ("stage_states_under_proposal_P1", p1)):
+                    v = str(src.get("state"))
+                    conv_verdicts[key][v] = conv_verdicts[key].get(v, 0) + 1
             if c.get("used_as_operand") and c.get("year_shaped"):
                 monetary_year_shaped.append({"item": r.get("item"), "raw": c.get("raw"),
                                              "reason": c.get("reason"),
@@ -448,9 +457,9 @@ def interpret(audits: list) -> dict:
                         "binds the wrong column, not because the text is missing"),
         },
         "data_cells_without_a_bound_header": {
-            "total_data_cells": cells_total, "frozen_extractor": cells_frozen,
-            "connected_variant": cells_conn,
-            "difference": cells_frozen - cells_conn,
+            "total_data_cells": cells_total, "after_B_3_2": cells_frozen,
+            "before_B_3_2": cells_iso,
+            "difference": cells_iso - cells_frozen,
         },
         "nearer_scale_between_preserves_unknown": {
             "states_over_bound_cells": nearer_states,
@@ -471,7 +480,15 @@ def interpret(audits: list) -> dict:
             "year_shaped_numbers_still_used_as_monetary_operands": monetary_year_shaped,
             "n": len(monetary_year_shaped),
         },
-        "conversion_verdicts_exercised": conv_verdicts,
+        "conversion_verdicts_exercised": {
+            **conv_verdicts,
+            "finding": ("the four questions are answered separately on the real records: "
+                        "`no_conversion_required` when the bound scale already equals the asked scale, "
+                        "`correct_*` / `incorrect_*` when a factor is judged against the requirement, "
+                        "and `converted_value_used` reported apart from the factor's correctness. "
+                        "`requirement_unknown` covers a binding that determines no requirement, so no "
+                        "factor is ever called wrong with nothing behind it"),
+        },
     }
 
 
@@ -528,6 +545,10 @@ def main(argv=None) -> int:
         print(f"  nearer_scale states {doc['nearer_scale_between_preserves_unknown']['states_over_bound_cells']}")
         print(f"  year-shaped numbers still used as money: "
               f"{doc['dates_row_labels_and_prose_digits']['n']}")
+        print(f"  conversion verdicts (later steps) "
+              f"{doc['conversion_verdicts_exercised']['from_later_steps']}")
+        print(f"  conversion verdicts (P-1)         "
+              f"{doc['conversion_verdicts_exercised']['under_proposal_P1']}")
         print(f"  cells decidable from the observed header row alone: "
               f"{doc['table_wide_scale_under_the_existing_hypothesis']['cells_whose_table_header_names_no_money_scale_yet_stay_unknown']}")
         print(f"wrote {doc['written_to']}")
