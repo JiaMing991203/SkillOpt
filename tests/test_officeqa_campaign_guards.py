@@ -1795,3 +1795,368 @@ def test_a_stage_with_refusals_and_still_no_output_is_still_starved(tmp_path):
     row = {r["key"]: r for r in doc["rows"]}["A.2"]
     assert row["affected"] is True and row["recovered"] is False
     assert row["stages"]["analyst"]["status"] == "starved"
+
+
+# ── the diagnostic read of a finished campaign (rule OQA-DIAG-1) ──────────────
+
+def _diag():
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "research", "officeqa", "oqa_diagnose.py")
+    spec = importlib.util.spec_from_file_location("oqa_diagnose_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# The real scaffold, in the shape `_build_system` gives it for search_mode=offline + local tools:
+# `skillopt/envs/officeqa/prompts/rollout_system.md` is `<preamble>\n\n{skill_section}## Rules\n...`.
+_SCAFFOLD = ("You are an expert OfficeQA agent working over local Treasury bulletin text files.\n\n"
+             "## Skill\n{skill}\n\n## Rules\n- Use the tools.\n- Answer in <answer></answer>.\n")
+
+
+def _system(skill: str) -> str:
+    return _SCAFFOLD.replace("{skill}", skill.strip())
+
+
+def _row(qid, *, skill, hard=0, predicted="", gt="1", user="## Question\nq?\n", turns=4,
+         fail="", finish="", ok=True, oracle=100, sources=("f.txt",)):
+    return {"id": qid, "question": "q?", "task_type": "easy", "predicted_answer": predicted,
+            "response": "...", "ground_truth": gt, "source_files": list(sources),
+            "resolved_source_paths": list(sources), "oracle_parsed_pages_included": True,
+            "oracle_parsed_pages_chars": oracle, "use_local_tools": True, "hard": hard,
+            "soft": float(hard), "fail_reason": fail, "agent_ok": ok, "n_turns": turns,
+            "last_finish_reason": finish, "target_system_prompt": _system(skill),
+            "target_user_prompt": user}
+
+
+def _write_jsonl(path, rows):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+
+
+def _conv(path, cmds):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    conv = [{"role": "user", "content": "## Question\nq?"}]
+    for c in cmds:
+        conv.append({"type": "message", "content": ""})
+        conv.append({"type": "tool_call", "cmd": c, "obs": "data"})
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(conv, f)
+
+
+def _campaign(root, *, ids, baseline_correct, arms):
+    """A miniature campaign with the same file layout as the real one.
+
+    `arms` maps an arm to a list of (kind, epoch, candidate_text, correct_ids, recorded_action).
+    """
+    S0 = "# S0\n- do the thing."
+    base = []
+    for qid in ids:
+        base.append(_row(qid, skill=S0, hard=1 if qid in baseline_correct else 0,
+                         predicted="7" if qid in baseline_correct else "", gt="7"))
+    _write_jsonl(os.path.join(root, "shared", "val_baseline", "results.jsonl"), base)
+    for qid in ids:
+        _conv(os.path.join(root, "shared", "val_baseline", "predictions", qid, "conversation.json"),
+              [f"read(path='/data/{qid}.txt', start=1, limit=5)"])
+    for arm in arms:
+        a = os.path.join(root, f"arm_{arm}")
+        os.makedirs(a, exist_ok=True)
+        with open(os.path.join(a, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"max_tool_turns": 24, "target_openai_compatible_temperature": 0.7,
+                       "seed": 42, "split_seed": 42}, f)
+        _write_jsonl(os.path.join(a, "selection_eval_baseline", "results.jsonl"), base)
+        prev_skill = S0
+        for kind, epoch, cand, correct, action in arms[arm]:
+            if kind == "step":
+                d = os.path.join(a, "steps", f"step_{epoch:04d}")
+                os.makedirs(d, exist_ok=True)
+                _write_jsonl(os.path.join(d, "rollout", "results.jsonl"),
+                             [_row(q, skill=prev_skill) for q in ids])
+                rec = {"step": epoch, "epoch": epoch, "candidate_hash": "h" * 16,
+                       "selection_hard": len(correct) / len(ids), "action": action,
+                       "tokens": {"analyst": {"calls": 4}, "merge": {"calls": 2},
+                                  "ranking": {"calls": 1}},
+                       "n_edits_merged": 8, "n_edits_ranked": 2, "edit_budget": 2,
+                       "edit_apply_summary": {"applied": 2}, "support_counts": [22, 14],
+                       "rollout_hard": 0.125,
+                       "accumulation_batches": [{"batch_seed": 1000 + epoch}],
+                       "current_score": 0.0, "best_score": 0.0}
+                with open(os.path.join(d, "step_record.json"), "w", encoding="utf-8") as f:
+                    json.dump(rec, f)
+            else:
+                d = os.path.join(a, "slow_update", f"epoch_{epoch:02d}")
+                os.makedirs(d, exist_ok=True)
+                _write_jsonl(os.path.join(d, "rollout_curr", "results.jsonl"),
+                             [_row(q, skill=prev_skill) for q in ids])
+                with open(os.path.join(d, "slow_result.json"), "w", encoding="utf-8") as f:
+                    json.dump({"selection_hard": len(correct) / len(ids), "action": action,
+                               "candidate_hash": "s" * 16, "slow_update_content": "guidance",
+                               "prev_hard": 0.1, "curr_hard": 0.0}, f)
+                with open(os.path.join(d, "comparison_pairs.json"), "w", encoding="utf-8") as f:
+                    json.dump([{"id": q, "category": "persistent_fail"} for q in ids[:3]], f)
+            with open(os.path.join(d, "candidate_skill.md"), "w", encoding="utf-8") as f:
+                f.write(cand)
+            sel = os.path.join(d, "selection_eval")
+            _write_jsonl(os.path.join(sel, "results.jsonl"),
+                         [_row(q, skill=cand, hard=1 if q in correct else 0,
+                               predicted="7" if q in correct else "",
+                               gt="7",
+                               fail="" if q in correct
+                               else "Model neither produced a tool request nor a final answer")
+                          for q in ids])
+            for q in ids:
+                _conv(os.path.join(sel, "predictions", q, "conversation.json"),
+                      [f"read(path='/data/{q}.txt', start=1, limit=5)",
+                       f"read(path='/data/{q}.txt', start=1, limit=5)"])
+            if action in ("accept", "accept_new_best"):
+                prev_skill = cand
+    # epoch 1's slow update is the placeholder, and must not be counted as a gate
+    for arm in arms:
+        d = os.path.join(root, f"arm_{arm}", "slow_update", "epoch_01")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "slow_result.json"), "w", encoding="utf-8") as f:
+            json.dump({"action": "inject_placeholder", "epoch": 1}, f)
+
+
+def test_the_skill_is_recovered_from_the_system_prompt_even_when_it_contains_a_rules_heading():
+    """The provenance route is the system prompt, so the extraction has to survive the skill's own text.
+
+    A candidate written by the optimizer can itself contain `\n\n## Rules`, which is exactly the delimiter
+    the template puts AFTER the skill. Splitting on the first occurrence would silently return a truncated
+    document and then report that the file on disk is not what ran.
+    """
+    D = _diag()
+    tricky = "# Skill\n- step one.\n\n## Rules\n- a rule the OPTIMIZER wrote, not the template's."
+    sysmsg = _system(tricky)
+    assert D.skill_from_system(sysmsg) == tricky
+    assert D.scaffold_of(sysmsg) == _system("<SKILL>")
+    # and two different skills under the same template share one scaffold
+    assert D.scaffold_of(_system("# other")) == D.scaffold_of(sysmsg)
+
+
+def test_a_missing_delimiter_returns_none_rather_than_a_guess():
+    D = _diag()
+    assert D.skill_from_system("no skill section here") is None
+    assert D.scaffold_of("no skill section here") == "no skill section here"
+
+
+@pytest.mark.parametrize("pred,gt,want", [
+    ("7", "7", "numerically_equal_scored_wrong"),
+    ("7000", "7", "scale_1e3"),
+    ("0.007", "7", "scale_1e-3"),
+    ("-7", "7", "sign_flipped"),
+    ("7.00001", "7", "rounding"),
+    ("[1, 2]", "[1, 2, 3]", "wrong_value_count"),
+    ("", "7", "no_number_predicted"),
+    ("no idea", "7", "non_numeric"),
+    ("13", "7", "unrelated_value"),
+    ("700", "7", "scale_1e2"),
+])
+def test_the_numeric_relation_is_mechanical(pred, gt, want):
+    """It says how a wrong number relates to the right one. It never names a CAUSE.
+
+    `scale_1e3` is what a millions/thousands mix-up looks like, but the relation alone cannot tell that
+    from a coincidence, so the label stays arithmetic and the cause is left to a trace reading.
+    """
+    assert _diag().numeric_relation(pred, gt) == want
+
+
+def test_blank_and_wrong_are_separated_though_the_gate_scores_them_alike():
+    """`hard` is exact match, so a silent turn and a wrong number are both 0. They are different failures."""
+    D = _diag()
+    blank = D.classify(_row("U1", skill="s", hard=0, predicted="",
+                            fail="Model neither produced a tool request nor a final answer"), 24)
+    wrong = D.classify(_row("U2", skill="s", hard=0, predicted="458.070", gt="0.011"), 24)
+    right = D.classify(_row("U3", skill="s", hard=1, predicted="0.011", gt="0.011"), 24)
+    broke = D.classify(_row("U4", skill="s", hard=0, predicted="", ok=False, fail="tool crashed"), 24)
+    assert blank["outcome"] == "no_answer" and blank["why"] == "silent_turn"
+    assert wrong["outcome"] == "wrong_answer" and wrong["relation"] == "unrelated_value"
+    assert right["outcome"] == "correct" and right["relation"] == ""
+    assert broke["outcome"] == "error"
+    assert D.classify(_row("U5", skill="s", turns=24), 24)["at_turn_cap"] is True
+    assert D.classify(_row("U6", skill="s", finish="length"), 24)["truncated"] is True
+
+
+def test_the_placeholder_epoch_is_not_a_gate_and_the_order_is_the_trainers():
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(4)]
+        _campaign(root, ids=ids, baseline_correct={ids[0]},
+                  arms={"A": [("step", 1, "# c1", set(), "reject"),
+                              ("step", 2, "# c2", set(), "reject"),
+                              ("slow", 2, "# s2", set(), "reject")]})
+        labels = [g["label"] for g in D.gate_specs(root)]
+        assert labels == ["A.1.step", "A.2.step", "A.2.slow"], labels
+
+
+def test_the_threshold_moves_after_an_acceptance_and_the_decision_is_rederived():
+    """The gate compares against the CURRENT score, which an acceptance raises.
+
+    Arm B's real run is this shape: one candidate beat 4/24 with 5/24, and every later candidate then had
+    to beat 5/24 rather than 4/24. A table that prints one fixed threshold for all seven of an arm's gates
+    is wrong about six of them.
+    """
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(8)]
+        base_ok = {ids[0], ids[1]}                      # S0 = 2/8
+        _campaign(root, ids=ids, baseline_correct=base_ok,
+                  arms={"B": [("step", 1, "# c1", {ids[0]}, "reject"),            # 1/8, below
+                              ("step", 2, "# c2", {ids[0], ids[1], ids[2]},
+                               "accept_new_best"),                                # 3/8, above
+                              ("slow", 2, "# s2", {ids[0], ids[1], ids[2]}, "reject")]})  # 3/8, a TIE now
+        doc = D.cmd_gates(root)
+        g = {x["label"]: x for x in doc["gates"]}
+        assert doc["baseline"]["correct"] == 2
+        assert g["B.1.step"]["threshold"] == 2 / 8
+        assert g["B.2.step"]["threshold"] == 2 / 8
+        assert g["B.2.slow"]["threshold"] == 3 / 8, "the acceptance must raise the bar"
+        assert g["B.2.slow"]["decision_recomputed"] == "reject", "a tie is not a strict improvement"
+        assert all(x["decision_agrees"] for x in doc["gates"])
+        assert all(x["score_agrees"] for x in doc["gates"])
+        assert doc["checks"]["every_decision_recomputes"]
+        assert doc["checks"]["every_score_recomputes"]
+
+
+def test_a_candidate_file_that_is_not_what_ran_is_reported_not_trusted():
+    """The retained skills omit rejected edits, so the candidate FILE is the only copy -- hence the check.
+
+    If someone edited `candidate_skill.md` after the run, every number attributed to that document would be
+    attributed to the wrong text. The check is that the file appears verbatim in all 24 of its own
+    selection rollouts' system prompts.
+    """
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(4)]
+        _campaign(root, ids=ids, baseline_correct=set(),
+                  arms={"A": [("step", 1, "# the candidate that ran", set(), "reject")]})
+        doc = D.cmd_gates(root)
+        assert doc["gates"][0]["skill_embedded_verbatim"] is True
+        assert doc["checks"]["every_candidate_embedded_verbatim"]
+        p = os.path.join(root, "arm_A", "steps", "step_0001", "candidate_skill.md")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("# a document nobody ever ran")
+        doc2 = D.cmd_gates(root)
+        assert doc2["gates"][0]["skill_embedded_verbatim"] is False
+        assert not doc2["checks"]["every_candidate_embedded_verbatim"]
+
+
+def test_a_changed_question_or_prompt_is_caught_so_a_score_difference_is_not_misread():
+    """A score gap only speaks about the skill if the questions and the documents did not move."""
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(4)]
+        _campaign(root, ids=ids, baseline_correct=set(),
+                  arms={"A": [("step", 1, "# c", set(), "reject")]})
+        doc = D.cmd_gates(root)
+        assert doc["checks"]["every_question_set_matches"]
+        assert doc["checks"]["every_user_prompt_matches"]
+        assert doc["checks"]["every_scaffold_matches"]
+        assert doc["checks"]["oracle_pages_identical_everywhere"]
+        assert doc["checks"]["sources_identical_everywhere"]
+        # now hand one question a different document
+        p = os.path.join(root, "arm_A", "steps", "step_0001", "selection_eval", "results.jsonl")
+        rows = [json.loads(x) for x in open(p, encoding="utf-8") if x.strip()]
+        rows[0]["target_user_prompt"] = "## Question\nq?\n## Extra page the baseline never saw\n"
+        rows[1]["oracle_parsed_pages_chars"] = 999
+        _write_jsonl(p, rows)
+        doc2 = D.cmd_gates(root)
+        assert doc2["gates"][0]["user_prompts_identical_to_baseline"] is False
+        assert doc2["gates"][0]["user_prompt_mismatches"] == [rows[0]["id"]]
+        assert doc2["gates"][0]["oracle_pages_identical"] is False
+        assert not doc2["checks"]["every_user_prompt_matches"]
+
+
+def test_gains_and_losses_are_counted_per_question_against_the_shared_baseline():
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(6)]
+        # S0 solves 0 and 1. The candidate loses 1 and gains 4.
+        _campaign(root, ids=ids, baseline_correct={ids[0], ids[1]},
+                  arms={"A": [("step", 1, "# c", {ids[0], ids[4]}, "reject")]})
+        doc = D.cmd_questions(root)
+        g = doc["per_gate"]["A.1.step"]
+        assert g["gained"] == [ids[4]] and g["lost"] == [ids[1]]
+        assert g["kept_correct"] == [ids[0]]
+        assert sorted(g["kept_incorrect"]) == sorted([ids[2], ids[3], ids[5]])
+        assert doc["totals"]["s0_correct"] == 2
+        assert doc["per_question"][ids[4]]["gained_by"] == ["A.1.step"]
+        assert doc["per_question"][ids[1]]["lost_by"] == ["A.1.step"]
+        # the blank reason survives into the per-question view
+        assert doc["per_question"][ids[2]]["candidates"]["A.1.step"]["why"] == "silent_turn"
+        # and the trace features are read from conversation.json
+        assert g["repeated_calls_delta_mean"] == 1.0, "the fixture repeats one call in every candidate trace"
+
+
+def test_trace_features_count_repeats_and_files_without_interpreting_them():
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        _conv(os.path.join(root, "conversation.json"), [
+            "read(path='/data/a.txt', start=1, limit=5)",
+            "read(path='/data/a.txt', start=1, limit=5)",
+            "grep(pattern='1943.*Feb', path='/data/b.txt')",
+        ])
+        f = D.trace_features(root)
+        assert f["present"] and f["n_tool_calls"] == 3
+        assert f["n_repeated_calls"] == 1
+        assert f["files_touched"] == ["a.txt", "b.txt"]
+        assert f["tools"]["read"] == 2 and f["tools"]["grep"] == 1
+        assert D.trace_features(os.path.join(root, "nope"))["present"] is False
+
+
+def test_contract_vocabulary_is_scanned_in_the_edits_and_a_miss_is_the_strong_signal():
+    """An edit that names nothing from the report could have been written from the trace alone."""
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        d = os.path.join(root, "arm_B", "steps", "step_0002")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "ranked_edits.json"), "w", encoding="utf-8") as f:
+            json.dump({"edits": [
+                {"op": "append", "content": "- commit once you hold the operands.",
+                 "support_count": 22, "source_type": "failure"},
+                {"op": "append", "content": "- RULE(read.effect.3@v1) says col_path_sound is false.",
+                 "support_count": 3, "source_type": "failure"}]}, f)
+        os.makedirs(os.path.join(root, "arm_B", "stage_reports"), exist_ok=True)
+        with open(os.path.join(root, "arm_B", "stage_reports", "GENERATED.jsonl"),
+                  "w", encoding="utf-8") as f:
+            f.write(json.dumps({"id": "UID1", "action_forecasts":
+                                {"confirmed": 5, "violated": 1, "unresolved": 9},
+                                "obligations": None, "n_distinct_diagnoses": 0,
+                                "boundary_audit": "PASS", "model_version": 2,
+                                "prediction_dir": "/x/arm_B/steps/step_0001/rollout/predictions"}) + "\n")
+        doc = D.cmd_contracts(root)
+        e = doc["edits_scanned_for_contract_vocabulary"]["B.2.ranked"]
+        assert e[0]["contract_vocabulary_hits"] == []
+        assert "RULE(" in e[1]["contract_vocabulary_hits"]
+        assert doc["arms"]["B"]["action_forecasts"]["violated"] == 1
+        assert doc["arms"]["B"]["reports_with_a_violated_forecast"][0]["id"] == "UID1"
+
+
+def test_a_candidate_that_scored_zero_still_recomputes():
+    """A score of exactly 0.0 is falsy, and `score or -1` made the check fail on the real campaign.
+
+    Two of the twenty-one candidates (arm B epoch 4 and arm C epoch 4) measured 0/24, so this is not a
+    hypothetical: the first version of the recomputation check reported FAIL on both of them and PASS on
+    everything else, which looks exactly like tampering with the two most interesting rows.
+    """
+    D = _diag()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(4)]
+        _campaign(root, ids=ids, baseline_correct={ids[0]},
+                  arms={"A": [("step", 1, "# c", set(), "reject")]})
+        doc = D.cmd_gates(root)
+        g = doc["gates"][0]
+        assert g["recorded_score"] == 0.0 and g["score_recomputed"] == 0.0
+        assert g["score_agrees"] is True
+        assert doc["checks"]["every_score_recomputes"] is True
