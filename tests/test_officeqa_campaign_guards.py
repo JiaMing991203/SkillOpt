@@ -2469,3 +2469,31 @@ def test_two_different_provider_interactions_can_save_one_identical_trace():
         assert facts["n_turns"] == 3
         assert all(not t["content"] for t in facts["turns"]), (
             "every assistant content is empty, so the digest says nothing about what was generated")
+
+
+def test_the_models_epoch_field_is_not_the_epoch_it_was_frozen_at():
+    """It records the last model-CHANGING decision, so a model that changed nothing keeps its parent's.
+
+    Arm C's epoch-2, -3 and -4 models all carry `epoch: 1`, because every round after M0 accepted no new
+    contract and refuted none. Using that field to decide which traces the model was learned from shrinks
+    the corpus to epoch 1 and makes an in-sample test look cleaner than it is. The corpus comes from the
+    file name instead, which the campaign writes as model_arm<X>_epoch<NN>.json.
+    """
+    F = _forensics()
+    import tempfile, json as _json
+    with tempfile.TemporaryDirectory() as root:
+        c = os.path.join(root, "contracts", "arm_C")
+        os.makedirs(c, exist_ok=True)
+        with open(os.path.join(root, "contracts", "model_M0.json"), "w", encoding="utf-8") as f:
+            _json.dump({"sha256": "a" * 64, "version": 2, "epoch": 1, "contracts": [],
+                        "evidence_items": ["UID0001"], "evidence_scope": "shared epoch-1 rollout"}, f)
+        with open(os.path.join(c, "model_armC_epoch04.json"), "w", encoding="utf-8") as f:
+            _json.dump({"sha256": "b" * 64, "version": 2, "epoch": 1, "contracts": [],
+                        "evidence_items": ["UID0001"],
+                        "evidence_scope": "arm C: the shared epoch-1 rollout and epochs 2..4"}, f)
+        got = F.model_records(root)
+        m0 = got["contracts/model_M0.json"]
+        c4 = got[os.path.join("contracts", "arm_C", "model_armC_epoch04.json")]
+        assert m0["corpus_epochs"] == [1]
+        assert c4["epoch"] == 1, "the field really does say 1"
+        assert c4["corpus_epochs"] == [1, 2, 3, 4], "the corpus does not"

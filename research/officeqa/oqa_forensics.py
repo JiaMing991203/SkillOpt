@@ -517,7 +517,15 @@ def model_records(campaign: str) -> dict:
                 "withdraw_reason": str(k.get("refute_reason") or k.get("retire_reason") or "")[:220],
                 "epoch": k.get("epoch"), "source": k.get("source"),
             })
+        # The record's `epoch` field tracks the last model-CHANGING decision, not the epoch the model was
+        # frozen at: arm C's epoch-2, -3 and -4 models all carry epoch 1 because nothing in them changed
+        # after M0. The learning corpus therefore has to come from the file name (model_arm<X>_epoch<NN>)
+        # or the scope string, and using the field instead silently shrinks it.
+        m = re.search(r"epoch(\d+)", os.path.basename(path))
+        corpus_through = int(m.group(1)) if m else 1
         out[os.path.relpath(path, campaign)] = {
+            "corpus_epochs": list(range(1, corpus_through + 1)),
+            "epoch_field_is_last_change_not_freeze": True,
             "sha256": d.get("sha256"), "version": d.get("version"), "epoch": d.get("epoch"),
             "frozen_utc": d.get("frozen_utc"), "parent_sha256": d.get("parent_sha256"),
             "assumptions": d.get("assumptions"), "evidence_scope": d.get("evidence_scope"),
@@ -604,8 +612,8 @@ def cmd_contracts(campaign: str) -> dict:
                 b["in_sample_by_id"] += 1
             # the decisive test: was THIS TRACE in any corpus the cited model was learned from?
             tsha = str(r.get("trace_sha256") or "")
-            cited_epoch = int((cited or {}).get("epoch") or 0)
-            seen = {d for e, mp in learned_traces.items() if e <= cited_epoch for d in mp.values()}
+            corpus = set((cited or {}).get("corpus_epochs") or [1])
+            seen = {d for e, mp in learned_traces.items() if e in corpus for d in mp.values()}
             if tsha and tsha in seen:
                 b["in_sample_by_trace"] += 1
             elif tsha:
@@ -627,7 +635,16 @@ def cmd_contracts(campaign: str) -> dict:
             b["model_sha256"] = sorted(b["model_sha256"])
             b["model_version"] = sorted(str(x) for x in b["model_version"])
             b["items"] = sorted(b["items"])
-        per_arm[arm] = {"by_epoch": by_epoch,
+        # Model-independent: is any epoch's trace byte-identical to an earlier epoch's for the same item?
+        # This is what "in-sample" would have to mean, and it does not depend on anyone's bookkeeping.
+        cross = {}
+        eps = sorted(learned_traces)
+        for i, a in enumerate(eps):
+            for b in eps[i + 1:]:
+                same = sorted(k for k, v in learned_traces[b].items() if learned_traces[a].get(k) == v)
+                cross[f"epoch{a}_vs_epoch{b}"] = {"n_identical": len(same), "items": same,
+                                                  "n_compared": len(learned_traces[b])}
+        per_arm[arm] = {"by_epoch": by_epoch, "cross_epoch_identical_traces": cross,
                         "learning_corpus_dirs": {str(k): sorted(v) for k, v in learned_dirs.items()},
                         "n_learning_traces_by_epoch": {str(k): len(v) for k, v in learned_traces.items()}}
 
