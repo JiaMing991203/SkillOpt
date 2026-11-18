@@ -78,6 +78,51 @@ Cumulative after Grant 3, measured: EmpirioLabs **10,181 of 30,024 attempts** (1
 and **$6.8601 of $17.00**; DeepSeek **106 of 266 attempts** and **$3.5100 of $10.00**; CPU **31.6 of 44**
 requested job-hours; GPUs 0.
 
+### Grant 4 — 2026-11-18, the answer-recovery follow-up (user message)
+
+A **SUBALLOCATION drawn from the remaining approved cumulative ceilings, not a reset and not an
+increase** — the user's own words. Verified against the ledger before anything was submitted:
+
+| resource | cumulative ceiling | measured spend before Grant 4 | headroom | this suballocation | fits |
+|---|---|---|---|---|---|
+| EmpirioLabs attempts | 30,024 | 10,181 | 19,843 | **5,000** | yes |
+| EmpirioLabs charge | $17.00 | $6.8627 | $10.1373 | **$4.00** | yes |
+| DeepSeek attempts | 266 | 106 | 160 | **4** (only if a new proposal is needed) | yes |
+| DeepSeek charge | $10.00 | $3.5100 | $6.4900 | **$1.00** | yes |
+| CPU requested job-hours | 44 | 31.6 | 12.4 | **8**, ≤2 CPUs per job, ≤2 concurrent | yes |
+| GPUs | 0 | 0 | — | **0** | — |
+
+The spend column is the ledger's own reading of 2026-11-18 (target 10,158 attempts / $6.855447,
+optimizer 105 / $3.468882) plus the 23 probe sends and the one pre-ledger DeepSeek probe.
+
+**The 23 probe sends are now IN the ledger.** The previous follow-up accounted them by hand because the
+probe calls the SDK directly and bypasses the backend. `research/officeqa/oqa_ledger_backfill.py` replays
+their recorded usage through the real `reserve` / `record_usage` under stage `oqa_http_probe_backfill`,
+and **refuses to run twice** — it counts the usage records already present under that stage first, so the
+same sends cannot be charged again. Applied in job 66346233: **23 attempts, $0.007213**.
+
+That charge is the LARGER of two defensible figures, on purpose. The provider reports 126,720 of those
+164,662 prompt tokens as cache reads and charged $0.004679; the backend computes its own charge with
+`cached_tokens = prompt_cache_hit_tokens`, which is **DeepSeek's** field name, so for this provider it
+sees zero cache and bills every prompt token. The backfill charges the same way, so a back-filled attempt
+and a live one are charged identically and the cumulative figure stays an upper bound. **This is also the
+explanation of the campaign's 38% conservatism** ($5.3159 charged against $3.2768 billed on the actor
+side): the same class of defect as the `reasoning` field — a field name read for the wrong provider. The
+guard is deliberately left as it is, because correcting it would lower the computed charge.
+
+The caps the jobs enforce are therefore ABSOLUTE and were computed once, never per job (a cap derived
+from "what has been spent so far" would grant a fresh allowance to every job):
+
+```
+target     15,181 attempts   $10.8626      = 10,158 + 23 + 5,000   and   6.855447 + 0.007213 + 4.00
+optimizer     109 attempts   $ 4.4688      =    105 + 4            and   3.468882 + 1.00
+```
+
+Scope: (A) define and test a narrow answer-recovery policy and run twelve development episodes;
+(B) repair the connected contract's extraction and re-check it; (C) **conditionally**, eight passes of S0
+on the 24-question validation set through the corrected client. Not authorized by it: skill evolution,
+a change to the gate or the scorer, or another three-arm campaign.
+
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 
 `research/cluster/oqa_campaign_body.sh` sets the caps the spend ledger enforces. They are not the grant's
