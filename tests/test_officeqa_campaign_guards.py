@@ -2289,3 +2289,183 @@ def test_a_bare_tool_name_is_an_invented_tool_not_an_unparseable_line():
         assert f["tools"]["grep"] == 1
         assert f["n_unknown_tool_errors"] == 2
         assert "?" not in f["invented_tool_calls"]
+
+
+# ── forensics on the empty answers and the contract machinery (rule OQA-FOR-1) ─
+
+def _forensics():
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "research", "officeqa", "oqa_forensics.py")
+    spec = importlib.util.spec_from_file_location("oqa_forensics_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _fx_row(qid="UID0001", *, fail="", pred="", hard=0, gt="7", finish=""):
+    return {"id": qid, "predicted_answer": pred, "hard": hard, "ground_truth": gt,
+            "fail_reason": fail, "last_finish_reason": finish}
+
+
+def _fx_call(n_messages=2, *, finish="stop", content=None, tokens=100, started="2026-11-17T10:00:00+00:00"):
+    kind = "null" if content is None else ("empty" if not str(content).strip() else "text")
+    return {"job": "j", "started_utc": started, "n_messages": n_messages, "attempt": 1, "outcome": "ok",
+            "finish_reason": finish, "content": content, "content_kind": kind,
+            "reasoning_content": None, "completion_tokens": tokens, "prompt_tokens": 1000,
+            "max_tokens": 8000}
+
+
+def test_the_held_out_call_logs_are_excluded_by_path_and_the_exclusion_is_reported():
+    """The held-out split is read once under its own procedure. This audit must not touch its logs."""
+    F = _forensics()
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        for rel in ("oqa_campaign_x/run_1/actor_calls.jsonl",
+                    "oqa_heldout_20261117/run_2/actor_calls.jsonl",
+                    "other/held_out_thing/run_3/actor_calls.jsonl"):
+            p = os.path.join(root, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("")
+        kept, skipped = F.call_log_files([root])
+        assert len(kept) == 1 and "oqa_campaign_x" in kept[0]
+        assert len(skipped) == 2
+        assert all("heldout" in s or "held_out" in s for s in skipped)
+
+
+def test_episodes_split_where_a_request_starts_over_at_two_messages():
+    """One key can hold several episodes: a training rollout and a slow-update pair rollout can run the
+    same skill over the same item in one job. Each episode's first call carries exactly the system and the
+    user message, so that is the boundary."""
+    F = _forensics()
+    calls = [_fx_call(2), _fx_call(4), _fx_call(6), _fx_call(2), _fx_call(4)]
+    eps = F.episodes_for_key(calls)
+    assert [len(e) for e in eps] == [3, 2]
+
+
+def test_each_branch_of_the_loop_is_named_from_the_raw_reply_not_guessed():
+    """`rollout.py` writes ONE fail_reason for three different provider behaviours, and no finish reason.
+
+    A turn with no tool call and no literal `<answer>` ends the episode whatever the content was, so the
+    row cannot tell an empty reply from prose or from a truncation. The raw reply can, and these are the
+    four shapes the campaign's own logs contain.
+    """
+    F = _forensics()
+    silent = "Model neither produced a tool request nor a final answer"
+    conv = {"present": True, "n_turns": 3, "n_tool_calls": 2, "unknown_tool_calls": 0,
+            "last_turn_had_tools": False}
+    empty = F.classify_row(_fx_row(fail=silent), conv, [_fx_call(content=None, tokens=920)], 24)
+    assert empty["category"] == "empty_reply_after_generating"
+    assert empty["raw_completion_tokens"] == 920, "the token count is what shows it generated and lost it"
+    nothing = F.classify_row(_fx_row(fail=silent), conv, [_fx_call(content=None, tokens=0)], 24)
+    assert nothing["category"] == "empty_reply_no_tokens"
+    cut = F.classify_row(_fx_row(fail=silent), conv,
+                         [_fx_call(finish="length", content="half a sen", tokens=8000)], 24)
+    assert cut["category"] == "completion_truncated_at_cap"
+    prose = F.classify_row(_fx_row(fail=silent), conv,
+                           [_fx_call(content="I think it is about 12 but I am not sure.")], 24)
+    assert prose["category"] == "prose_without_answer_tag"
+    unavailable = F.classify_row(_fx_row(fail=silent), conv, [], 24)
+    assert unavailable["category"] == "silent_turn_raw_unavailable"
+    # the two turn-budget endings, one of which the record never names
+    recorded = F.classify_row(_fx_row(fail="Exceeded tool-turn budget (24)"), conv, [_fx_call()], 24)
+    assert recorded["category"] == "turn_budget_exhausted_recorded"
+    fellthrough = F.classify_row(
+        _fx_row(fail="predicted '' but the scorer marked it incorrect"),
+        {"present": True, "n_turns": 24, "n_tool_calls": 24, "unknown_tool_calls": 0,
+         "last_turn_had_tools": True}, [_fx_call()], 24)
+    assert fellthrough["category"] == "turn_budget_exhausted_unrecorded"
+    assert F.classify_row(_fx_row(hard=1, pred="7"), conv, [], 24)["category"] == "answered_correct"
+    assert F.classify_row(_fx_row(pred="9"), conv, [], 24)["category"] == "answered_wrong"
+
+
+def test_an_answer_tag_in_a_tool_calling_turn_is_recorded_because_the_loop_ignores_it():
+    """`if message.tool_calls: ... continue` comes BEFORE the `<answer>` check, so a turn that does both
+    has its answer discarded. Whether that ever happened is a question about the records, and this is the
+    field that answers it."""
+    F = _forensics()
+    import tempfile, json as _json
+    with tempfile.TemporaryDirectory() as root:
+        conv = [{"role": "user", "content": "q"},
+                {"type": "message", "content": "<answer>42</answer> but let me check"},
+                {"type": "tool_call", "cmd": "read(path='/d/a.txt', start=1, limit=5)", "obs": "x"},
+                {"type": "message", "content": ""},
+                {"type": "tool_call", "cmd": "answer", "obs": "[tool error: unknown tool answer]"},
+                {"type": "message", "content": ""}]
+        with open(os.path.join(root, "conversation.json"), "w", encoding="utf-8") as f:
+            _json.dump(conv, f)
+        d = F.conversation_facts(root)
+        assert d["n_turns"] == 3 and d["n_tool_calls"] == 2
+        assert d["answer_tag_in_a_tool_calling_turn"] == [0]
+        assert d["unknown_tool_calls"] == 1 and d["unknown_tool_names"] == ["answer"]
+        assert d["first_unknown_turn"] == 1 and d["turns_after_first_unknown"] == 1
+        assert d["last_turn_had_tools"] is False
+
+
+def test_the_quoted_extractor_fallback_is_checked_against_the_live_source():
+    """The missed-extraction experiment runs the extractor's fallback over replies the loop never gave it.
+
+    `_extract_answer` cannot be imported without the model package, so its two-line fallback is quoted.
+    A quote that drifts from the source would silently change the experiment's answer, so the quote is
+    compared against `rollout.py` and this test fails if the comparison is not wired up or does not hold.
+    """
+    F = _forensics()
+    chk = F.verify_extractor_quote()
+    assert chk["checked"] is True, chk
+    assert chk["matches"] is True, "oqa_forensics._EXTRACTOR_QUOTE no longer matches rollout._extract_answer"
+    assert F.extract_answer("blah\n<answer> 42 </answer>\ntail") == "42"
+    assert F.extract_answer("first line\nlast line") == "last line"
+    assert F.extract_answer("") == ""
+
+
+def test_the_learners_expressible_space_is_enumerated_from_its_own_definition():
+    """What the learner COULD say is VERBS x TEMPLATES x polarity, and nothing about the actor's output.
+
+    The campaign learned 5 contracts. Whether that is few depends on the size of the space, which is 20 -
+    and the space contains no atom about an answer, a period, a unit or an arithmetic step, because every
+    atom is a property of one tool observation's text.
+    """
+    F = _forensics()
+    s = F.expressible_space()
+    assert s["n_expressible_contracts"] == 20, s["n_expressible_contracts"]
+    assert s["contract_kinds_possible"] == ["effect"]
+    assert s["atoms_in_the_template_set"]["glob"] == []
+    assert set(s["atoms_excluded_from_templates"]) == {
+        "has_table", "header_flat", "header_split", "row_period_bound", "scale_stated"}
+    joined = " ".join(c["reads"] for c in s["expressible_contracts"])
+    for word in ("answer", "period_match", "unit_match", "arith"):
+        assert word not in joined, f"{word!r} is not expressible, so it must not appear in the space"
+
+
+def test_two_different_provider_interactions_can_save_one_identical_trace():
+    """The saved trace keeps the assistant's CONTENT and the tool commands. When the content is empty the
+    record is the same whatever the model generated, so `trace_digest` can collide across epochs.
+
+    This is not hypothetical: arm C's epoch-3 trace for UID0019 is byte-identical to the shared epoch-1
+    trace (3 messages, all empty, 2 identical tool calls), which made one report look in-sample when the
+    attempt was fresh. A digest over a lossy record cannot establish that two attempts were the same.
+    """
+    F = _forensics()
+    import tempfile, json as _json
+    conv = [{"role": "user", "content": "q"},
+            {"type": "message", "content": ""},
+            {"type": "tool_call", "cmd": "grep(pattern='03/16/2016', path='/d/a.txt')", "obs": "hit"},
+            {"type": "message", "content": ""},
+            {"type": "tool_call", "cmd": "read(path='/d/a.txt', start=1, limit=50)", "obs": "rows"},
+            {"type": "message", "content": ""}]
+    with tempfile.TemporaryDirectory() as root:
+        digests = []
+        for epoch in ("e1", "e3"):
+            d = os.path.join(root, epoch, "UID0019")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "conversation.json"), "w", encoding="utf-8") as f:
+                _json.dump(conv, f)
+            with open(os.path.join(d, "target_user_prompt.txt"), "w", encoding="utf-8") as f:
+                f.write("## Question\nq\n")
+            digests.append(F._trace_digest(os.path.join(root, epoch), "UID0019"))
+        assert digests[0] == digests[1], "identical records, identical digest - which is the problem"
+        facts = F.conversation_facts(os.path.join(root, "e1", "UID0019"))
+        assert facts["n_turns"] == 3
+        assert all(not t["content"] for t in facts["turns"]), (
+            "every assistant content is empty, so the digest says nothing about what was generated")
