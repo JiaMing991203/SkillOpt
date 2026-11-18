@@ -1560,3 +1560,43 @@ ledger (same 7,909 usage records, same 8,503,592 completion tokens).
 branch; `compat_message_from_chat_message` drops finish_reason/reasoning_content/usage;
 `n_distinct_diagnoses` hard-coded for LC_ACTION; the model record's `epoch` field is the last change, not
 the freeze; `parent_sha256` null in all seven models; the in-sample test compares item ids.
+
+## OQA-FOLLOWUP — the HTTP probe (OQA-HTTP-1) and the connected-contract prototype (OQA-CC-1)
+
+**Date** 2026-11-18. **Grant** 3. **Spend** 23 of 24 EmpirioLabs attempts ($0.004679 provider-reported,
+$0.007213 at our price table), 3 of 6 DeepSeek attempts ($0.008363 ledger), 4.00 of 4 requested CPU
+job-hours over 17 jobs, zero GPUs. **Bundle** `oqa_fu_20261118`. **Tests** 2,259 passed, 9 skipped, 368
+subtests (job 66341945). **Report** `docs/research/OFFICEQA_FOLLOWUP_PACKET.md`.
+
+### OQA-HTTP-1
+
+Selection frozen before any request (`SELECTION.json`, digest `25718e4ed2f16c8c`): 396 terminal TRAINING
+calls indexed, 199 empty and 83 answered; EMPTY_1 = UID0163 arm A e2 (4,043 completion tokens), EMPTY_2 =
+UID0017 arm B e2 (4,028), ANSWERED_1 = UID0063 arm A e3 (729).
+
+| setting | sends | transmitted | `reasoning` returned | completion tokens | finish | empty terminal replies |
+|---|---|---|---|---|---|---|
+| historical replay | 9 | nothing added | 105–3,030 chars, every reply | 119–845 | 7 tool_calls, 2 stop | **2 of 9** |
+| `enable_thinking: false` | 9 | `{"enable_thinking": false}` | key absent | 82–180 | 9 tool_calls | 0 of 9 |
+| historical + fallback | 5 | nothing added | present | — | 5 tool_calls | 0 of 5 |
+
+**The defect:** `choices[0].message.reasoning` carried the model's text while `content` was null; the SDK
+surfaces it only through `model_extra`; the client read `content` and `reasoning_content`. One reproduced
+reply ends `<answer>[10102000000, 4.73]</answer>`. Outcome class: *content in the HTTP body lost in client
+handling*. Correction: `reasoning_text()` plus an off-by-default content fallback.
+
+### OQA-CC-1
+
+Record split rule v1 → 3 usable of 24, EMPTY checking set (binding constraint: 7 of 24 traces contain any
+number the actor wrote, 0 contain a stated conversion factor). Rule v2 → 8 traces: learning arm B e2
+UID0026/0028/0063/0163, checking arm B e3 UID0044/0079/0115 and arm C e3 UID0014; 4 ids reserved.
+
+| step | result |
+|---|---|
+| proposal | 1 DeepSeek call, 13,484 prompt / 1,489 completion tokens; a conditional `scale_binds` with a stated withdrawal; validated |
+| first compile | UNKNOWN on all 240 learning cells — `nearer_scale_between` had no evaluator; `unevaluable()` is now a second gate |
+| frozen model | `CC_MODEL_v1.json` `96c3d1bd9aad6f4d`, 180 HOLDS / 60 UNKNOWN / 0 CONFLICT of 240 cells |
+| prefix-only checking | 4 attempts, 24 committed predictions, all outcomes `unknown` (no trace states a factor) |
+| repair | **none: no counterexample in the permitted records.** Repair exercised by labelled constructed tests |
+| Lean | `OqaConnected.lean`, Lean 4.20.0, core only, **return code 0**, 23 evidence examples, 1 skipped |
+| comparison | automated verdicts 2 earlier_or_more_precise / 1 repeats / 1 unknown — and on inspection they overstate: the prototype bound YEARS where the historical stage report bound the real money operands and named the 1,000x error |

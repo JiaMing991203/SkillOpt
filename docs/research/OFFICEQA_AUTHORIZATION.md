@@ -61,9 +61,22 @@ Spent against Grant 3 — measured, updated as the work proceeds:
 
 | | attempts | charged | of the follow-up allowance |
 |---|---|---|---|
-| EmpirioLabs, HTTP response probe | 0 | $0.0000 | 0 of 24 / $1.00 |
-| DeepSeek, hypothesis proposals | 0 | $0.0000 | 0 of 6 / $2.00 |
-| CPU requested | 0.00 h | — | 0 of 4 job-hours |
+| EmpirioLabs, HTTP response probe (rule OQA-HTTP-1) | 23 | $0.004679 provider-reported | 23 of 24 / $1.00 |
+| DeepSeek, hypothesis proposals (rule OQA-CC-1) | 3 | $0.008363 | 3 of 6 / $2.00 |
+| CPU requested | 4.00 h over 17 jobs | — | 4.00 of 4 job-hours — EXHAUSTED |
+
+**The 23 probe attempts are NOT in the spend ledger**, and that is a deviation worth knowing about: the
+probe calls the OpenAI SDK directly, which it must in order to capture the raw HTTP body from the same
+exchange the SDK parsed, so it bypasses the backend where the ledger lives. The allowance was enforced
+instead by an in-process send cap, a per-job `--max-sends`, and a selection frozen before the first
+request; the charge above is the provider's own `cost_usd` from each saved exchange, and at this project's
+price table the same calls would be $0.007213. The 3 DeepSeek attempts DID go through the ledger. Two of
+them were spent on my own errors and are counted: a 400 from an unset model name, and a completion cap
+spent entirely on reasoning.
+
+Cumulative after Grant 3, measured: EmpirioLabs **10,181 of 30,024 attempts** (10,158 ledger + 23 probe)
+and **$6.8601 of $17.00**; DeepSeek **106 of 266 attempts** and **$3.5100 of $10.00**; CPU **31.6 of 44**
+requested job-hours; GPUs 0.
 
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 

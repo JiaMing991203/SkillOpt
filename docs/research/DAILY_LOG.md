@@ -1313,3 +1313,59 @@ as a margin. My first replacement guard and its test were both wrong too: a flat
 tolerance (unreachable at small record counts, exceedable by rounding at large ones) and a test that
 forged a one-cent gap by adding 0.01 to each stored `usd`, which moves both sums equally and proves
 nothing. The bound is now half a microdollar per record, which is what the arithmetic allows.
+
+## 2026-11-18 — the follow-up: the empty replies had answers in them, and one connected contract
+
+Two bounded investigations under Grant 3 (24 EmpirioLabs attempts / $1, 6 DeepSeek / $2, 4 requested CPU
+job-hours, zero GPUs, added to the cumulative ceilings). Report:
+`docs/research/OFFICEQA_FOLLOWUP_PACKET.md`. Amendments A-1 and B-1 were recorded BEFORE either was
+implemented, in `docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md`.
+
+**The finding.** Replaying two of the campaign's own recorded requests reproduced the empty terminal
+reply and settled it: HTTP 200, `choices[0].message.content = null`, no tool calls, and
+`choices[0].message.reasoning` holding 944 and 1,550 characters, each ending in a complete
+`<answer>[10102000000, 4.73]</answer>`. The provider's field is `reasoning`. The client read `content`
+and `reasoning_content`, found nothing, and the loop recorded "Model neither produced a tool request nor
+a final answer" — 331 of 528 selection observations. **This corrects yesterday's packet**, which reported
+`reasoning_content` null in all 7,909 logged attempts and took the hidden-reasoning hypothesis as
+refuted; it was refuted only for that spelling. Every score in the campaign was taken through this
+client, which puts a measurement defect upstream of the gate, the noise floor and the held-out result
+alike.
+
+The smallest correction reads the field — OFF by default so the frozen campaign's behaviour is unchanged
+— and it is proved offline against the real captured bodies: with it off the content is `""` and the
+cause is `empty_reply_content_null`; with it on, `_extract_answer` returns `[10102000000, 4.73]`.
+
+**What the provider documents decided the second setting.** For qwen3-5-4b, `enable_thinking` defaults to
+TRUE and `thinking_budget` to 4096, and the docs warn that "a very low max_tokens can be spent entirely
+on reasoning" — the campaign omitted all of it and the two empty replies the selection rule picked sit at
+4,043 and 4,028 completion tokens. Sending the documented top-level `enable_thinking: false` (not the
+`chat_template_kwargs` extension our qwen backend uses, which this provider does not document) was
+verified on the wire: transmitted, accepted, effective — the `reasoning` key vanishes and completion
+tokens fall about five-fold. 0 of 9 empty replies against 2 of 9 historical, which is not a performance
+finding.
+
+**The connected contract.** DeepSeek proposed a conditional binding rule with a stated withdrawal; it
+validated, then scored UNKNOWN on all 240 learning cells because one condition had no evaluator — a
+defect in my own split between well-formedness and evaluability, now a second gate. With the predicate
+implemented from the proposer's own stated reading (labelled GIVEN, not learned), the frozen model
+decides 180 of 240 cells, 24 predictions were committed prefix-only, and Lean 4.20.0 accepted every
+statement including that an unknown binding can never produce a violation. **No natural counterexample
+and no actionable diagnosis on these records**: all 24 checking outcomes are unknown, and the one
+apparent gain is an artifact of an operand reader that bound YEARS where the historical stage report had
+bound the real money operands and named the 1,000x error. The representation is the right shape; its
+value on this corpus was nil, and the reason is that the actor's written evidence use is mostly absent
+from the traces — which is the same finding again.
+
+**My own mistakes, each counted.** Two DeepSeek attempts went on an unset model name (the backend reads
+`OPTIMIZER_OPENAI_COMPATIBLE_MODEL`; it defaulted to gpt-4o-mini and DeepSeek answered 400) and on a
+2,000-token completion cap spent entirely on reasoning. Record-selection rule v1 produced an empty
+checking set and was replaced by v2 with both recorded. My first conflict ordering flattened every
+withdrawal into silence so a counterexample could never be seen, caught by a test. The probe's first
+outcome taxonomy called a tool-calling turn's unread reasoning "content lost", corrected and 12 saved
+outcomes re-derived offline. And the 23 probe sends are outside the spend ledger because the probe must
+call the SDK directly to capture the raw body — enforced by an in-process cap instead, and accounted from
+the provider's own cost_usd.
+
+Tests 2,259 passed, 9 skipped, 368 subtests (job 66341945). CPU exactly 4.00 of 4 requested job-hours over
+17 jobs, so no further job was submitted.

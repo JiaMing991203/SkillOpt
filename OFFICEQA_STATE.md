@@ -23,6 +23,53 @@ advice scored **3/60 and 8/60** — five questions, 8.3 points apart. Arm B's +3
 that. **Verified:** the scores. **Interpretation:** nothing here separates a skill effect from a draw, and
 the design could not have separated the arms at all, because only arm B has an edited selected skill.
 
+## THE FOLLOW-UP IS DONE -> `docs/research/OFFICEQA_FOLLOWUP_PACKET.md`
+
+**THE HEADLINE: the empty actor replies were never empty.** Replaying two of the campaign's own recorded
+requests (rule OQA-HTTP-1, job 66340531) returned HTTP 200, `content: null`, no tool calls — and
+`choices[0].message.reasoning` holding 944 and 1,550 characters, each ending in a complete
+`<answer>[10102000000, 4.73]</answer>`. The provider's field is **`reasoning`**; the client read `content`
+and `reasoning_content`. So a large share of the 331 empty terminal replies (62.7% of all 528 selection
+observations) were answers the client discarded. **This corrects OQA-FOR-1**, which reported
+`reasoning_content` null in all 7,909 logged attempts and treated the hidden-reasoning hypothesis as
+refuted — it was refuted only for that spelling.
+
+**Every score in the campaign was taken through that client.** The gate, the noise floor and the held-out
+comparison all sit downstream of it. Nothing in the frozen campaign was changed.
+
+### What is in force now
+
+* **Amendment A-1** (`docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md`): metadata through the
+  adapter, `last_response_metadata` in the local-tools loop, named termination causes, the provider cost
+  beside the ledger's, attempt/model provenance, and the Action-Only diagnosis counter redefined
+  (confirmations / model refutations / execution diagnoses / unknowns reported separately). Two tests
+  regenerate real historical reports byte-for-byte, so "metadata-only" is checked, not hoped.
+* **The client correction**: `SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK=reasoning` uses the reasoning
+  text when `content` is empty and there is no tool call. **OFF by default**, so the frozen campaign's
+  behaviour is still what runs unless asked for. Not a nudge and not a retry.
+* **`enable_thinking: false`** is documented for qwen3-5-4b (default **true**, `thinking_budget` 4096)
+  and was verified on the wire: transmitted, accepted (200), effective — the `reasoning` key disappears
+  and completion tokens fall ~5x. 0 of 9 empty replies under it against 2 of 9 historical. **Not a
+  performance finding.**
+* **Amendment B-1**, the connected-contract prototype (`oqa_cc_*.py`): bound entities, an applicability
+  condition, holds/violated/unknown/CONFLICT, versioned repair, a stage link, enforced provenance labels.
+  Frozen model `96c3d1bd9aad6f4d` decides 180 of 240 learning cells; 24 prefix-only predictions committed
+  before the later steps were read; **Lean 4.20.0 return code 0, all statements accepted**.
+  **No natural counterexample in the permitted records, and no actionable diagnosis on them** — all 24
+  checking outcomes are `unknown`, and its one apparent gain is an artifact of a weak operand match that
+  bound YEARS. Its value here was nil; the machinery works.
+
+### The next action the evidence supports (NOT another campaign)
+
+1. Repeat the existing S0 measurement on the 24 selection questions **with the client correction in
+   force** — 8 draws, 1,984 attempts, $1.26, ~2.9 core-hours — because every earlier score came through
+   the broken client.
+2. Give the prototype `oqa_lc_chain`'s operand and cell matching instead of its own. Code only, no data.
+3. Only then ask whether a contract layer adds anything, on traces recorded through the corrected client.
+
+**Allowance left of Grant 3:** 1 EmpirioLabs attempt, 3 DeepSeek attempts, **0 CPU job-hours** (4.00 of 4
+requested, exhausted). A further step needs a new allocation.
+
 ## THE FORENSICS AUDIT IS DONE -> `docs/research/OFFICEQA_FORENSICS_PACKET.md`
 
 Rule OQA-FOR-1, tool `research/officeqa/oqa_forensics.py` (`noanswer`, `contracts`), job **66338091**

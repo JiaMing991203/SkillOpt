@@ -88,3 +88,6 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-18T01:20:29Z	66338091	oqa_forensics	empty replies + contract machinery (OQA-FOR-1) - 0 attempts, $0.00	4cf50fc
 2026-11-18T01:20:29Z	66338092	oqa_tests	full suite - 2223 passed	4cf50fc
 2026-11-18T01:28:13Z	66339127	oqa_tests	full suite after the reconciler fix - 2225 passed	a45a8d6
+2026-11-18T02:25:55Z	66340531/66340747/66340926/66341060	oqa_http_probe	OQA-HTTP-1: 23 sends; the answer was in message.reasoning	1a3dc30
+2026-11-18T02:25:55Z	66341664/66341945	oqa_cc	OQA-CC-1: 1 DeepSeek proposal, frozen model, Lean rc 0	7b6141b
+2026-11-18T02:25:55Z	66341945	oqa_tests	2259 passed 9 skipped 368 subtests	7b6141b

@@ -296,3 +296,215 @@ and `nearer_scale_between` is implemented from the proposer's **own stated readi
 column header or row label stating a different money scale — with that reading labelled `GIVEN`, because
 choosing what a predicate means is an implementation decision and only "its absence implies the binding"
 is the learned part.
+
+### Learning, freezing, prefix-only checking, repair, recheck
+
+1. **Learn and freeze.** `CC_MODEL_v1.json`, digest `96c3d1bd9aad6f4d`, `frozen_at_epoch 2`,
+   `evidence_attempts` naming the four learning attempts by trace key and content digest. Score
+   recomputed at freeze time over the learning records: **180 HOLDS, 60 UNKNOWN, 0 CONFLICT of 240
+   cells.** (The score stored with the proposal was 240 UNKNOWN, taken before `nearer_scale_between` had
+   an evaluator; the freeze recomputes rather than echoing it.)
+2. **Check the later records in order, prefix only.** 4 attempts, **24 committed predictions**. Each
+   prediction and its stage requirement are written out before any later step is read, and
+   `oqa_cc_check.Revealer` raises if that order is broken.
+3. **Repair.** `repaired=False`: **no counterexample exists in the permitted checking records** — no
+   checked cell had its conditions met and its conclusion contradicted. Reported, not manufactured. The
+   repair machinery is exercised by two clearly-labelled CONSTRUCTED tests
+   (`test_a_repair_narrows_the_condition_and_keeps_the_old_version`,
+   `test_a_cell_the_condition_does_not_cover_is_silence_not_a_counterexample`), which demonstrate
+   software behaviour and nothing about the corpus.
+4. **Recheck.** Not reached, because no repair occurred. The code path that would do it re-runs the
+   repaired version over the LEARNING records, so a narrowed condition that broke what the hypothesis
+   was induced from would show.
+
+### One committed prediction in full — arm C epoch 3, UID0014
+
+```
+contract            scale.binds@v1
+committed_at_step   45        prefix_steps 45   (nothing past step 45 was read to make this)
+operand             "1942"  value 1942.0
+  context           "I have the data needed. Let me extract the values:
+                     **From treasury_bulletin_1942_07.txt (in thousands of dollars):**
+                     - Income and profit taxes, Individual column for year ..."
+cell                raw "1942"  row_label "1942"  column null  column_basis UNKNOWN
+                    scale "thousands"  source {supplied_page}
+binding clauses
+  table_states_scale(table,scale)    want True  observed True   [OBS]
+      evidence {table_scale: "thousands", origin: {kind: "supplied_page"}}
+  cell_in_table(cell,table)          want True  observed True   [GIVEN]
+  nearer_scale_between(table,cell)   want False observed False  [OBS]
+      evidence {column_unit: null, differing: [],
+                reading: "the cell's own column header or row label states a different money scale",
+                reading_provenance: "GIVEN (the proposer's stated withdrawal_reason)"}
+  -> binding HOLDS, scale thousands
+REQUIREMENT committed before reading on
+  obligation unit_match, required_exp -6   ("thousands -> billions requires 10^-6")   [MATH]
+RESOLUTION after reading the later steps
+  state OUTSTANDING, outcome unknown: "the binding requires a factor of 10^-6 and no step states one"
+```
+
+### The action-to-stage connection, and the actual Lean result
+
+The binding witnesses `unit_match`. Resolved through it: an UNKNOWN or CONFLICT binding gives UNKNOWN; a
+holding binding with no stated factor gives OUTSTANDING; with the required factor, DISCHARGED; with
+another factor, VIOLATED and the reason names the mismatch ("wrong by 10^3").
+
+`OqaConnected.lean`, Lean 4.20.0, core only, no Mathlib. **Return code 0 — all statements accepted**, 23
+evidence examples encoded, 1 skipped and reported (a holding binding whose asked scale was not a money
+scale, so it cannot be encoded in the finite domain).
+
+| statement | what it establishes |
+|---|---|
+| `unknownBindingNeverViolates` | an UNKNOWN or CONFLICT binding never resolves to VIOLATED — withdrawing a binding may withdraw a discharge, it may never manufacture an accusation |
+| `dischargeNeedsTheBinding` | DISCHARGED implies the binding HOLDS; contrapositively, withdraw the binding and the witness goes |
+| `violationNeedsAMismatch` | a VIOLATED obligation implies the used exponent differs from the required one |
+| `requiredExp thousands billions = -6`, `!= -3`, and the difference is 3 | the definitional arithmetic behind arm C UID0014's "wrong by 1,000x" — labelled MATH, not a discovery |
+| 23 × `example ... := by decide` | the Python side's recorded state is what the Lean definitions produce from the same inputs — the two implementations checked against each other over the actual records |
+
+**What Lean does NOT establish**, and this is the whole of it: that the extraction bound the right table,
+cell, column or operand (a trusted input); that the learned applicability condition is true of the
+Treasury corpus (empirical, and the checking set is four attempts); that a reported violation caused a
+wrong answer; and nothing whatever about the actor's reasoning.
+
+### The comparison — saved analysis, historical contract report, new prototype report
+
+The automated verdicts, from a deliberately narrow rule, were: `earlier_or_more_precise` 2 (UID0044,
+UID0115), `repeats_what_was_available` 1 (UID0014), `remains_unknown` 1 (UID0079). **On inspection those
+verdicts overstate the prototype, and the excerpts are why.**
+
+```
+UID0044  (arm B, epoch 3)                                     automated verdict: earlier_or_more_precise
+  ORDINARY SkillOpt analysis  "Agent stalled and produced no final <answer>, even when the needed figure
+                               was already on the supplied oracle page or an early read."
+  HISTORICAL contract report  obligations {DISCHARGED 1, UNKNOWN 1}; no unit_match line
+  PROTOTYPE                   operand "1" binding HOLDS -> OUTSTANDING: "the binding requires a factor
+                              of 10^0 and no step states one"   (x3, all committed at step 3)
+  MY READING: this is not a better diagnosis. A required factor of 10^0 is "no conversion needed", and
+  the operands are "1" and "3" - digits the operand reader picked out of prose. The verdict is
+  "earlier_or_more_precise" only because the historical report happened to have no unit_match line.
+
+UID0014  (arm C, epoch 3 - the 1,000x case)              automated verdict: repeats_what_was_available
+  ORDINARY SkillOpt analysis  "Agent stalled with no tool call and no <answer> block even when the
+                               needed rows were already read or present in the oracle page."
+  HISTORICAL contract report  obligations {DISCHARGED 32, OUTSTANDING 16, UNKNOWN 43, VIOLATED 11},
+                              14 distinct diagnoses, and these lines:
+      - **VIOLATED** [unit_match] the value used must be in the asked scale (billions) -- the same for
+        10 value(s)
+      - **OUTSTANDING** [unit_match] ... -- the same for 13 value(s)
+  PROTOTYPE                   operand "1942" binding HOLDS -> OUTSTANDING, required 10^-6
+                              operand "07"   binding HOLDS -> OUTSTANDING, required 10^-3
+  MY READING: the HISTORICAL report is better here. It bound the real money operands (2,410,259
+  thousands, 3,471,122r thousands) and named the 1,000x error with witnesses. The prototype matched
+  YEARS - "1942", "1929", "07" - because its operand reader takes any number out of a message and its
+  cell matcher accepts a row label read as a numeric cell. It got the REQUIREMENT right (10^-6 for
+  thousands -> billions) and the OPERAND wrong.
+```
+
+**So: on these records the prototype produced no actionable diagnosis.** All 24 checking outcomes are
+`unknown`; no VIOLATED; no counterexample; and its one apparent gain is an artifact of a narrow verdict
+rule over a weak operand match. What it did demonstrate is the machinery: a frozen model, a condition
+that decides 180 of 240 learning cells, a prediction committed before the observation, a stage link that
+cannot turn an unknown into an accusation, versioned repair, and a Lean file that compiles.
+
+---
+
+## 5. Changes, tests, costs, allowance, deviations
+
+### Changed
+
+| file | change |
+|---|---|
+| `skillopt/model/common.py` | metadata through the adapter; `reasoning_text`; the off-by-default content fallback |
+| `skillopt/model/openai_compatible_backend.py` | hands the response to the adapter; logs tool calls, unmodelled fields and the reasoning field; passes the provider cost |
+| `skillopt/model/spend_ledger.py` | records `provider_cost_usd`; the guard is unchanged |
+| `skillopt/envs/officeqa/rollout.py` | `last_response_metadata` in the local-tools loop; `_no_answer_cause`; the named exits and the new row fields |
+| `research/officeqa/oqa_reports.py` | the diagnosis counter's definition; `diagnosis_counts`; `attempt_provenance`; `trace_digest` delegates |
+| `research/officeqa/oqa_trace.py` | the one definition of `trace_digest` |
+| `research/officeqa/oqa_lc_ir.py`, `oqa_lc_arm.py` | `parent_sha256`, `frozen_at_epoch`, `evidence_attempts` |
+| `research/officeqa/oqa_lc_report.py`, `oqa_lc_replay.py` | the in-sample note tests the attempt; the replay carries its identity |
+| new | `oqa_http_probe.py`, `oqa_cc_ir.py`, `oqa_cc_check.py`, `oqa_cc_learn.py`, `oqa_cc_run.py`, `oqa_cc_lean.py`, `oqa_probe_body.sh`, `oqa_cc_body.sh`, two test files, two docs |
+
+### Tests — **2,259 passed, 9 skipped, 368 subtests** (job 66341945)
+
+Up from 2,225 before this follow-up. The ones that carry the argument: the two that regenerate real
+historical reports byte-for-byte; the four built from the real captured `reasoning` reply; the
+unevaluable-condition gate named after the real proposal that exposed it; and the stage-link invariant
+that mirrors the first Lean theorem.
+
+### Costs, against Grant 3
+
+| resource | allowance | used | left |
+|---|---|---|---|
+| EmpirioLabs attempts | 24 | **23** | 1 |
+| EmpirioLabs charge | $1.00 | **$0.004679** provider-reported ($0.007213 at our price table) | ~$0.995 |
+| DeepSeek attempts | 6 | **3** (one 400 on a wrong model name, one truncated at a 2,000-token cap, one that worked) | 3 |
+| DeepSeek charge | $2.00 | **$0.008363** (ledger, peak prices) | ~$1.99 |
+| CPU requested | 4 job-hours | **4.00** over 17 jobs, 2 CPUs each | 0 |
+| GPUs | 0 | 0 | — |
+
+### Operational deviations, all recorded
+
+1. **The 23 probe sends are NOT in the spend ledger.** The probe calls the SDK directly — it must, to
+   capture the raw body from the same exchange — so it bypasses the backend where the ledger lives. The
+   allowance was enforced instead by an in-process send cap, a per-job `--max-sends`, and the frozen
+   selection; the accounting above comes from the provider's own `cost_usd` in each saved exchange, so
+   nothing is unaccounted, but the cumulative actor figures in the authorization must be updated by hand.
+2. **The CPU allowance is exactly exhausted** at 4.00 of 4 requested job-hours, so no further job was
+   submitted. Two phases were combined into one job to fit.
+3. **Two DeepSeek attempts were spent on my own errors**: the backend reads
+   `OPTIMIZER_OPENAI_COMPATIBLE_MODEL`, which I had not set, so it defaulted to `gpt-4o-mini` and
+   DeepSeek answered 400; and a 2,000-token completion cap was spent entirely on reasoning
+   (`finish_reason: "length"`, 8,788 characters of `reasoning_content`, no JSON). Both are counted.
+4. **Record-selection rule v1 produced an empty checking set** and was replaced by rule v2 after the
+   outcome was seen. Both rules and both outcomes are recorded; v1's outcome is itself a finding.
+5. **The evaluator for `nearer_scale_between` was written after `CC_MODEL_v1` was frozen**, from the
+   proposer's own stated reading. The frozen model is unchanged, but what it MEANS depends on a checker
+   commit written later, and that is recorded here rather than left implicit.
+6. **The live check of the client correction never reproduced an empty terminal reply** in 5
+   fallback-enabled sends, so it is proved offline against the real captured bodies and not live.
+7. The probe's outcome taxonomy was wrong on first use (it labelled a tool-calling turn's unread
+   reasoning "content lost in client handling"); 12 saved outcomes were re-derived offline, which cost
+   no requests.
+
+---
+
+## 6. Interpretation, kept separate from the evidence above
+
+* **I think the empty-reply finding changes how every number in the campaign should be read.** Scores
+  were taken through a client that discarded answers whenever the model put them in `reasoning`, and the
+  rate at which that happened is unknown and was not constant. That is a *measurement* defect, not a
+  skill effect, and it sits upstream of the gate, the noise floor and the held-out comparison alike.
+* **I do not think the `enable_thinking: false` result is a performance finding.** It is a wire-level
+  verification that the documented flag is accepted and effective. Whether an actor run with thinking off
+  answers more questions is untested here.
+* **I think the connected representation is the right shape and the wrong size.** A condition that can be
+  narrowed, a conflict that can be reported, and a stage link that cannot invent an accusation are all
+  things the restricted form lacks and this prototype has. But its value on these records was nil, and
+  the reason is not the representation: it is that the actor's written evidence use is mostly absent from
+  the traces, and that the operand-to-cell matching is far weaker than `oqa_lc_chain`'s.
+* **What I would do next, in order.** (1) Repeat the existing S0 selection-set measurement with the
+  client correction in force — 8 draws, 1,984 attempts, $1.26, ~2.9 core-hours by the measured
+  constants — because without it every earlier score is through the broken client. (2) Reuse
+  `oqa_lc_chain`'s operand and cell matching in the prototype instead of its own, which is a code change
+  with no new data. (3) Only then ask whether a contract layer adds anything, and ask it on traces
+  recorded through the corrected client.
+* **What I would not do.** Another training campaign, an empty-response nudge, or an episode retry —
+  each changes the actor harness and needs its own specified comparison.
+
+### Artifacts
+
+```
+<campaign>/followup_20261118/http_probe/SELECTION.json                 frozen selection 25718e4ed2f16c8c
+<campaign>/followup_20261118/http_probe/EXCHANGES_*.json               4 files, 23 exchanges, five layers each
+<campaign>/followup_20261118/connected_contract/CC_RECORDS.json        rule v1 and its empty checking set
+<campaign>/followup_20261118/connected_contract/CC_RECORDS_v2.json     the frozen 4+4 split, 4e34cfc16c8ebd7f
+<campaign>/followup_20261118/connected_contract/CC_PROMPT.txt          what the proposer was shown
+<campaign>/followup_20261118/connected_contract/PROPOSAL.json          the reply, parsed and compiled
+<campaign>/followup_20261118/connected_contract/CC_MODEL_v1.json       frozen 96c3d1bd9aad6f4d
+<campaign>/followup_20261118/connected_contract/CC_CHECK_{learning,checking}.json
+<campaign>/followup_20261118/connected_contract/CC_REPAIR.json         repaired=False, and why
+<campaign>/followup_20261118/connected_contract/CC_COMPARE.json        the three reports side by side
+<campaign>/followup_20261118/connected_contract/OqaConnected.lean      + CC_LEAN.json (return code 0)
+docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md                    A-1 and B-1
+bundle oqa_fu_20261118, jobs 66340342-66341945
+```
