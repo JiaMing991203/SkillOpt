@@ -248,6 +248,11 @@ def plan(ledger: str, *, exited_jobs: set[str] | None, assume_all_exited: bool) 
             "recorded_attempts": used_a, "recorded_usd": round(used_u / 1e6, 6),
             "recorded_usd_float_sum": round(used_u_float, 8),
             "float_minus_micro_usdmicro": round(used_u_float * 1_000_000 - used_u, 3),
+            "recorded_usage_records": sum(r["roles"].get(role, {}).get("resolved", 0)
+                                          for r in st["owners"].values()),
+            "float_minus_micro_bound_usdmicro": round(
+                0.5 * max(1, sum(r["roles"].get(role, {}).get("resolved", 0)
+                                 for r in st["owners"].values())) + 1.0, 1),
             "would_release_attempts": rel.get("attempts", 0),
             "would_release_usd": round(rel.get("usdmicro", 0) / 1e6, 6),
             "net_claimed_attempts_after": ca - rel.get("attempts", 0),
@@ -263,13 +268,19 @@ def plan(ledger: str, *, exited_jobs: set[str] | None, assume_all_exited: bool) 
                             f"${b['net_claimed_usd']:.4f} - the invariant spent <= claimed is BROKEN")
         if b["net_claimed_usd_after"] + 1e-9 < b["recorded_usd"]:
             problems.append(f"{role}: the plan would release actual charges, which rule {RULE} forbids")
-        # The two ways of summing the same charges must agree to within per-record rounding. A few
-        # microdollars over ten thousand records is arithmetic; a cent is a different kind of problem and
-        # the plan should stop rather than guess which figure is the spend.
-        if abs(b["float_minus_micro_usdmicro"]) > 1_000:
-            problems.append(f"{role}: the float sum of the charges and the per-record integer sum differ by "
-                            f"{b['float_minus_micro_usdmicro']:.0f} microdollars, which is more than "
-                            f"rounding can explain")
+        # The two sums are computed from the SAME `usd` field, one rounded per record and one not, so
+        # they cannot differ by more than half a microdollar per record. That makes this a self-check on
+        # the arithmetic rather than a check on the data: it cannot be provoked by any ledger, and it
+        # fires only if a later change computes the two sums from different places. My first version used
+        # a flat 1,000-microdollar threshold, which is both unreachable at small record counts and
+        # exceedable by rounding alone at large ones.
+        bound = 0.5 * max(1, b["recorded_usage_records"]) + 1.0
+        if abs(b["float_minus_micro_usdmicro"]) > bound:
+            problems.append(f"{role}: the float sum of the charges and the per-record integer sum differ "
+                            f"by {b['float_minus_micro_usdmicro']:.1f} microdollars over "
+                            f"{b['recorded_usage_records']} record(s), more than the "
+                            f"{bound:.1f} that per-record rounding can produce - the two sums are no "
+                            f"longer being taken from the same charges")
     if st["claimed_unattributed"]:
         problems.append(f"claims with no owner recorded: {st['claimed_unattributed']} - these are never "
                         f"released, because the process that made them cannot be shown to have exited")

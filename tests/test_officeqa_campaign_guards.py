@@ -2545,25 +2545,38 @@ def test_a_reconciled_ledger_with_no_slack_left_still_reconciles(tmp_path, monke
     assert LEDGER._granted()[("target", "usdmicro")] >= micros
 
 
-def test_a_real_disagreement_between_the_two_sums_stops_the_plan(tmp_path, monkeypatch):
-    """A few microdollars is rounding. A cent is not, and then the planner must not pick a figure."""
+def test_the_two_ways_of_summing_the_charges_are_checked_against_what_rounding_can_do():
+    """Both sums come from the same `usd` field, so their gap is bounded by half a microdollar a record.
+
+    My first attempt at this guard used a flat 1,000-microdollar threshold and my first attempt at this
+    TEST forged a one-cent disagreement by adding 0.01 to each stored `usd` -- which moves both sums
+    equally and proves nothing. The gap is an arithmetic property, not a property of the data: it cannot
+    be provoked by any ledger. So the guard is a self-check on the code, the bound is the right one, and
+    this test asserts the relation rather than pretending to violate it.
+    """
     R = _reconciler()
-    _apply(_env(str(tmp_path), attempts=200, usd=5.0, block_usd=0.05, reserve=0.02), monkeypatch)
-    LEDGER._state.clear()
-    LEDGER._owner = "778r0p1"
-    LEDGER.reserve("target", "test")
-    LEDGER.record_usage("target", "test", 1000, 10)
-    LEDGER._state.clear()
-    # Forge a usage record whose float value disagrees with the per-record integer by a whole cent.
-    path = os.path.join(str(tmp_path), "spend", "778r0p1.jsonl")
-    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
-    for r in rows:
-        if r.get("kind") == "usage":
-            r["usd"] = float(r["usd"]) + 0.01
-    with open(path, "w", encoding="utf-8") as f:
-        for r in rows:
-            f.write(json.dumps(r) + "\n")
-    monkeypatch.setattr(R, "_live_jobs", lambda: set())
-    plan = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
-    assert any("more than\nrounding can explain" in p.replace("  ", " ") or "more than rounding" in p
-               for p in plan["problems"]), plan["problems"]
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        os.makedirs(os.path.join(root, "spend"), exist_ok=True)
+        os.makedirs(os.path.join(root, "claims"), exist_ok=True)
+        # 2,000 sub-microdollar charges: each rounds to 0 micros and adds 4e-7 to the float sum, which is
+        # the largest per-record divergence rounding can produce.
+        with open(os.path.join(root, "spend", "900r0p1.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps({"schema": "lso.spend_ledger.v1", "kind": "config", "role": "target",
+                                "reserve_usd": 0.02, "cap_usd": 5.0, "cap_attempts": 5000,
+                                "block_usd": 0.05, "block_attempts": 2}) + "\n")
+            for _ in range(2000):
+                f.write(json.dumps({"schema": "lso.spend_ledger.v1", "kind": "attempt",
+                                    "role": "target", "stage": "t"}) + "\n")
+                f.write(json.dumps({"schema": "lso.spend_ledger.v1", "kind": "usage", "role": "target",
+                                    "stage": "t", "prompt_tokens": 1, "completion_tokens": 1,
+                                    "cached_prompt_tokens": 0, "usd": 4e-07}) + "\n")
+        plan = R.plan(root, exited_jobs=None, assume_all_exited=True)
+        b = plan["by_role"]["target"]
+        assert b["recorded_usage_records"] == 2000
+        assert b["recorded_usd"] == 0.0, "every charge rounds to zero microdollars"
+        assert abs(b["float_minus_micro_usdmicro"] - 800.0) < 1.0, b["float_minus_micro_usdmicro"]
+        assert b["float_minus_micro_bound_usdmicro"] == 1001.0
+        assert abs(b["float_minus_micro_usdmicro"]) <= b["float_minus_micro_bound_usdmicro"]
+        assert not any("no longer being taken from the same charges" in p
+                       for p in plan["problems"]), plan["problems"]
