@@ -279,6 +279,19 @@ cc)
     LEAN_BIN="${OQA_LEAN_BIN:-/nfs/turbo/umms-csriram/yaojm/lean/elan/toolchains/leanprover--lean4---v4.20.0/bin/lean}"
     "$OQA_PY" -I research/officeqa/oqa_cc_lean.py --check "$CC/CC_CHECK_checking.json" \
         --out "$CC" --lean-bin "$LEAN_BIN" 2>&1 | tee "$OUTDIR/cc_lean.txt" || status=$?
+    # The S0 summary runs here because this phase is free and runs after the paid passes. It reads
+    # whatever passes exist and says how many; it does not wait for eight.
+    if [ -d "$FU/s0_repeat" ]; then
+        PASSARGS=()
+        for d in "$FU"/s0_repeat/p*; do
+            [ -f "$d/results.jsonl" ] && PASSARGS+=(--pass "$(basename "$d")=$d")
+        done
+        if [ "${#PASSARGS[@]}" -gt 0 ]; then
+            log "summarising the corrected-client S0 measurement (${#PASSARGS[@]} pass(es) found)"
+            "$OQA_PY" -I research/officeqa/oqa_s0repeat.py "${PASSARGS[@]}" --out "$FU/s0_repeat" \
+                2>&1 | tee "$OUTDIR/s0_summary.txt" || log "NOTE: the S0 summary failed"
+        fi
+    fi
     ;;
 s0)
     PASSES="${PASSES:?set PASSES to the number of passes}"

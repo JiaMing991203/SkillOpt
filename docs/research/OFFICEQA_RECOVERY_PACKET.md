@@ -429,7 +429,30 @@ episode traces existed (22:42–22:51).**
 
 ## 6. Workstream B — re-scoring, re-checking, and what it actually produced
 
-_(filled in from job 66346xxx below)_
+_(results below)_
+
+### A finding that connects the two workstreams, and bears on every future contract experiment
+
+The narrow policy recovers the committed answer and nothing else — deliberately, and because the
+instruction forbids exposing reasoning prose to the learner. The consequence is measurable in the new
+traces. Counting the assistant messages a trace-based checker can actually read:
+
+| condition | non-empty assistant messages per episode | total actor characters in the trace |
+|---|---|---|
+| A — thinking on, answer recovered | **1** (the answer block) in all six episodes | **20–36** |
+| B — `enable_thinking: false` | 1, 3, 5 / 1, 4, 7 | **575–8,864** |
+
+Under condition A **0 of 45 captured replies had non-null `content`**, including every tool-calling turn,
+so the actor's intermediate written reasoning is absent from the trace even now. That is the direct cause
+of B-1's binding constraint — "only 7 of 24 traces contain any number the actor wrote in a message" — and
+no amount of repair to the extraction can read text that is not there.
+
+**So the contract layer cannot be evaluated on traces recorded with thinking on.** Restoring the actor's
+written reasoning to a trace means either running with thinking off (which changes what the actor does,
+and is a condition that needs its own comparison) or deliberately putting reasoning text into the trace
+(which the instruction rules out for the learner). That is a decision about the next experiment's design,
+not a defect to fix, and it is the user's.
+
 
 ---
 
