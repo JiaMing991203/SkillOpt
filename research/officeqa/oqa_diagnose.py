@@ -307,7 +307,10 @@ def trace_features(pred_dir: str) -> dict:
         cmd = str(entry.get("cmd") or "")
         calls.append(cmd)
         m = CMD.match(cmd)
-        name = m.group(1) if m else "?"
+        # A call the actor wrote as a bare name, with no argument list at all -- which is how every one of
+        # this campaign's 211 attempts to call a nonexistent `answer` tool is recorded. Requiring a "("
+        # filed them all as unparseable instead of as the invented tool they are.
+        name = m.group(1) if m else (cmd.strip().split("(")[0].strip() or "?")
         tools[name] = tools.get(name, 0) + 1
         for pm in re.finditer(r"path\s*=\s*'([^']*)'", cmd):
             paths.add(os.path.basename(pm.group(1)))
@@ -317,6 +320,8 @@ def trace_features(pred_dir: str) -> dict:
         entry_empty = ("[no matches]" in obs) or (not obs.strip())
         if entry_empty:
             tools["__empty_obs"] = tools.get("__empty_obs", 0) + 1
+        if "[tool error: unknown tool" in obs:
+            tools["__unknown_tool_error"] = tools.get("__unknown_tool_error", 0) + 1
     dupes = len(calls) - len(set(calls))
     invented = {k: v for k, v in tools.items()
                 if k not in REAL_TOOLS and not k.startswith("__")}
@@ -331,6 +336,7 @@ def trace_features(pred_dir: str) -> dict:
         "n_distinct_patterns": len(set(pats)),
         "invented_tool_calls": invented,
         "n_empty_observations": tools.get("__empty_obs", 0),
+        "n_unknown_tool_errors": tools.get("__unknown_tool_error", 0),
         "assistant_chars": sum(len(t) for t in assistant_text),
         "last_assistant_chars": len(assistant_text[-1]) if assistant_text else 0,
     }
@@ -600,6 +606,7 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
         src_changed, tool_delta, rep_delta = [], [], []
         invented: dict[str, int] = {}
         tool_total = 0
+        unknown_total = 0
         for r in rows:
             qid = r["id"]
             c = classify(r, max_turns)
@@ -624,6 +631,7 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
                     for k, v in (c["trace"].get("invented_tool_calls") or {}).items():
                         invented[k] = invented.get(k, 0) + v
                     tool_total += c["trace"]["n_tool_calls"]
+                    unknown_total += c["trace"].get("n_unknown_tool_errors", 0)
                 if with_traces and b.get("trace", {}).get("present") and c["trace"].get("present"):
                     if set(b["trace"]["files_touched"]) != set(c["trace"]["files_touched"]):
                         src_changed.append(qid)
@@ -644,6 +652,7 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
             "repeated_calls_delta_mean": (sum(rep_delta) / len(rep_delta)) if rep_delta else None,
             "tool_calls_total": tool_total,
             "invented_tool_calls": invented,
+            "unknown_tool_errors": unknown_total,
         }
 
     for qid, rec in per_question.items():
@@ -660,15 +669,18 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
 
     s0_invented: dict[str, int] = {}
     s0_tool_total = 0
+    s0_unknown = 0
     for v in base.values():
         t = v.get("trace") or {}
         if t.get("present"):
             s0_tool_total += t["n_tool_calls"]
+            s0_unknown += t.get("n_unknown_tool_errors", 0)
             for k, n in (t.get("invented_tool_calls") or {}).items():
                 s0_invented[k] = s0_invented.get(k, 0) + n
     tot = {
         "s0_tool_calls_total": s0_tool_total,
         "s0_invented_tool_calls": s0_invented,
+        "s0_unknown_tool_errors": s0_unknown,
         "s0_correct": sum(1 for v in base.values() if v["outcome"] == "correct"),
         "s0_outcomes": {},
         "candidate_correct_total": sum(g["correct"] for g in per_gate.values()),

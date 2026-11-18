@@ -2191,7 +2191,7 @@ def test_replicates_are_grouped_by_skill_and_question_set_and_the_spread_is_repo
                                  ("step", 3, "# c3", set(), "reject")]})
         # both epochs' TRAINING rollouts ran the same document (every candidate was rejected); give them
         # different outcomes on the same questions, which is what temperature does
-        for epoch, correct in ((2, {ids[0], ids[1]}), (3, {ids[3]})):
+        for epoch, correct in ((2, {ids[0], ids[1]}), (3, {ids[0], ids[3]})):
             p = os.path.join(root, "arm_A", "steps", f"step_{epoch:04d}", "rollout", "results.jsonl")
             _dg_write_jsonl(p, [_dg_row(q, skill="# S0\n- do the thing.",
                                         hard=1 if q in correct else 0,
@@ -2206,7 +2206,7 @@ def test_replicates_are_grouped_by_skill_and_question_set_and_the_spread_is_repo
         # group. In the real campaign the splits are disjoint (train 24, val 24, test 60, no overlap), so
         # the baseline forms a group of its own and drops out.
         assert {m["label"] for m in g["members"]} == {"A.2.train", "A.3.train", "S0.baseline"}
-        assert g["n_replicates"] == 3 and g["scores"] == [1, 1, 2]
+        assert g["n_replicates"] == 3 and g["scores"] == [1, 2, 2]
         assert g["range_in_questions"] == 1
         assert g["questions_always_correct"] == [ids[0]]
         assert g["questions_never_correct"] == [ids[2]]
@@ -2251,7 +2251,37 @@ def test_one_rollout_copied_into_three_arms_is_one_measurement_not_three():
                                               "rollout", "results.jsonl"))
         doc = D.cmd_replicates(root)
         collapsed = {c["duplicate_of_it"] for c in doc["identical_measurements_collapsed"]}
-        assert collapsed == {"B.1.train", "C.1.train"}, collapsed
-        for g in doc["groups"]:
-            labels = [m["label"] for m in g["members"]]
-            assert not ("B.1.train" in labels and "C.1.train" in labels)
+        # The copies must be among the collapsed. Others are too, and legitimately: `_dg_row` is
+        # deterministic, so every all-wrong rollout in this fixture is literally the same measurement.
+        assert {"B.1.train", "C.1.train"} <= collapsed, collapsed
+        kept = [m["label"] for g in doc["groups"] for m in g["members"]]
+        assert "B.1.train" not in kept and "C.1.train" not in kept
+        # and the one that was kept says which labels shared its measurement
+        shared = {x for g in doc["groups"] for m in g["members"]
+                  for x in (m.get("same_measurement_as") or [])}
+        assert {"B.1.train", "C.1.train"} <= shared or not doc["groups"]
+
+
+def test_a_bare_tool_name_is_an_invented_tool_not_an_unparseable_line():
+    """The campaign's 211 calls to a nonexistent `answer` tool are all recorded as a bare name.
+
+    `conversation.json` stores them as `{"cmd": "answer", "obs": "[tool error: unknown tool answer]"}` --
+    no argument list at all. A parser that requires "(" files every one of them under "?" and the count of
+    invented calls comes out as zero, which is the opposite of what the records say. Several arms' edits
+    tell the actor "There is no `answer` tool - never call one", so whether it kept doing it is exactly
+    the question this count has to be able to answer.
+    """
+    D = _diag()
+    import tempfile, json as _json
+    with tempfile.TemporaryDirectory() as root:
+        conv = [{"role": "user", "content": "q"},
+                {"type": "tool_call", "cmd": "grep(pattern='x', path='/d/a.txt')", "obs": "hit"},
+                {"type": "tool_call", "cmd": "answer", "obs": "[tool error: unknown tool answer]"},
+                {"type": "tool_call", "cmd": "calculate", "obs": "[tool error: unknown tool calculate]"}]
+        with open(os.path.join(root, "conversation.json"), "w", encoding="utf-8") as f:
+            _json.dump(conv, f)
+        f = D.trace_features(root)
+        assert f["invented_tool_calls"] == {"answer": 1, "calculate": 1}, f["invented_tool_calls"]
+        assert f["tools"]["grep"] == 1
+        assert f["n_unknown_tool_errors"] == 2
+        assert "?" not in f["invented_tool_calls"]
