@@ -235,9 +235,18 @@ cc)
         drop_all_keys
         log "every API key dropped: the re-score, the recheck, the comparison and Lean send nothing"
     fi
-    log "1/5 verifying the frozen bundle still describes the code that is about to run"
+    # THE BUNDLE IN FORCE FOR THIS CHECK. v2 was frozen in PHASE=prep; if the checker's source has
+    # changed since, the honest move is to freeze the CURRENT meaning under its own label, run the
+    # check under that, and report what moved between the two - which is the whole purpose of a bundle.
+    log "1/5 freezing the bundle in force for this check, then naming what moved since v2"
+    "$OQA_PY" -I research/officeqa/oqa_cc_bundle.py freeze \
+        --model "$CC18/CC_MODEL_v1.json" --records "$CC18/CC_RECORDS_v2.json" \
+        --prompt "$CC18/CC_PROMPT.txt" --out "$CC" --label v3 \
+        2>&1 | tee "$OUTDIR/bundle_freeze_v3.txt" || status=$?
+    "$OQA_PY" -I research/officeqa/oqa_cc_bundle.py verify --bundle "$CC/CC_BUNDLE_v3.json" \
+        2>&1 | tee "$OUTDIR/bundle_verify_v3.txt" || log "NOTE: v3 reports changed components"
     "$OQA_PY" -I research/officeqa/oqa_cc_bundle.py verify --bundle "$CC/CC_BUNDLE_v2.json" \
-        2>&1 | tee "$OUTDIR/bundle_verify.txt" || log "NOTE: the bundle reports changed components"
+        2>&1 | tee "$OUTDIR/bundle_verify_v2.txt" || log "NOTE: v2 reports changed components"
     log "2/5 re-scoring the EXISTING hypothesis on the repaired learning records"
     "$OQA_PY" -I research/officeqa/oqa_cc_run.py check \
         --model "$CC18/CC_MODEL_v1.json" --records "$CC18/CC_RECORDS_v2.json" \
