@@ -36,15 +36,21 @@ MEASURED.** Rules OQA-REC-2 and OQA-CC-2; amendments A-2 and B-2. Everything new
    conditions. Under condition A (the historical generation payload) **all six answers came out of
    `message.reasoning`**, and under the old client all six episodes would have ended with no answer.
    Job 66346256.
-2. **S0 on the 24 validation questions, through the corrected client: the answer-emission rate went from
-   6 of 24 to about 21 of 24, and the score from 4 of 24 to a mean near 10.** Eight passes, jobs
-   66346539 / 66346540 / 66351468. **The campaign's entire gate was run at a quarter of the actor's real
-   answer rate**, and its one acceptance was on a margin of ONE question against a draw-to-draw sd of
-   about 1.5.
+2. **S0 on the 24 validation questions, through the corrected client: 9.75 of 24 on average (range 7–12:
+   11, 9, 12, 11, 9, 11, 8, 7) with 21.25 of 24 answers emitted, against the campaign's recorded
+   4 of 24 with 6 emitted.** Eight passes, jobs 66346539 / 66346540 / 66351468, zero provider errors in
+   1,476 attempts. **The campaign's entire gate ran at a quarter of the actor's real answer rate and
+   under half its real score**, and its one acceptance was on a margin of ONE question against a
+   draw-to-draw sd of **1.753** with **10 of 24 questions flipping between draws**.
 3. **The connected contract's extraction was repaired and its one apparent gain disappeared with it.**
-   The repaired reader rejects the years B-1 bound (`1942`, `07`) and keeps the money operands
-   (`2,410,259`, `3,471,122`). On these records it produces **no actionable diagnosis at all** — which is
-   the honest outcome, not a failure of the run.
+   The repaired reader rejects the years B-1 bound (`1942`, `07`) and finds the real money operands
+   (`8006880`, `1211749`, `1004461` on UID0014) — and then refuses to bind them, because each matches
+   several cells that disagree. All four comparison verdicts are `remains_unknown`, 0 findings, 0
+   well-bound findings; no counterexample; **Lean 4.20.0 return code 0, every statement accepted**. The
+   obstacle is now measured rather than guessed: **1,484 to 2,022 of the data cells in these records have
+   no bound column header**, and the applicability condition needs one, so the contract is silent by
+   construction on this corpus. The same holds on the 12 new traces (descriptive check), including the
+   thinking-off ones that DO contain the actor's numbers.
 
 ### What is in force now (all OFF by default, so the frozen campaign still reproduces)
 
@@ -92,6 +98,10 @@ condition that needs its own comparison. That is a design decision, not a defect
 Pushing this branch; GPUs; weakening the validation gate; unsealing job 66234927; using held-out
 questions, answers or trajectories outside the released protocol; empty-response nudges or episode
 retries; another training campaign; altering the frozen campaign's artifacts.
+
+### Tests
+
+**2,321 passed, 9 skipped, 368 subtests** (job 66352312, commit `4572c61`).
 
 ### Ready to run
 
@@ -325,15 +335,18 @@ pre-ledger DeepSeek probe of job 66271290 is subtracted from the enforced cap).
 
 | resource | cumulative ceiling | spent, measured | left | used |
 |---|---|---|---|---|
-| EmpirioLabs attempts | 30,024 | _see the packet §8_ | | |
-| EmpirioLabs charge | $17.00 | _see the packet §8_ | | |
+| EmpirioLabs attempts | 30,024 | 11,756 (ledger, incl. the 23 back-filled) | 18,268 | 39% |
+| EmpirioLabs charge | $17.00 | $7.8344 | $9.1656 | 46% |
 | DeepSeek calls | 266 | 106 | 160 | 40% |
 | DeepSeek charge | $10.00 | $3.5100 | $6.4900 | 35% |
-| CPU requested job-hours | 44 | _see the packet §8_ | | |
+| CPU requested job-hours | 44 | 38.5 (31.6 before + 6.88 this follow-up) | 5.5 | 88% |
 | GPUs | 0 | 0 | — | — |
 
 **Grant 4's own suballocation** (5,000 attempts / $4.00 actor, 4 / $1.00 optimizer, 8 requested CPU
 job-hours, 0 GPUs) was drawn from that headroom and verified against it before anything was submitted.
+**Used: 1,598 attempts, $0.9789, 0 DeepSeek calls, 6.88 requested job-hours, 0 GPUs.** Left in it: 3,402
+attempts, $3.02, 4 DeepSeek calls, 1.12 job-hours. **CPU is now the binding constraint on the whole
+authorization at 88% of 44 requested job-hours.**
 The caps the jobs enforce are ABSOLUTE and were computed once: **target 15,181 / $10.8626, optimizer
 109 / $4.4688**. A cap derived from "what has been spent so far" would hand every job a fresh allowance.
 

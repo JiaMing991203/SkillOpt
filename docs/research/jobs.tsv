@@ -91,3 +91,14 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-18T02:25:55Z	66340531/66340747/66340926/66341060	oqa_http_probe	OQA-HTTP-1: 23 sends; the answer was in message.reasoning	1a3dc30
 2026-11-18T02:25:55Z	66341664/66341945	oqa_cc	OQA-CC-1: 1 DeepSeek proposal, frozen model, Lean rc 0	7b6141b
 2026-11-18T02:25:55Z	66341945	oqa_tests	2259 passed 9 skipped 368 subtests	7b6141b
+66346074	oqa-fu2-tests	241f8e8	FAILED	the A-2 regression tests caught two defects
+66346177	oqa-fu2-tests	241f8e8	COMPLETED	2318 passed
+66346233	oqa-fu2-prep	241f8e8	COMPLETED	ledger backfill, episode plan, replay, bundle v2
+66346256	oqa-fu2-episodes	241f8e8	COMPLETED	12 episodes, 12 answers, 12 correct
+66346322	oqa-fu2-cc	241f8e8	FAILED	prediction shape + undecidable Lean statements
+66346539	oqa-fu2-s0-a	7e4a69a	COMPLETED	S0 passes 1-4
+66346540	oqa-fu2-s0-b	7e4a69a	TIMEOUT	S0 passes 5-7 and 11 of pass 8
+66351468	oqa-fu2-s0-top-up	7e4a69a	FAILED	pass 8 finished; body script replaced under the job
+66352197	oqa-fu2-cc	0e04284	COMPLETED	CC re-score/recheck/compare/Lean rc0 + S0 summary
+66352245	oqa-fu2-cc	fa8f1c3	FAILED	all work done; v3 freeze refused a provenance-only diff
+66352312	oqa-fu2-tests	4572c61	COMPLETED	2321 passed, 9 skipped, 368 subtests

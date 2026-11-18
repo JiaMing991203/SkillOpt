@@ -1600,3 +1600,40 @@ UID0026/0028/0063/0163, checking arm B e3 UID0044/0079/0115 and arm C e3 UID0014
 | repair | **none: no counterexample in the permitted records.** Repair exercised by labelled constructed tests |
 | Lean | `OqaConnected.lean`, Lean 4.20.0, core only, **return code 0**, 23 evidence examples, 1 skipped |
 | comparison | automated verdicts 2 earlier_or_more_precise / 1 repeats / 1 unknown — and on inspection they overstate: the prototype bound YEARS where the historical stage report bound the real money operands and named the 1,000x error |
+
+---
+
+## 2026-11-18 — OfficeQA answer recovery, verified end to end, and S0 re-measured (rules OQA-REC-2, OQA-CC-2)
+
+Full evidence: `docs/research/OFFICEQA_RECOVERY_PACKET.md`. Amendments A-2 and B-2. Bundle
+`oqa_fu2_20261118`, commits `0119b4f` → `4572c61`. All output under
+`$CAMP/followup_20261119/`; the frozen campaign and `followup_20261118/` unchanged.
+
+| job | phase | state | elapsed | what it produced |
+|---|---|---|---|---|
+| 66346074 | tests | FAILED | 0:56 | caught the misplaced row init and the adapter metadata guarantee |
+| 66346177 | tests | COMPLETED | 1:04 | 2,318 passed |
+| 66346233 | prep | COMPLETED | 0:05 | ledger backfill (23 / $0.007213), episode plan `a93d9eb6f4e58f40`, replay of the 23 saved bodies, bundle v2 `7809287366d50598` |
+| 66346256 | episodes | COMPLETED | 8:58 | **12 episodes, 12 answers, 12 correct**; 95 exchanges captured; 6 recovered from `reasoning` |
+| 66346322 | cc | FAILED | 0:09 | caught the prediction shape and the two undecidable Lean statements |
+| 66346539 | s0 | COMPLETED | 1:09:44 | passes 1–4: 11, 9, 12, 11 |
+| 66346540 | s0 | TIMEOUT | 1:20:00 | passes 5–7: 9, 11, 8; pass 8 at 11 of 24 rows |
+| 66351468 | s0 top-up | FAILED | 18:28 | pass 8 finished (24 rows, hard 7); died afterwards on a body script replaced under it |
+| 66352197 | cc | COMPLETED | 0:08 | re-score, recheck, compare, repair, Lean rc 0, S0 summary |
+| 66352245 | cc | FAILED | 0:12 | all work done; non-zero only because the v3 bundle freeze refused a provenance-only difference |
+| 66352312 | tests | COMPLETED | 0:59 | **2,321 passed, 9 skipped, 368 subtests** |
+
+**S0, 24 validation questions, eight passes, corrected client (condition A):** 11, 9, 12, 11, 9, 11, 8,
+7 — **mean 9.75, sd 1.753, range 7–12**; answers emitted 22, 19, 21, 22, 21, 22, 20, 23 (**mean 21.25**);
+recovered from the discarded field 16, 13, 17, 17, 15, 15, 12, 12; **zero provider errors in 1,476
+attempts**; one skill and one settings fingerprint across all passes. **The campaign recorded 4/24 with 6
+emitted for the same skill on the same questions.** Paired: 5 questions always correct, 9 never, **10
+flip**, 1 never answered.
+
+**Connected contract after the extraction repair:** 19 learning and 23 checking predictions, **0
+VIOLATED / 0 OUTSTANDING / 0 DISCHARGED**, all four comparison verdicts `remains_unknown`, no
+counterexample, **Lean 4.20.0 return code 0**. The measured obstacle: 1,484–2,022 of the data cells in
+these records have no bound column header, which the applicability condition requires.
+
+**Cost:** 1,598 actor attempts, $0.9789 at our price table ($0.6257 provider-reported), **0 DeepSeek
+calls**, 6.88 requested CPU job-hours, 0 GPUs.

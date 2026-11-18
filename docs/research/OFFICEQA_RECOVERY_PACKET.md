@@ -43,9 +43,22 @@ and what remains on these records is `extraction_error` and `unknown`, with **ze
 survive inspection. The B-1 report's single "earlier_or_more_precise" verdict is now classified
 correctly. The machinery is sounder and its yield on these records is still nil.
 
-**(d) The corrected baseline measurement.** _(§7)_
+**(d) The corrected baseline measurement, and it is the number that reframes the campaign.** S0 on the
+same 24 validation questions, eight passes through the corrected client: **score 9.75 of 24 on average
+(7–12), answers emitted 21.25 of 24 (19–23)**, with 14.6 of those answers recovered from the discarded
+field. The campaign recorded **4 of 24 with 6 answers emitted** for the same skill on the same questions.
+**So the campaign's entire gate ran at a quarter of the actor's real answer rate and under half its real
+score** — the 21 candidate gates, the one acceptance on a margin of one question, the noise floor and the
+held-out comparison all sit downstream of that. Draw-to-draw sd is 1.753, and **ten of twenty-four
+questions flip between draws of the same document**. Zero provider errors in 1,476 attempts, and all 21
+unanswered rollouts have a named cause (§7).
 
-**(e) What the evidence justifies next.** _(§9)_
+**(e) What the evidence justifies next.** Not another campaign. The cheapest thing that would change what
+the campaign *means* is to re-measure the **held-out** comparison of its two distinct documents through
+the corrected client — 120 question-rollouts, about $0.62. Before any further contract work, the sample
+size has to come from the measured sd (one draw per arm cannot see a difference below ~7 questions of
+24), and two non-code obstacles have to be settled: traces need the actor's written reasoning in them,
+and the contract's condition needs a column-header scope that these observations mostly lack (§9).
 
 ---
 
@@ -431,7 +444,130 @@ episode traces existed (22:42–22:51).**
 
 ## 6. Workstream B — re-scoring, re-checking, and what it actually produced
 
-_(results below)_
+### Re-scoring and re-checking (job 66352245, Lean 4.20.0 **return code 0**)
+
+The existing hypothesis `scale.binds@v1` was re-scored and re-checked; **no new proposal was needed and
+no DeepSeek call was made**, because `unevaluable()` reports no unevaluable predicate — the condition is
+still decidable by the checker, which is the test for whether a new proposal is necessary.
+
+| | learning records (4) | reserved checking records (4) |
+|---|---|---|
+| predictions committed | 19 | 23 |
+| operand verdicts | MONETARY 19 | MONETARY 23 |
+| unique cell match | 8 | 3 |
+| ambiguous cell match | 4 | 9 |
+| no cell match | 7 | 11 |
+| resolution UNKNOWN | 8 | 3 |
+| resolution VIOLATED / OUTSTANDING / DISCHARGED | **0 / 0 / 0** | **0 / 0 / 0** |
+| traces with no monetary operand at all | 2 of 4 (UID0026, UID0163) | 1 of 4 (UID0044) |
+
+**Every comparison verdict is `remains_unknown` (4 of 4), with 0 findings and 0 well-bound findings.**
+B-1's `earlier_or_more_precise` ×2 and `repeats_what_was_available` ×1 are gone — they were artifacts of
+a weak operand match, and the repaired reader no longer produces them.
+
+### The clearest single comparison: arm C's UID0014, the campaign's real 1,000× error
+
+```
+HISTORICAL contract report (arm C, epoch 3)
+  obligations {DISCHARGED 32, OUTSTANDING 16, UNKNOWN 43, VIOLATED 11}, 14 distinct diagnoses
+  - **VIOLATED** [unit_match] the value used must be in the asked scale (billions) -- the same for
+    10 value(s)
+  bound the real operands: 2,410,259 and 3,471,122r thousands
+
+B-1 PROTOTYPE          operand "1942" binding HOLDS -> OUTSTANDING, required 10^-6
+                       operand "07"   binding HOLDS -> OUTSTANDING, required 10^-3
+                       automated verdict: repeats_what_was_available
+
+B-2 PROTOTYPE          operands 8006880, 1211749, 1004461, 1211749  [all MONETARY]
+                       -> extraction_error: ambiguous_cell_match  (x4)
+                       55 tables, 2,117 data cells, 77 row-label cells dropped,
+                       1,484 of 2,117 cells have NO bound column header
+                       verdict: remains_unknown, 0 findings
+```
+
+**The operand reader is now right and the cell matcher is now honest.** B-2 finds the actual money
+figures the actor wrote — not the years — and then refuses to bind them, because each matches several
+data cells that disagree about scale, column or row. That is the correct behaviour and it yields nothing.
+
+### Why it yields nothing, measured rather than guessed
+
+The applicability condition needs the cell's own **column header** to be observed before it can say that
+no nearer unit overrides the table's. In the permitted records that scope is almost never there:
+
+| record | data cells | with **no** bound column header |
+|---|---|---|
+| UID0028 (learning) | 2,073 | **2,022** |
+| UID0063 (learning) | 125 | **125** |
+| UID0079 (checking) | 1,799 | **1,799** |
+| UID0115 (checking) | 898 | **898** |
+| UID0014 (checking) | 2,117 | **1,484** |
+
+So `nearer_scale` returns UNKNOWN, the binding is UNKNOWN, and the contract is **silent by
+construction** on this corpus. The observations are mostly `grep` fragments of pipe rows, which carry
+numbers without the header rows that give a column its name. **This is the concrete obstacle, and it is
+not in the representation and not in the learner:** the condition asks for a scope the tool output does
+not usually provide.
+
+### Repair, and the honesty about what was not reached
+
+`repaired=False`: **no counterexample exists in the permitted checking records** — no checked cell had
+its conditions met and its conclusion contradicted. Reported, not manufactured. The repair machinery is
+exercised only by clearly-labelled **constructed** tests, which demonstrate software behaviour and
+nothing about the corpus. The recheck-on-learning path was therefore not reached.
+
+### The descriptive check over the twelve new episode traces
+
+Permitted by the instruction and **labelled descriptive-only in the records file itself**: nothing about
+these traces was reserved in advance and three questions test nothing. **The semantic bundle was frozen
+at 22:41:28 and the first episode started at 22:42:30**, so the bundle predates the records.
+
+12 traces, digest `6045dcd49310a240`. The result sharpens §6 rather than adding to it:
+
+* **condition A traces** (thinking on): 4 of 6 have **no monetary operand at all** — the trace holds the
+  answer block and nothing else. The two that do have one offer only the answer's own value
+  (`10102000000`), which matches no cell, correctly.
+* **condition B traces** (thinking off): the actor's real operands are there — `$10,102`, `$6,001`,
+  `$1,058`, `86,000`, `81,774`, `3,550`, `3,475` — and every one ends UNKNOWN (no bound header) or
+  ambiguous. **Zero bindings, zero findings, again.**
+
+So even with the actor's written reasoning restored, the contract says nothing about these records, and
+the reason is the header scope, not the missing text. That is a more useful negative result than B-1's.
+
+### The Lean result (`OqaConnected.lean`, Lean 4.20.0 core only, **return code 0**)
+
+| statement | what it establishes |
+|---|---|
+| `unknownBindingNeverViolates` | an UNKNOWN or CONFLICT binding never resolves to VIOLATED |
+| `withdrawalReopensTheObligation` | a CONFLICT resolves to **REOPENED** — a withdrawal is a fact about the evidence, not a silent "unknown", and never an accusation |
+| `dischargeNeedsTheBinding` | DISCHARGED implies the binding HOLDS |
+| `violationNeedsTheBinding` | so does an accusation |
+| `unknownNeverAccusesWhateverTheConversion`, `withdrawalNeverAccusesWhateverTheConversion` | over every conversion verdict, carry state and pair of scales |
+| `requiredExp s s = 0` and `resolve .holds s s .noneStated none _ = .discharged` at every money scale | an already-compatible unit needs **no** factor — B-1's UID0044 false alarm, refuted definitionally |
+| a missing factor → OUTSTANDING; a correct factor not carried through → OUTSTANDING; an incorrect one → VIOLATED | the three-question conversion, by exhaustion |
+| `requiredExp thousands billions = -6`, `≠ -3`, difference 3 | the "wrong by 1,000×" arithmetic — labelled MATH, not a discovery |
+| 3 × `example … := by decide` | the Python side's recorded state is what the Lean definitions produce from the same inputs, over the actual records |
+
+Only **3** evidence examples this time, against B-1's 23, because the repaired extraction commits far
+fewer resolvable predictions — which is the point of the repair, not a regression in the checking.
+
+**What remains a TRUSTED EXTRACTION INPUT, and is not verified by Lean:** that the extraction bound the
+right table, cell, column or operand; that the learned applicability condition is true of the Treasury
+corpus; that a reported violation caused a wrong answer; and anything at all about the actor's reasoning.
+
+### The semantic bundle did its job, including the awkward case
+
+```
+v3  verifies=True        <- the meaning in force IS the meaning frozen
+v2  verifies=False       CHANGED code_sha256.oqa_cc_check.py
+                         CHANGED code_sha256.oqa_cc_extract.py
+                         CHANGED code_sha256.oqa_cc_lean.py
+```
+
+v2 was frozen in `PHASE=prep`; two correctness fixes landed in the checker afterwards, and the bundle
+**named exactly which three components moved** instead of letting the check run under an unstated
+meaning. That is the whole purpose of the mechanism, and it is the first time it has been exercised
+against a real change.
+
 
 ### A finding that connects the two workstreams, and bears on every future contract experiment
 
@@ -460,16 +596,257 @@ not a defect to fix, and it is the user's.
 
 ## 7. The corrected-client S0 reproducibility measurement
 
-_(filled in from jobs 66346539 / 66346540 below)_
+**Authorized to proceed because Workstream A left no unresolved client defect.** Condition A — the
+historical generation payload with answer-field recovery — was the primary configuration, and was NOT
+switched to thinking-off on the strength of the development episodes. The frozen S0 skill
+(`9d377d1c2906`), the existing 24-question validation set, unchanged tools, corpus, scorer and episode
+limits. Eight passes, each in its own output directory. Jobs 66346539, 66346540, 66351468.
+
+### Per pass
+
+| pass | hard / 24 | soft (mean) | answers emitted | from recovery | HTTP attempts | provider errors |
+|---|---|---|---|---|---|---|
+| p1 | 11 | 0.458 | 22 | 16 | 154 | 0 |
+| p2 | 9 | 0.375 | 19 | 13 | 215 | 0 |
+| p3 | **12** | 0.500 | 21 | 17 | 202 | 0 |
+| p4 | 11 | 0.458 | 22 | 17 | 148 | 0 |
+| p5 | 9 | 0.396 | 21 | 15 | 190 | 0 |
+| p6 | 11 | 0.458 | 22 | 15 | 178 | 0 |
+| p7 | 8 | 0.333 | 20 | 12 | 212 | 0 |
+| p8 | **7** | 0.292 | 23 | 12 | 177 | 0 |
+| **mean** | **9.75** | 0.409 | **21.25** | 14.6 | 184.5 | **0** |
+| sd / range | 1.753 / 7–12 | | 19–23 | 12–17 | | |
+
+**One skill and one settings fingerprint across all eight passes** (checked, not assumed), so a
+difference between passes is attributable to the actor's sampling at temperature 0.7 with no seed — not
+to configuration. **Zero provider errors in 1,476 logged attempts**; the only transport anomaly anywhere
+was four requests in flight when job 66346540 was killed at its wall limit, which the ledger records as
+unresolved and whose reserve it does not release.
+
+### Against what the campaign recorded for the same skill on the same questions
+
+| | the campaign (one draw, broken client) | this measurement (8 draws, corrected client) |
+|---|---|---|
+| score | **4 / 24** | **9.75 / 24** mean (7–12) |
+| answers emitted | **6 / 24** | **21.25 / 24** mean (19–23) |
+| answers from the discarded field | — | **14.6 / 24** mean |
+
+**The campaign's entire gate ran at a quarter of the actor's real answer rate, and at under half its real
+score.** Every number in it — the 21 candidate gates, the one acceptance on a margin of one question, the
+noise floor, the held-out comparison — sits downstream of that.
+
+### Where the remaining 2.75 unanswered questions go, with nothing unexplained
+
+Termination causes over the 179 completed question-rollouts (8 passes + the 11 rows of pass 8's first,
+killed run):
+
+```
+  111  answer_recovered_from_reasoning
+   47  answer_emitted                     (ordinary content; the provider is not uniform)
+   17  tool_turn_budget_exhausted_after_tool_call      <- the exit A-1 named, invisible before
+    3  completion_truncated_at_cap
+    1  empty_reply_content_null+recovery_incomplete_answer_tag   <- the policy refusing half an answer
+```
+
+21 of 179 rollouts produced no answer and **every one of them has a named cause**. Notably 47 answers
+did arrive in ordinary `content`, so "the provider always uses `reasoning`" is false; it was true of all
+45 replies in the three episode questions, and is true of about 70% of answers here.
+
+### Paired, question by question — the part that matters for any future comparison
+
+| | count | questions |
+|---|---|---|
+| answered in all 8 passes | 20 of 24 | |
+| **never answered at all** | 1 | UID0161 |
+| **always correct (8/8)** | 5 | UID0072, UID0142, UID0190, UID0233, UID0235 |
+| never correct (0/8) | 9 | UID0027, UID0041, UID0052, UID0109, UID0154, UID0161, UID0213, UID0220, UID0240 |
+| **flip between draws** | **10** | UID0001, UID0039, UID0070, UID0086, UID0091, UID0159, UID0170, UID0217, UID0234, UID0239 |
+
+```
+question  correct/8  answered/8  recovered/8      question  correct/8  answered/8  recovered/8
+UID0001       2          8           6            UID0142       8          8           6
+UID0027       0          4           0            UID0154       0          8           3
+UID0039       1          8           2            UID0159       1          8           7
+UID0041       0          8           5            UID0161       0          0           0
+UID0052       0          7           3            UID0170       5          8           4
+UID0070       5          7           5            UID0190       8          8           5
+UID0072       8          8           8            UID0213       0          2           1
+UID0086       4          7           7            UID0217       7          8           7
+UID0091       2          8           7            UID0220       0          8           7
+UID0109       0          8           8            UID0233       8          8           8
+                                                  UID0234       7          8           7
+                                                  UID0235       8          8           6
+                                                  UID0239       4          8           5
+UID0240       0          7           0
+```
+
+**Ten of twenty-four questions flip across draws of the SAME document.** Five are stable successes and
+nine are stable failures; the measurement's entire variance lives in those ten.
+
+### What this is not
+
+A post hoc baseline on a validation set that has already been used. **It does not repair the historical
+training or gate decisions**, it is not a new comparison of the contract approaches, and it says nothing
+about the held-out split. Low accuracy is not a technical failure: 9.75 of 24 is what this actor and this
+skill do on these questions when the client reads the reply.
+
 
 ---
 
 ## 8. Costs, allowance and deviations
 
-_(filled in below)_
+### Spent against Grant 4, measured
+
+| resource | suballocation | used | left |
+|---|---|---|---|
+| EmpirioLabs attempts | 5,000 | **1,598** = 23 back-filled + 95 episodes + 1,480 S0 | **3,402** |
+| EmpirioLabs charge, this project's price table | $4.00 | **$0.9789** | **$3.02** |
+| EmpirioLabs charge, provider-reported | — | $0.6257 ($0.0163 episodes + $0.6046 S0 + $0.0047 historical) | — |
+| DeepSeek attempts | 4 | **0** — no new proposal was necessary | 4 |
+| DeepSeek charge | $1.00 | **$0.00** | $1.00 |
+| CPU requested job-hours | 8 | **6.88** over 14 jobs, 2 CPUs each | **1.12** |
+| GPUs | 0 | **0** | — |
+
+Actual consumption was **6.02 core-hours** (3.01 wall-hours); the requested figure is what the allowance
+counts and it is the larger reading. **Ledger verdict: PASS.** The ledger now reads target **11,756
+attempts / $7.834371** and optimizer **105 / $3.468882** cumulatively — both inside the absolute caps of
+15,181 / $10.8626 and 109 / $4.4688. Provider errors: **0**. Retries: **0**. Preflight requests: **0** —
+the route guard proves the dispatch path (`target=openai_compatible|https://api.empiriolabs.ai/v1|qwen3-5-4b`)
+without sending anything, and it ran on every paid phase.
+
+### Deviations, all of them
+
+1. **1.17 of the 6.88 requested job-hours went to three jobs that never started** and are still counted,
+   because requested time is what the allowance counts: a `cc` job submitted as a third concurrent job
+   (the allocation allows two, so it was cancelled within seconds), a malformed top-up submission, and a
+   `cc` job cancelled because the bundle could not be rebuilt from a dirty tree.
+2. **Job 66346540 hit its 1:20 limit with pass 8 at 11 of 24 rows.** A complete pass is skipped and a
+   partial one resumes by question id, so the top-up paid only for the 13 rollouts never taken. The
+   instruction is to preserve all planned results, so the eighth pass was finished rather than dropped.
+   **Four requests were in flight when Slurm killed that job**; the ledger records them as unresolved and
+   does not release their reserve, which is the conservative treatment.
+3. **I replaced the bundle's body script while job 66351468 was executing it.** Bash reads a script
+   lazily, so it resumed parsing new bytes at an old offset and died on a syntax error — after pass 8's
+   24 rows were complete. The measurement is intact; the job's own end-of-run ledger report and key scan
+   were lost, so **I ran the key scan by hand** (no key in any artifact). The standing rule "do not
+   rebuild a bundle while a job is queued" now extends to **running** jobs.
+4. **Three jobs failed first, each on a real defect in my own new code**, each fixed before anything paid
+   ran on it: the misplaced row initialisation and the adapter's metadata guarantee (§3), the prediction
+   shape and the two Lean statements core cannot decide (§5, §6), and an import path for the descriptive
+   records. One more — job 66352245 — exited non-zero after completing all its work, because re-running
+   the same check from a later commit changes `configuration.commit`, which the bundle digest covers, so
+   the v3 freeze refused to rewrite a file whose every semantic component was identical. `cmd_freeze` now
+   distinguishes a provenance-only difference from a change of meaning, with a test for both directions.
+5. **The episodes ran with `env.workers=1`** against the campaign's 4, identically in both conditions, so
+   that each episode's captured exchange sequence is unambiguous. Concurrency is not a generation
+   setting.
+6. **The 23 back-filled probe sends are charged with the cache ignored** ($0.007213, not the provider's
+   $0.004679), because that is how the backend charges a live call for this provider.
+7. **The semantic bundle was frozen twice**, v2 before any record was re-read and v3 for the meaning
+   actually in force. Both are verified in §6.
+
+### Tests
+
+**2,321 passed, 9 skipped, 368 subtests** (job 66352312), up from 2,259 before this follow-up. The ones
+that carry the argument: the eleven reply shapes of the recovery policy, the trace-content assertion
+(`said == ["<answer>[10102000000, 4.73]</answer>"]`), the no-tools row regression, the operand classifier
+on the real UID0014 text, the four ways a scope can fail to be observed, and the bundle's two directions.
 
 ---
 
 ## 9. What the evidence justifies next
 
-_(filled in below)_
+### The decision that is yours
+
+**Every number in the frozen campaign was taken at a quarter of the actor's real answer rate.** Nothing
+here changed them and nothing should without your word. Three options, cheapest first:
+
+1. **Leave the campaign as a recorded negative result**, with the defect documented. **$0.** It is
+   already honest: its own evidence packets say the measurement was wider than every effect it chased.
+2. **Re-measure the held-out comparison only** — the two distinct documents of the primary comparison
+   (S0 and arm B's selected skill) on the 60 held-out questions, through the corrected client. At this
+   measurement's rate of 7.7 attempts per question-rollout: **120 question-rollouts, ~930 attempts,
+   ~$0.62 at our price table, ~1.5 requested job-hours.** This is the only number that was ever the
+   primary result, and it is the cheapest thing that would change what the campaign *means*.
+3. **Re-run the three-arm campaign.** I would advise against it until the sample-size question below is
+   settled. The client defect is fixed; the design's other problem is not.
+
+### The sample-size arithmetic, from this measurement rather than from the broken one
+
+Draw-to-draw sd is **1.753 of 24** for one fixed document. At 80% power and a two-sided 5% test, a
+difference below
+
+| draws per arm | is undetectable below |
+|---|---|
+| 1 | **6.9 questions of 24** |
+| 2 | 4.9 |
+| 4 | 3.5 |
+| 8 | 2.5 |
+
+**The campaign accepted a candidate on a margin of one question with one draw per arm.** And the paired
+view is the sharper statement: **ten of twenty-four questions flip between draws of the same document**,
+so any comparison of two documents on this set is reading a signal through ten coin flips.
+
+### The one finding that constrains any future contract experiment
+
+A trace-based checker can read **20–36 characters** of actor text per episode with thinking on — the
+recovered answer block and nothing else, because the policy deliberately does not promote reasoning prose
+— against **575–8,864** with `enable_thinking: false`. And even when the text IS there (§6, the
+descriptive check of the condition-B traces), the connected contract still binds nothing, because
+**1,484 to 2,022 of the data cells in these records have no bound column header** and its applicability
+condition needs one.
+
+So the next contract experiment needs two things that are not code changes: traces that contain the
+actor's written reasoning (a generation-setting decision), and either observations that carry header rows
+or a condition that does not require them. **Until one of those is settled, more runs of the present
+prototype will keep producing `unknown`, which this follow-up has now demonstrated twice.**
+
+### What I would do, in order
+
+1. **Settle (1)/(2)/(3) above.** My recommendation is 1 + 2: keep the campaign as recorded and spend
+   $0.62 re-measuring the only number that was primary.
+2. **If the contract line is to continue**, run a small paired harness comparison first — thinking-on
+   versus thinking-off on the 24 training questions, 2 draws each — measuring score, actor characters per
+   trace, and unsupported tool calls. 96 question-rollouts, ~740 attempts, ~$0.50. It answers whether
+   usable traces are obtainable at all before any contract machinery is pointed at them.
+3. **Only then** ask whether a contract layer adds anything, with a sample size chosen from the table
+   above rather than from a single draw.
+
+### What I would not do
+
+Another three-arm campaign; a change to the gate or the scorer (the "39.31%" formatting tolerance is
+still there and is still a scorer question, not a client one); an empty-response nudge or an episode
+retry; or any claim that this follow-up improved the method's performance. **It improved the
+measurement.** Whether the method works is still open, and the evidence for it is still nil.
+
+---
+
+## 10. Artifacts
+
+```
+<campaign>/followup_20261119/
+  LEDGER_BACKFILL.json                      the 23 probe sends, once, with the charge basis
+  episodes/EPISODE_PLAN.json                the frozen plan, digest a93d9eb6f4e58f40
+  episodes/{A1,A2,B1,B2}/results.jsonl      12 episodes, with the recovery fields
+  episodes/{A1,A2,B1,B2}/raw_capture.jsonl  95 exchanges, four layers each
+  episodes/{A1,A2,B1,B2}/actor_calls.jsonl  the audit log
+  episodes/EPISODE_SUMMARY.json             per-episode and per-run
+  episodes/RECOVERY_REPLAY.json             the old adapter beside the policy, 95 exchanges
+  recovery/RECOVERY_REPLAY.json             the same over the 23 earlier probe bodies
+  connected_contract/CC_BUNDLE_v2.json      7809287366d50598, frozen before any record was re-read
+  connected_contract/CC_BUNDLE_v3.json      the meaning in force, verifies=True
+  connected_contract/CC_CHECK_{learning,checking,descriptive}.json
+  connected_contract/CC_COMPARE.json        4 verdicts, all remains_unknown, with witnesses
+  connected_contract/CC_REPAIR.json         repaired=False, and why
+  connected_contract/CC_RECORDS_episodes.json  descriptive_only, digest 6045dcd49310a240
+  connected_contract/OqaConnected.lean + CC_LEAN.json      return code 0
+  s0_repeat/p1..p8/results.jsonl            8 passes of 24
+  s0_repeat/S0_REPEAT.json                  the per-pass and paired summary
+```
+
+Code: `research/officeqa/oqa_recovery.py`, `oqa_episodes.py`, `oqa_ledger_backfill.py`,
+`oqa_s0repeat.py`, `oqa_cc_extract.py`, `oqa_cc_bundle.py` (new);
+`skillopt/model/common.py`, `openai_compatible_backend.py`, `skillopt/envs/officeqa/rollout.py`,
+`oqa_cc_check.py`, `oqa_cc_run.py`, `oqa_cc_lean.py`, `oqa_http_probe.py` (changed);
+`research/cluster/oqa_fu2_body.sh`, `oqa_fu2_submit.sh` (new).
+Bundle `oqa_fu2_20261118`, final commit `4572c61`.

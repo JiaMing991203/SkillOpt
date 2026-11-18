@@ -123,6 +123,27 @@ Scope: (A) define and test a narrow answer-recovery policy and run twelve develo
 on the 24-question validation set through the corrected client. Not authorized by it: skill evolution,
 a change to the gate or the scorer, or another three-arm campaign.
 
+**Spent against Grant 4 — measured, final.**
+
+| | used | of the suballocation |
+|---|---|---|
+| EmpirioLabs attempts | **1,598** (23 back-filled + 95 episodes + 1,480 S0) | 1,598 of 5,000 |
+| EmpirioLabs charge, our price table | **$0.9789** | of $4.00 |
+| EmpirioLabs charge, provider-reported | $0.6257 | — |
+| DeepSeek | **0 attempts, $0.00** — no new proposal was necessary | of 4 / $1.00 |
+| CPU requested | **6.88 job-hours** over 14 jobs (6.02 core-hours actual) | of 8 |
+| GPUs | **0** | of 0 |
+
+1.17 of those requested job-hours went to three jobs that never started and are counted anyway, because
+requested time is what the allowance counts. The ledger's reading after this follow-up: target **11,756
+attempts / $7.834371**, optimizer **105 / $3.468882**, verdict **PASS**, zero refusals on the actor side.
+Four target attempts are recorded as unresolved: they were in flight when job 66346540 was killed at its
+wall limit, and their reserve is deliberately not released.
+
+**Cumulative after Grant 4:** EmpirioLabs **11,756 of 30,024 attempts** and **$7.8344 of $17.00**;
+DeepSeek **106 of 266** and **$3.5100 of $10.00**; CPU **38.5 of 44** requested job-hours — **88%, now
+the binding constraint**; GPUs 0.
+
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 
 `research/cluster/oqa_campaign_body.sh` sets the caps the spend ledger enforces. They are not the grant's
