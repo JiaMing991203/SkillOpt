@@ -1964,20 +1964,31 @@ def test_the_numeric_relation_is_mechanical(pred, gt, want):
     assert _diag().numeric_relation(pred, gt) == want
 
 
-def test_blank_and_wrong_are_separated_though_the_gate_scores_them_alike():
-    """`hard` is exact match, so a silent turn and a wrong number are both 0. They are different failures."""
+def test_the_four_real_outcome_shapes_are_separated_though_the_gate_scores_three_alike():
+    """`hard` is exact match, so a silent turn, an empty parse and a wrong number are all 0.
+
+    These four rows are the only shapes the campaign's 528 selection observations actually take, and the
+    fifth assertion is the bug they caught: `agent_ok` is `not fail_reason` on the EXECUTION reason, so it
+    is False for a silent turn. Reading it as "execution error" misfiled 354 of the 528.
+    """
     D = _diag()
-    blank = D.classify(_row("U1", skill="s", hard=0, predicted="",
-                            fail="Model neither produced a tool request nor a final answer"), 24)
+    silent = D.classify(_row("U1", skill="s", hard=0, predicted="", ok=False,
+                             fail="Model neither produced a tool request nor a final answer"), 24)
     wrong = D.classify(_row("U2", skill="s", hard=0, predicted="458.070", gt="0.011"), 24)
     right = D.classify(_row("U3", skill="s", hard=1, predicted="0.011", gt="0.011"), 24)
-    broke = D.classify(_row("U4", skill="s", hard=0, predicted="", ok=False, fail="tool crashed"), 24)
-    assert blank["outcome"] == "no_answer" and blank["why"] == "silent_turn"
+    budget = D.classify(_row("U4", skill="s", hard=0, predicted="", ok=False,
+                             fail="Exceeded tool-turn budget (24)", turns=24), 24)
+    empty = D.classify(_row("U5", skill="s", hard=0, predicted="", ok=True,
+                            fail="predicted '' but the scorer marked it incorrect"), 24)
+    assert silent["outcome"] == "no_answer" and silent["why"] == "silent_turn"
+    assert silent["agent_ok"] is False, "the flag is False here, and it does NOT mean a crash"
     assert wrong["outcome"] == "wrong_answer" and wrong["relation"] == "unrelated_value"
     assert right["outcome"] == "correct" and right["relation"] == ""
-    assert broke["outcome"] == "error"
-    assert D.classify(_row("U5", skill="s", turns=24), 24)["at_turn_cap"] is True
-    assert D.classify(_row("U6", skill="s", finish="length"), 24)["truncated"] is True
+    assert budget["outcome"] == "execution_failure" and budget["why"] == "turn_budget_exceeded"
+    assert empty["outcome"] == "no_answer" and empty["why"] == "empty_parse"
+    assert D.classify(_row("U6", skill="s", turns=24), 24)["at_turn_cap"] is True
+    assert D.classify(_row("U7", skill="s", finish="length"), 24)["truncated"] is True
+    assert D.classify(_row("U8", skill="s", ok=False, fail="error: boom"), 24)["why"] == "exception"
 
 
 def test_the_placeholder_epoch_is_not_a_gate_and_the_order_is_the_trainers():

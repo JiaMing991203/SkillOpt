@@ -230,37 +230,44 @@ def numeric_relation(predicted: str, truth: str) -> str:
 
 
 def classify(row: dict, max_turns: int) -> dict:
-    """What happened on one question, in categories the `hard` score cannot express."""
+    """What happened on one question, in the three categories `hard` cannot express.
+
+    `agent_ok` is NOT a health flag for this purpose. `rollout.py` sets `agent_ok = not fail_reason` on the
+    EXECUTION-level reason, and then writes a scorer-level reason into the `fail_reason` FIELD when the
+    answer was merely wrong -- so `agent_ok` is False for the commonest outcome in this campaign, an actor
+    that ended a turn with neither a tool call nor an `<answer>`. Reading `not agent_ok` as "execution
+    error" put 16 of S0's 24 questions in the wrong box on the first pass. The categories here come from
+    the reason text, which is exact:
+
+      wrong_answer       the actor committed an answer and the scorer rejected it
+      no_answer          nothing to score: a silent turn, or an answer that parsed empty
+      execution_failure  the run itself ran out: the tool-turn budget, or an exception
+      correct            exact match
+
+    Over this campaign's 528 selection observations the shares are 107 / 381 / 3 / 37, which is why the
+    distinction matters: the gate metric treats the first three alike.
+    """
     pred = str(row.get("predicted_answer") or "")
     hard = int(row.get("hard") or 0)
     agent_ok = bool(row.get("agent_ok", True))
     fr = str(row.get("fail_reason") or "")
     finish = str(row.get("last_finish_reason") or "")
     n_turns = int(row.get("n_turns") or 0)
+    low = fr.lower()
     blank = not pred.strip()
     if hard == 1:
-        outcome = "correct"
-    elif not agent_ok:
-        outcome = "error"
+        outcome, why = "correct", ""
+    elif low.startswith("error:"):
+        outcome, why = "execution_failure", "exception"
+    elif "turn budget" in low or "turn-turn" in low or "ended without" in low:
+        outcome, why = "execution_failure", "turn_budget_exceeded"
+    elif "neither produced a tool request nor a final answer" in low \
+            or "neither produced search queries nor a final answer" in low:
+        outcome, why = "no_answer", "silent_turn"
     elif blank:
-        outcome = "no_answer"
+        outcome, why = "no_answer", ("empty_parse" if agent_ok else "no_answer_unexplained")
     else:
-        outcome = "wrong_answer"
-    why = ""
-    if outcome in ("no_answer", "error"):
-        low = fr.lower()
-        if "neither produced a tool request nor a final answer" in low:
-            why = "silent_turn"          # ended a turn with no tool call and no <answer>
-        elif "turn" in low and "limit" in low:
-            why = "turn_limit"
-        elif finish == "length":
-            why = "completion_truncated"
-        elif n_turns >= max_turns:
-            why = "turn_budget_exhausted"
-        elif low:
-            why = "other:" + fr[:80]
-        else:
-            why = "unexplained_blank"
+        outcome, why = "wrong_answer", ""
     return {
         "outcome": outcome, "why": why,
         "predicted": pred[:200], "hard": hard, "soft": float(row.get("soft") or 0.0),
@@ -269,13 +276,17 @@ def classify(row: dict, max_turns: int) -> dict:
         "at_turn_cap": n_turns >= max_turns,
         "truncated": finish == "length",
         "relation": (numeric_relation(pred, str(row.get("ground_truth") or ""))
-                     if outcome in ("wrong_answer", "no_answer") else ""),
+                     if outcome in ("wrong_answer", "no_answer", "execution_failure") else ""),
     }
 
 
 # ───────────────────────── trace features ─────────────────────────
 
 CMD = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+# The only tools the actor has (`skillopt/envs/officeqa/rollout.py`, the tool spec at the top of the file).
+# Anything else it "calls" is a tool that does not exist -- the slow-update guidance in several arms claims
+# the actor invents an `answer` tool and then goes silent, and this is how that claim gets checked.
+REAL_TOOLS = ("glob", "read", "grep")
 
 
 def trace_features(pred_dir: str) -> dict:
@@ -307,6 +318,8 @@ def trace_features(pred_dir: str) -> dict:
         if entry_empty:
             tools["__empty_obs"] = tools.get("__empty_obs", 0) + 1
     dupes = len(calls) - len(set(calls))
+    invented = {k: v for k, v in tools.items()
+                if k not in REAL_TOOLS and not k.startswith("__")}
     assistant_text = [str(e.get("content") or "") for e in conv
                       if isinstance(e, dict) and e.get("type") == "message"]
     return {
@@ -316,6 +329,7 @@ def trace_features(pred_dir: str) -> dict:
         "tools": {k: v for k, v in sorted(tools.items())},
         "files_touched": sorted(paths),
         "n_distinct_patterns": len(set(pats)),
+        "invented_tool_calls": invented,
         "n_empty_observations": tools.get("__empty_obs", 0),
         "assistant_chars": sum(len(t) for t in assistant_text),
         "last_assistant_chars": len(assistant_text[-1]) if assistant_text else 0,
@@ -471,7 +485,9 @@ def cmd_gates(campaign: str) -> dict:
                 "correct": sum(1 for c in cls if c["outcome"] == "correct"),
                 "wrong_answer": sum(1 for c in cls if c["outcome"] == "wrong_answer"),
                 "no_answer": sum(1 for c in cls if c["outcome"] == "no_answer"),
-                "error": sum(1 for c in cls if c["outcome"] == "error"),
+                "execution_failure": sum(1 for c in cls if c["outcome"] == "execution_failure"),
+                "silent_turn": sum(1 for c in cls if c["why"] == "silent_turn"),
+                "empty_parse": sum(1 for c in cls if c["why"] == "empty_parse"),
                 "at_turn_cap": sum(1 for c in cls if c["at_turn_cap"]),
                 "truncated": sum(1 for c in cls if c["truncated"]),
             }
@@ -520,7 +536,9 @@ def cmd_gates(campaign: str) -> dict:
                 "correct": sum(1 for c in bcls if c["outcome"] == "correct"),
                 "wrong_answer": sum(1 for c in bcls if c["outcome"] == "wrong_answer"),
                 "no_answer": sum(1 for c in bcls if c["outcome"] == "no_answer"),
-                "error": sum(1 for c in bcls if c["outcome"] == "error"),
+                "execution_failure": sum(1 for c in bcls if c["outcome"] == "execution_failure"),
+                "silent_turn": sum(1 for c in bcls if c["why"] == "silent_turn"),
+                "empty_parse": sum(1 for c in bcls if c["why"] == "empty_parse"),
                 "at_turn_cap": sum(1 for c in bcls if c["at_turn_cap"]),
                 "truncated": sum(1 for c in bcls if c["truncated"]),
             },
@@ -580,6 +598,8 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
         counts: dict[str, int] = {}
         rels: dict[str, int] = {}
         src_changed, tool_delta, rep_delta = [], [], []
+        invented: dict[str, int] = {}
+        tool_total = 0
         for r in rows:
             qid = r["id"]
             c = classify(r, max_turns)
@@ -600,6 +620,10 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
                     kept_w.append(qid)
                     if b["outcome"] != c["outcome"]:
                         moved.append({"id": qid, "s0": b["outcome"], "cand": c["outcome"]})
+                if with_traces and c.get("trace", {}).get("present"):
+                    for k, v in (c["trace"].get("invented_tool_calls") or {}).items():
+                        invented[k] = invented.get(k, 0) + v
+                    tool_total += c["trace"]["n_tool_calls"]
                 if with_traces and b.get("trace", {}).get("present") and c["trace"].get("present"):
                     if set(b["trace"]["files_touched"]) != set(c["trace"]["files_touched"]):
                         src_changed.append(qid)
@@ -618,6 +642,8 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
             "files_touched_changed_on": sorted(src_changed),
             "tool_calls_delta_mean": (sum(tool_delta) / len(tool_delta)) if tool_delta else None,
             "repeated_calls_delta_mean": (sum(rep_delta) / len(rep_delta)) if rep_delta else None,
+            "tool_calls_total": tool_total,
+            "invented_tool_calls": invented,
         }
 
     for qid, rec in per_question.items():
@@ -632,7 +658,17 @@ def cmd_questions(campaign: str, with_traces: bool = True) -> dict:
         rec["lost_by"] = sorted(k for k, v in cands.items()
                                 if v["outcome"] != "correct" and rec["s0"]["outcome"] == "correct")
 
+    s0_invented: dict[str, int] = {}
+    s0_tool_total = 0
+    for v in base.values():
+        t = v.get("trace") or {}
+        if t.get("present"):
+            s0_tool_total += t["n_tool_calls"]
+            for k, n in (t.get("invented_tool_calls") or {}).items():
+                s0_invented[k] = s0_invented.get(k, 0) + n
     tot = {
+        "s0_tool_calls_total": s0_tool_total,
+        "s0_invented_tool_calls": s0_invented,
         "s0_correct": sum(1 for v in base.values() if v["outcome"] == "correct"),
         "s0_outcomes": {},
         "candidate_correct_total": sum(g["correct"] for g in per_gate.values()),
