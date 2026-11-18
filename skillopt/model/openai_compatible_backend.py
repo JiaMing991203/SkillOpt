@@ -157,6 +157,13 @@ def _reset_clients() -> None:
 _call_log_lock = threading.Lock()
 
 
+def _reasoning_log(message: Any) -> dict:
+    from skillopt.model.common import reasoning_text
+    text, field = reasoning_text(message)
+    return {"field": field, "chars": len(text), "has_answer_tag": "<answer>" in text.lower(),
+            "prefix": text[:400], "suffix": text[-400:] if text else ""}
+
+
 def _plain(obj: Any) -> Any:
     if obj is None or isinstance(obj, (str, int, float, bool)):
         return obj
@@ -212,6 +219,9 @@ def _log_call(
                 "finish_reason": getattr(choice, "finish_reason", None),
                 "content": getattr(message, "content", None),
                 "reasoning_content": getattr(message, "reasoning_content", None),
+                # OQA-HTTP-1: this provider uses `reasoning`, not `reasoning_content`, and the previous
+                # shape looked only for the latter - so 7,909 logged attempts all recorded null.
+                "reasoning_field": _reasoning_log(message),
                 "usage": _plain(getattr(resp, "usage", None)),
                 "tool_calls": [{
                     "id": getattr(tc, "id", None),

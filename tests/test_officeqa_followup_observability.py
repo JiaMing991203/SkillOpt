@@ -436,3 +436,102 @@ def test_regenerating_a_real_historical_report_reproduces_its_bytes(arm, item, e
     assert new_rec["model_parent_sha256"] == "unavailable", "a historical model has none, and says so"
     assert new_rec["model_frozen_at_epoch"] == "unavailable"
     assert new_rec["attempt"]["response_metadata_availability"] == "unavailable"
+
+
+# ── OQA-HTTP-1: the conversion defect, and the smallest correction ────────────
+
+class _MsgReasoning:
+    """The message the provider really returns: content null, no tool calls, `reasoning` holding the text.
+
+    Verbatim shape from job 66340531, replaying arm B epoch 2's recorded request for UID0017:
+        choices[0].finish_reason = "stop"
+        choices[0].message keys  = annotations, audio, content, function_call, reasoning, refusal, role
+        message.content          = null
+        message.reasoning        = 944 chars ending "<answer>[10102000000, 4.73]</answer>"
+    The SDK exposes `reasoning` only through `model_extra`, which is why `getattr(msg, "reasoning")` is
+    not enough on its own.
+    """
+
+    def __init__(self, text):
+        self.content = None
+        self.tool_calls = []
+        self.refusal = None
+        self.model_extra = {"reasoning": text}
+
+    def model_dump(self):
+        return {"role": "assistant", "content": None, "refusal": None, **self.model_extra}
+
+
+_REAL_REASONING = ("Based on my analysis of the Treasury Bulletin August 1982 document, I found:\n\n"
+                   "   - Total bids = $10,102 million\n   - Noncash rollover tenders = $478 million\n"
+                   "   - Percentage = (478 / 10,102) x 100 = 4.7319...% = 4.73%\n\n"
+                   "<answer>[10102000000, 4.73]</answer>")
+
+
+def test_the_providers_reasoning_field_is_found_and_reported(monkeypatch):
+    """`reasoning_content` was null in all 7,909 logged attempts. The field is `reasoning`."""
+    monkeypatch.delenv("SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK", raising=False)
+    m = _MsgReasoning(_REAL_REASONING)
+    text, field = COMMON.reasoning_text(m)
+    assert field == "reasoning" and text == _REAL_REASONING
+    out = COMMON.compat_message_from_chat_message(m, _Resp(m, "stop"), _Choice(m, "stop"))
+    md = out.metadata
+    assert md["reasoning_field_name"] == "reasoning"
+    assert md["reasoning_has_answer_tag"] is True
+    assert md["reasoning_content_chars"] == len(_REAL_REASONING)
+    assert md["content_is_null"] is True
+
+
+def test_the_historical_behaviour_is_the_default(monkeypatch):
+    """Without the fallback the loop ends the episode, exactly as the campaign did. Nothing is repaired
+    silently, so the frozen campaign's recorded behaviour stays reproducible."""
+    monkeypatch.delenv("SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK", raising=False)
+    m = _MsgReasoning(_REAL_REASONING)
+    out = COMMON.compat_message_from_chat_message(m, _Resp(m, "stop"), _Choice(m, "stop"))
+    assert out.content == "", "the historical conversion yields an empty string"
+    assert "content_fallback_applied" not in out.metadata
+    from skillopt.envs.officeqa.rollout import _no_answer_cause
+    assert _no_answer_cause(out.content, out.metadata, "") == "empty_reply_content_null"
+
+
+def test_the_smallest_correction_recovers_the_answer_that_was_already_in_the_response(monkeypatch):
+    """With the fallback on, the text the provider sent is used and the answer extracts cleanly.
+
+    This is proved from the shape of a REAL captured response, so it does not depend on a new request.
+    """
+    monkeypatch.setenv("SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK", "reasoning")
+    m = _MsgReasoning(_REAL_REASONING)
+    out = COMMON.compat_message_from_chat_message(m, _Resp(m, "stop"), _Choice(m, "stop"))
+    assert out.content == _REAL_REASONING
+    assert out.metadata["content_taken_from"] == "reasoning"
+    assert out.metadata["content_fallback_applied"] is True
+    from skillopt.envs.officeqa.rollout import _extract_answer
+    assert _extract_answer(out.content) == "[10102000000, 4.73]"
+    # and the loop would now take the answer branch instead of ending the episode
+    assert "<answer>" in out.content.lower()
+
+
+def test_the_fallback_never_overrides_content_or_a_tool_call(monkeypatch):
+    """It is a fallback, not a preference: real content and a tool call both win."""
+    monkeypatch.setenv("SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK", "1")
+
+    class _Both(_MsgReasoning):
+        def __init__(self):
+            super().__init__("some reasoning <answer>9</answer>")
+            self.content = "<answer>7</answer>"
+
+    out = COMMON.compat_message_from_chat_message(_Both(), _Resp(_Both(), "stop"),
+                                                  _Choice(_Both(), "stop"))
+    assert out.content == "<answer>7</answer>"
+    assert "content_fallback_applied" not in out.metadata
+
+    class _Tooled(_MsgReasoning):
+        def __init__(self):
+            super().__init__("thinking about it <answer>9</answer>")
+            self.tool_calls = [_TC("grep")]
+
+    out2 = COMMON.compat_message_from_chat_message(_Tooled(), _Resp(_Tooled(), "tool_calls"),
+                                                   _Choice(_Tooled(), "tool_calls"))
+    assert out2.content == "", "a tool-calling turn keeps the loop's tool branch"
+    assert "content_fallback_applied" not in out2.metadata
+    assert out2.metadata["reasoning_field_name"] == "reasoning"

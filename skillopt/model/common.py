@@ -206,8 +206,43 @@ def usage_from_responses_usage(usage: Any) -> dict[str, int]:
 # reply from one whose text arrived in a field nobody looked at.
 _MODELLED_MESSAGE_FIELDS = ("role", "content", "tool_calls", "function_call", "refusal",
                             "annotations", "audio", "parsed",
-                            # reported on its own in `response_metadata`, so not a surprise
-                            "reasoning_content")
+                            # reported on their own in `response_metadata`, so not a surprise
+                            "reasoning_content", "reasoning", "thinking")
+
+# WHERE A PROVIDER MAY PUT THE MODEL'S TEXT WHEN `content` IS NULL.
+#
+# This list is not a guess. On 2026-11-18 a replay of two recorded OfficeQA requests (rule OQA-HTTP-1,
+# job 66340531) returned HTTP 200 with `choices[0].message.content = null`, no tool calls, and
+# `choices[0].message.reasoning` holding 944 and 1,550 characters respectively, each ENDING IN A
+# COMPLETE `<answer>...</answer>`. The field is `reasoning`. The client read `content` and
+# `reasoning_content`, found nothing, and the OfficeQA loop recorded "Model neither produced a tool
+# request nor a final answer" -- which is 331 of the campaign's 528 selection observations.
+#
+# OQA-FOR-1 reported that `reasoning_content` was null in all 7,909 logged attempts and took that to
+# refute the hidden-reasoning hypothesis. It refuted it only for that spelling.
+_REASONING_FIELDS = ("reasoning", "reasoning_content", "thinking")
+# The fallback is OFF by default, so the historical behaviour is what runs unless a caller asks for the
+# correction. Turning it on changes what the environment sees and therefore what an episode does, so it
+# is an explicit, recorded choice and not a silent repair.
+_CONTENT_FALLBACK_ENV = "SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK"
+
+
+def reasoning_text(message: Any) -> tuple[str, str]:
+    """The model's text when it did not arrive in `content`, and the field name it arrived in."""
+    extra = getattr(message, "model_extra", None)
+    for name in _REASONING_FIELDS:
+        v = getattr(message, name, None)
+        if v is None and isinstance(extra, dict):
+            v = extra.get(name)
+        if isinstance(v, str) and v.strip():
+            return v, name
+    return "", ""
+
+
+def content_fallback_enabled() -> bool:
+    import os as _os
+    return str(_os.environ.get(_CONTENT_FALLBACK_ENV, "")).strip().lower() in {
+        "1", "true", "yes", "on", "reasoning"}
 
 
 def _unmodelled_message_fields(message: Any) -> dict[str, Any]:
@@ -272,7 +307,8 @@ def response_metadata(message: Any, response: Any = None, choice: Any = None) ->
                 if v is not None:
                     usage_plain[k] = v
     content = getattr(message, "content", None)
-    reasoning = getattr(message, "reasoning_content", None)
+    rtext, rfield = reasoning_text(message)
+    reasoning = rtext or getattr(message, "reasoning_content", None)
     tool_calls = getattr(message, "tool_calls", None) or []
     meta: dict[str, Any] = {
         "finish_reason": getattr(choice, "finish_reason", None),
@@ -290,6 +326,10 @@ def response_metadata(message: Any, response: Any = None, choice: Any = None) ->
         "content_is_null": content is None,
         "reasoning_content_present": reasoning is not None and bool(str(reasoning).strip()),
         "reasoning_content_chars": len(str(reasoning)) if reasoning is not None else 0,
+        # which field the provider actually used, and whether an answer was sitting in it
+        "reasoning_field_name": rfield,
+        "reasoning_has_answer_tag": "<answer>" in rtext.lower(),
+        "content_fallback_enabled": content_fallback_enabled(),
         "n_tool_calls": len(tool_calls),
         "tool_names": [getattr(getattr(tc, "function", None), "name", "") or "" for tc in tool_calls],
         "unmodelled_message_fields": _unmodelled_message_fields(message),
@@ -319,6 +359,16 @@ def compat_message_from_chat_message(message: Any, response: Any = None,
             )
         )
     meta = response_metadata(message, response, choice) if response is not None or choice is not None else {}
+    # THE SMALLEST CORRECTION for the defect OQA-HTTP-1 found: when the provider put the model's text in
+    # a reasoning field and left `content` null, use that text. Off unless asked for, so the frozen
+    # campaign's behaviour remains the default and this cannot retroactively change what it did.
+    if not content.strip() and not tool_calls and content_fallback_enabled():
+        rtext, rfield = reasoning_text(message)
+        if rtext.strip():
+            content = rtext
+            meta = dict(meta)
+            meta["content_taken_from"] = rfield
+            meta["content_fallback_applied"] = True
     return CompatAssistantMessage(content=content, tool_calls=tool_calls, metadata=meta)
 
 
