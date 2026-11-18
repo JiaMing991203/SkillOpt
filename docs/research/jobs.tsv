@@ -85,3 +85,5 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-17T23:08:07Z	66332135	oqa_heldout	EXPLORATORY arm A/C last (940B, digest 5bd17ea109bc) - same ADVICE as S0	251e9514beaefb88ed1ded997102c4769a2e23f1	afterok:66332134
 2026-11-18T00:44:00Z	66337036	oqa_diag	diagnostic read of the campaign (OQA-DIAG-1) - 0 attempts, $0.00	66b2b66
 2026-11-18T00:44:00Z	66337037	oqa_tests	full suite from the diagnostic bundle	66b2b66
+2026-11-18T01:20:29Z	66338091	oqa_forensics	empty replies + contract machinery (OQA-FOR-1) - 0 attempts, $0.00	4cf50fc
+2026-11-18T01:20:29Z	66338092	oqa_tests	full suite - 2223 passed	4cf50fc

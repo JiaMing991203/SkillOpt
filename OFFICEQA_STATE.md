@@ -15,6 +15,45 @@
 without seeing it, so that nothing in them is tuned on held-out. Read all three together when 66332135
 finishes, under `docs/research/OFFICEQA_RELEASE_PROTOCOL.md`.
 
+## THE FORENSICS AUDIT IS DONE -> `docs/research/OFFICEQA_FORENSICS_PACKET.md`
+
+Rule OQA-FOR-1, tool `research/officeqa/oqa_forensics.py` (`noanswer`, `contracts`), job **66338091**
+commit `4cf50fc`, bundle `oqa_for_20261117`, outputs `$CAMP/diagnostic/FOR_{NOANSWER,CONTRACTS}.json`.
+Zero API calls, zero GPUs, 0.13 CPU core-hours. Tests **2,223 passed, 9 skipped, 368 subtests** (66338092).
+
+**The source nobody had opened:** the campaign body set `TARGET_OPENAI_COMPATIBLE_CALL_LOG`, so
+`$PROJECT_ROOT/oqa_campaign_20261117{,b,c}/run_*/actor_calls.jsonl` holds the RAW provider reply for every
+attempt in 16 jobs — 7,909 records with finish_reason, content, reasoning_content and usage. Its record
+count and completion-token total match the ledger's for the same jobs exactly.
+
+1. **The dominant cause of a missing answer is a reply with no content at all.** 331 of the 528 selection
+   observations (62.7%) ended on one reply with finish_reason `stop`, no `content`, no `reasoning_content`,
+   and a median of **920 completion tokens** (min 96, max 4,076) generated and billed. None had zero
+   tokens. 533 such replies campaign-wide: 672,104 tokens, $0.2004 by the provider's own `cost_usd`.
+2. **"Prose but no answer" never happens and extraction missed nothing.** Zero terminal replies had text
+   without a tag. Running the real extractor's fallback over the 7 truncated replies and the real scorer:
+   **0 of 7** would have scored.
+3. **The unsupported `answer` tool is not the cause.** 54 of 528 episodes contain one (109 calls); the loop
+   continues past it. 8 of the 54 still answered (3 correct).
+4. **Three row fields carry nothing:** `last_finish_reason` is `""` in all 528 rows, because the
+   local-tools branch of `rollout.py` never assigns `last_response_metadata` and
+   `compat_message_from_chat_message` drops the finish reason and the reasoning channel.
+5. **The contract representation cannot express the dominant failure.** 20 single-atom `effect` contracts
+   are expressible in total; 5 were learned, 1 retired. Every atom is a property of one tool observation's
+   text — nothing about the actor's output, a period, a unit or an answer.
+6. **Arm B's "zero distinct diagnoses" is a hard-coded constant** (`oqa_reports.py`: `... else 0` for
+   LC_ACTION). It measures nothing. **This corrects the previous packet.**
+7. **In six evolve rounds the checker found ONE counterexample** (arm B e3, UID0019@10) and it retired
+   `read.effect.2` — the model correcting its own rule, not a diagnosis of the agent.
+8. **Nothing was lost in supply:** all 24 of arm C's epoch-3 reports appear byte-for-byte in that job's
+   own `optimizer_calls.jsonl`.
+9. **The in-sample warning is a false alarm on 72 of each arm's 96 reports.** The renderer tests the ITEM
+   ID against the model's `evidence_items`, and the same 24 training ids were drawn in all four epochs.
+   Epoch N's reports do cite the model frozen at the end of epoch N−1, as intended. By trace digest:
+   epoch 1 is genuinely in-sample (24/24), epochs 2–4 are fresh (0/24 identical in every epoch pair) —
+   except arm C's UID0019, which is a digest COLLISION because the saved record keeps only the empty
+   content strings and the tool commands.
+
 ## THE DIAGNOSTIC READ IS DONE -> `docs/research/OFFICEQA_DIAGNOSTIC_PACKET.md`
 
 Rule OQA-DIAG-1, tool `research/officeqa/oqa_diagnose.py` (`gates`, `questions`, `replicates`,

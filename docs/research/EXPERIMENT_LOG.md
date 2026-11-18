@@ -1524,3 +1524,39 @@ against a budget of 4). All twelve arm-epochs wrote a meta skill except the thre
 
 **Evidence packet** `docs/research/OFFICEQA_DIAGNOSTIC_PACKET.md`. Held-out job 66332134's number was left
 unread while the packet's proposals were written, so none of them is tuned on held-out.
+
+## OQA-3ARM-FORENSICS — the empty replies and the contract machinery (rule OQA-FOR-1)
+
+**Date** 2026-11-17. **Cost** 0 actor attempts, 0 optimizer calls, $0.00, 0.13 CPU core-hours, 3 jobs; no
+API key in scope. **Commit** `4cf50fc`, **bundle** `oqa_for_20261117`, **jobs** 66338091 (forensics),
+66338092 (tests: 2,223 passed, 9 skipped, 368 subtests). **Outputs**
+`$CAMP/diagnostic/FOR_{NOANSWER,CONTRACTS}.json`. **Packet** `docs/research/OFFICEQA_FORENSICS_PACKET.md`.
+
+**New source.** `oqa_campaign_body.sh` set `TARGET_OPENAI_COMPATIBLE_CALL_LOG`; 16 jobs wrote
+`actor_calls.jsonl` with the raw provider reply per attempt. 7,909 records, cross-validated against the
+ledger (same 7,909 usage records, same 8,503,592 completion tokens).
+
+| result | value |
+|---|---|
+| raw replies, finish_reason × content | tool_calls/null 7,056; stop/null 533; stop/text 221; tool_calls/text 87; length/text 12 |
+| `reasoning_content` non-null | 0 of 7,909 |
+| saved `last_finish_reason` | `""` in all 528 rows (the field is never assigned in this code path) |
+| the 528 selection observations | 331 empty reply after generating; 107 wrong answer; 37 correct; 27 turn budget (unrecorded); 16 S0 silent (no raw log); 7 truncated at 8,000; 3 turn budget (recorded) |
+| prose without a tag, terminal | **0** |
+| completion tokens on the 331 | min 96, median 920, mean 1,261, max 4,076; none zero |
+| the 533 empty replies, campaign-wide | 672,104 completion tokens, $0.2004 by the provider's `cost_usd` |
+| provider cost vs ledger, same 16 jobs | $3.2768 vs $5.3159 — the ledger is conservative (it bills cache reads, the provider does not) |
+| unsupported tool calls | 221 campaign-wide (`answer` 211, `calculate` 7, `tool` 3); 109 in 54 of the 528 episodes; 8 of those 54 still answered |
+| missed-extraction experiment | 0 of 7 would have scored (real extractor fallback + real scorer) |
+| expressible contracts / learned / retired | **20 / 5 / 1** |
+| evolve rounds with a counterexample | 1 of 6 (arm B epoch 3, `UID0019/e3@10`, retired `read.effect.2`) |
+| arm C obligation group lines, by kind | answer_traced 10 D / 85 O / 1 U; arith_recorded 6 D / 30 O / 60 U; cell_bound 7 D / 13 U; period_match 4 D / 11 U; unit_match 4 D / 2 O / 4 U / **2 V** |
+| arm B `n_distinct_diagnoses` | a hard-coded `0` for LC_ACTION in `oqa_reports.py` — measures nothing |
+| report → optimizer | 24 of 24 arm-C epoch-3 reports byte-for-byte inside `run_66323202_arm_C_e3/optimizer_calls.jsonl` |
+| model schedule | epoch N's reports cite the model frozen at the end of epoch N−1, verified by digest and freeze time |
+| in-sample warning | printed on 96/96 per arm; genuine on the 24 epoch-1 reports; by trace digest epochs 2–4 are fresh (0/24 identical in every epoch pair) except arm C UID0019, a collision from the lossy record |
+
+**Defects found in the records themselves:** `last_response_metadata` unassigned in the local-tools
+branch; `compat_message_from_chat_message` drops finish_reason/reasoning_content/usage;
+`n_distinct_diagnoses` hard-coded for LC_ACTION; the model record's `epoch` field is the last change, not
+the freeze; `parent_sha256` null in all seven models; the in-sample test compares item ids.

@@ -1227,3 +1227,58 @@ then, only if that spread allows it, one-edit-at-a-time on arm B's accepted cand
 $1.89 or $3.15). The power arithmetic says 5 draws per document resolves a 3.4-question difference and the
 accepted candidate's margin was one question, so the honest recommendation is that more ablation draws at
 n = 24 are not the useful next move — a better measurement is.
+
+## 2026-11-17 (night) — forensics: the empty replies and the contract machinery (rule OQA-FOR-1)
+
+Asked two questions about the frozen campaign: why attempts ended without an answer, and why the contract
+reports produced so little corrective feedback. Built `research/officeqa/oqa_forensics.py`
+(`noanswer`, `contracts`) and `research/cluster/oqa_forensics_body.sh`. Zero API calls, zero GPUs, 0.13 CPU
+core-hours. Packet: `docs/research/OFFICEQA_FORENSICS_PACKET.md`. Job 66338091, commit `4cf50fc`; tests
+2,223 passed / 9 skipped / 368 subtests (job 66338092).
+
+**The thing I should have found a day earlier.** `research/cluster/oqa_campaign_body.sh` sets
+`TARGET_OPENAI_COMPATIBLE_CALL_LOG`, so every job wrote `actor_calls.jsonl` with the raw provider reply —
+finish_reason, content, reasoning_content, usage — for all 7,909 attempts across 16 jobs. I had been
+reading the SAVED representation and treating its gaps as facts. The raw log's record count and
+completion-token total match the spend ledger's for the same jobs exactly, so the two corroborate.
+
+**What it says.** 331 of the 528 selection observations ended because one reply came back with
+finish_reason `stop`, no content in any field the backend reads, and a median of 920 completion tokens
+(min 96, max 4,076) generated and billed. Not one had zero tokens. `reasoning_content` is null in all
+7,909 records, so "the answer went to the reasoning channel" is refuted for this provider — the tokens go
+somewhere it does not expose at all. 533 such replies campaign-wide cost $0.2004 by the provider's own
+`cost_usd`. "Prose but no answer" never occurs among terminal replies, and running the real extractor's
+fallback plus the real scorer over the 7 truncated replies scores 0 of 7, so extraction missed nothing.
+The unsupported `answer` tool (211 calls campaign-wide, 109 in 54 of the 528 episodes) costs a turn and
+does not end an episode: 8 of those 54 still answered.
+
+**Two corrections to yesterday's packet, both mine, both from misreading a field.** `last_finish_reason`
+is the empty string in all 528 rows — the local-tools branch of `rollout.py` never assigns
+`last_response_metadata`, and `compat_message_from_chat_message` drops the finish reason and the reasoning
+channel — so my "0 truncations" was a count of nothing; the raw log shows 12, 7 inside the 528. And arm B's
+"zero distinct diagnoses" is `... if condition != LC_ACTION else 0` in `oqa_reports.py`: a hard-coded
+constant that says nothing about arm B.
+
+**On the contracts.** The whole expressible space is 20 single-atom `effect` contracts; 5 were learned,
+all in the first round, and 1 was later retired. Every atom is a 0-ary property of one tool observation's
+text, so the failure behind 384 of 528 observations is not expressible as an action contract at all. In six
+evolve rounds the checker found one counterexample (arm B epoch 3, UID0019 step 10), which retired
+`read.effect.2` — the contract model correcting its own rule, not a diagnosis of the agent. Arm C's stage
+layer produced exactly one actionable finding, a witnessed 1,000x unit error on UID0014, which reached the
+optimizer byte-for-byte (verified against that job's own optimizer_calls.jsonl) — but arm A, with no
+contract layer, wrote unit-and-scale edits in every epoch, so it is not a finding the ordinary analyst
+lacked.
+
+**The in-sample warning.** It fires on 96 of 96 reports per arm because `render_action` tests the item ID
+against the model's `evidence_items`, which is a list of item ids, and the same 24 training questions were
+drawn in all four epochs. The schedule itself was followed: epoch N's reports cite the model frozen at the
+end of epoch N−1. By trace digest, epoch 1 is genuinely in-sample and epochs 2–4 are fresh — 0 of 24
+identical in every epoch pair — except arm C's UID0019, whose epoch-3 record is byte-identical to the
+shared epoch-1 record because both hold three EMPTY assistant messages and two identical tool calls. A
+digest over a lossy record cannot establish that two attempts were the same attempt.
+
+**My own mistakes this round.** (a) I derived each model's learning corpus from its `epoch` field; that
+field records the last model-CHANGING decision, so every arm-C model says 1 and the corpus was shrunk to
+epoch 1. Fixed to take it from the file name and backed by a model-independent cross-epoch identity
+matrix, which gave the same answer. (b) My first `_dg_`-prefixed rename matched inside
+`skill_from_system(`; caught by the test job.

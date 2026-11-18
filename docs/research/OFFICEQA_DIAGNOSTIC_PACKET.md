@@ -141,7 +141,9 @@ under a fresh sample.
 
 TRUNCATION, MALFORMED ANSWERS AND EXECUTION ERRORS, before any score difference is read as a skill
 effect (VERIFIED over all 528 observations):
-  completion truncation (finish_reason "length") ............ 0
+  completion truncation (finish_reason "length") ............ 0  <- WRONG, see the CORRECTION below:
+                                                              the field is never populated in this code
+                                                              path; the raw provider log shows 7
   tool-turn budget exceeded ................................. 3   (A.2 step, A.3 slow, C.1 step, 1 each)
   exceptions ................................................ 0
   bundle manifest / provenance failures ..................... 0
@@ -588,3 +590,31 @@ use of the 60-question held-out split for anything but the pre-registered compar
 * I have not concluded why the method performed as it did. §0(a)–(d) are findings; the explanation is
   left open for review.
 ```
+
+
+---
+
+## CORRECTION, 2026-11-17, from the forensics audit (`OFFICEQA_FORENSICS_PACKET.md`, rule OQA-FOR-1)
+
+Two statements above are readings of fields that do not mean what I took them to mean. Both are corrected
+there in full; the short version:
+
+1. **"completion truncation (finish_reason "length") ... 0"** (§2) is not a measurement. The row field
+   `last_finish_reason` is the empty string in all 528 observations, because `rollout.py` never assigns
+   `last_response_metadata` in the local-tools branch and `compat_message_from_chat_message` drops the
+   finish reason before the loop could record it. The raw provider log — `<run>/actor_calls.jsonl`, which
+   the campaign body switched on and which I had not opened — shows **12 truncations at the 8,000-token
+   cap across the campaign, 7 of them inside the 528**. Everything else in §2's list stands: it was read
+   from fields that do carry data.
+
+2. **"arm B's reports contain zero distinct diagnoses"** (§0(d), §8) describes a constant, not arm B.
+   `research/officeqa/oqa_reports.py` writes
+   `"n_distinct_diagnoses": len(REPORT.group(chain["ledger"])) if condition != LC_ACTION else 0`,
+   so the field is the literal 0 for every Action-Only report whatever it contains. Arm B's single
+   violated forecast IS in its report text. The rest of §8 stands and is strengthened: 0 of 101
+   proposed-edit entries name any contract vocabulary, and the one refutation was the contract model
+   correcting its own rule rather than a diagnosis of the agent.
+
+One further figure above is now better explained rather than corrected. §5's 363 no-answer observations
+are not mostly a reasoning failure: **331 of them are a provider reply with finish_reason "stop", no
+content in any field the backend reads, and a median of 920 completion tokens generated and billed.**
