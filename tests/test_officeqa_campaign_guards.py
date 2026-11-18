@@ -1811,33 +1811,33 @@ def _diag():
 
 # The real scaffold, in the shape `_build_system` gives it for search_mode=offline + local tools:
 # `skillopt/envs/officeqa/prompts/rollout_system.md` is `<preamble>\n\n{skill_section}## Rules\n...`.
-_SCAFFOLD = ("You are an expert OfficeQA agent working over local Treasury bulletin text files.\n\n"
+_DG_SCAFFOLD = ("You are an expert OfficeQA agent working over local Treasury bulletin text files.\n\n"
              "## Skill\n{skill}\n\n## Rules\n- Use the tools.\n- Answer in <answer></answer>.\n")
 
 
-def _system(skill: str) -> str:
-    return _SCAFFOLD.replace("{skill}", skill.strip())
+def _dg_system(skill: str) -> str:
+    return _DG_SCAFFOLD.replace("{skill}", skill.strip())
 
 
-def _row(qid, *, skill, hard=0, predicted="", gt="1", user="## Question\nq?\n", turns=4,
+def _dg_row(qid, *, skill, hard=0, predicted="", gt="1", user="## Question\nq?\n", turns=4,
          fail="", finish="", ok=True, oracle=100, sources=("f.txt",)):
     return {"id": qid, "question": "q?", "task_type": "easy", "predicted_answer": predicted,
             "response": "...", "ground_truth": gt, "source_files": list(sources),
             "resolved_source_paths": list(sources), "oracle_parsed_pages_included": True,
             "oracle_parsed_pages_chars": oracle, "use_local_tools": True, "hard": hard,
             "soft": float(hard), "fail_reason": fail, "agent_ok": ok, "n_turns": turns,
-            "last_finish_reason": finish, "target_system_prompt": _system(skill),
+            "last_finish_reason": finish, "target_system_prompt": _dg_system(skill),
             "target_user_prompt": user}
 
 
-def _write_jsonl(path, rows):
+def _dg_write_jsonl(path, rows):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
 
 
-def _conv(path, cmds):
+def _dg_conv(path, cmds):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     conv = [{"role": "user", "content": "## Question\nq?"}]
     for c in cmds:
@@ -1847,7 +1847,7 @@ def _conv(path, cmds):
         json.dump(conv, f)
 
 
-def _campaign(root, *, ids, baseline_correct, arms):
+def _dg_campaign(root, *, ids, baseline_correct, arms):
     """A miniature campaign with the same file layout as the real one.
 
     `arms` maps an arm to a list of (kind, epoch, candidate_text, correct_ids, recorded_action).
@@ -1855,11 +1855,11 @@ def _campaign(root, *, ids, baseline_correct, arms):
     S0 = "# S0\n- do the thing."
     base = []
     for qid in ids:
-        base.append(_row(qid, skill=S0, hard=1 if qid in baseline_correct else 0,
+        base.append(_dg_row(qid, skill=S0, hard=1 if qid in baseline_correct else 0,
                          predicted="7" if qid in baseline_correct else "", gt="7"))
-    _write_jsonl(os.path.join(root, "shared", "val_baseline", "results.jsonl"), base)
+    _dg_write_jsonl(os.path.join(root, "shared", "val_baseline", "results.jsonl"), base)
     for qid in ids:
-        _conv(os.path.join(root, "shared", "val_baseline", "predictions", qid, "conversation.json"),
+        _dg_conv(os.path.join(root, "shared", "val_baseline", "predictions", qid, "conversation.json"),
               [f"read(path='/data/{qid}.txt', start=1, limit=5)"])
     for arm in arms:
         a = os.path.join(root, f"arm_{arm}")
@@ -1867,14 +1867,14 @@ def _campaign(root, *, ids, baseline_correct, arms):
         with open(os.path.join(a, "config.json"), "w", encoding="utf-8") as f:
             json.dump({"max_tool_turns": 24, "target_openai_compatible_temperature": 0.7,
                        "seed": 42, "split_seed": 42}, f)
-        _write_jsonl(os.path.join(a, "selection_eval_baseline", "results.jsonl"), base)
+        _dg_write_jsonl(os.path.join(a, "selection_eval_baseline", "results.jsonl"), base)
         prev_skill = S0
         for kind, epoch, cand, correct, action in arms[arm]:
             if kind == "step":
                 d = os.path.join(a, "steps", f"step_{epoch:04d}")
                 os.makedirs(d, exist_ok=True)
-                _write_jsonl(os.path.join(d, "rollout", "results.jsonl"),
-                             [_row(q, skill=prev_skill) for q in ids])
+                _dg_write_jsonl(os.path.join(d, "rollout", "results.jsonl"),
+                             [_dg_row(q, skill=prev_skill) for q in ids])
                 rec = {"step": epoch, "epoch": epoch, "candidate_hash": "h" * 16,
                        "selection_hard": len(correct) / len(ids), "action": action,
                        "tokens": {"analyst": {"calls": 4}, "merge": {"calls": 2},
@@ -1889,8 +1889,8 @@ def _campaign(root, *, ids, baseline_correct, arms):
             else:
                 d = os.path.join(a, "slow_update", f"epoch_{epoch:02d}")
                 os.makedirs(d, exist_ok=True)
-                _write_jsonl(os.path.join(d, "rollout_curr", "results.jsonl"),
-                             [_row(q, skill=prev_skill) for q in ids])
+                _dg_write_jsonl(os.path.join(d, "rollout_curr", "results.jsonl"),
+                             [_dg_row(q, skill=prev_skill) for q in ids])
                 with open(os.path.join(d, "slow_result.json"), "w", encoding="utf-8") as f:
                     json.dump({"selection_hard": len(correct) / len(ids), "action": action,
                                "candidate_hash": "s" * 16, "slow_update_content": "guidance",
@@ -1900,15 +1900,15 @@ def _campaign(root, *, ids, baseline_correct, arms):
             with open(os.path.join(d, "candidate_skill.md"), "w", encoding="utf-8") as f:
                 f.write(cand)
             sel = os.path.join(d, "selection_eval")
-            _write_jsonl(os.path.join(sel, "results.jsonl"),
-                         [_row(q, skill=cand, hard=1 if q in correct else 0,
+            _dg_write_jsonl(os.path.join(sel, "results.jsonl"),
+                         [_dg_row(q, skill=cand, hard=1 if q in correct else 0,
                                predicted="7" if q in correct else "",
                                gt="7",
                                fail="" if q in correct
                                else "Model neither produced a tool request nor a final answer")
                           for q in ids])
             for q in ids:
-                _conv(os.path.join(sel, "predictions", q, "conversation.json"),
+                _dg_conv(os.path.join(sel, "predictions", q, "conversation.json"),
                       [f"read(path='/data/{q}.txt', start=1, limit=5)",
                        f"read(path='/data/{q}.txt', start=1, limit=5)"])
             if action in ("accept", "accept_new_best"):
@@ -1930,16 +1930,16 @@ def test_the_skill_is_recovered_from_the_system_prompt_even_when_it_contains_a_r
     """
     D = _diag()
     tricky = "# Skill\n- step one.\n\n## Rules\n- a rule the OPTIMIZER wrote, not the template's."
-    sysmsg = _system(tricky)
-    assert D.skill_from_system(sysmsg) == tricky
-    assert D.scaffold_of(sysmsg) == _system("<SKILL>")
+    sysmsg = _dg_system(tricky)
+    assert D.skill_from_dg_system(sysmsg) == tricky
+    assert D.scaffold_of(sysmsg) == _dg_system("<SKILL>")
     # and two different skills under the same template share one scaffold
-    assert D.scaffold_of(_system("# other")) == D.scaffold_of(sysmsg)
+    assert D.scaffold_of(_dg_system("# other")) == D.scaffold_of(sysmsg)
 
 
 def test_a_missing_delimiter_returns_none_rather_than_a_guess():
     D = _diag()
-    assert D.skill_from_system("no skill section here") is None
+    assert D.skill_from_dg_system("no skill section here") is None
     assert D.scaffold_of("no skill section here") == "no skill section here"
 
 
@@ -1972,13 +1972,13 @@ def test_the_four_real_outcome_shapes_are_separated_though_the_gate_scores_three
     is False for a silent turn. Reading it as "execution error" misfiled 354 of the 528.
     """
     D = _diag()
-    silent = D.classify(_row("U1", skill="s", hard=0, predicted="", ok=False,
+    silent = D.classify(_dg_row("U1", skill="s", hard=0, predicted="", ok=False,
                              fail="Model neither produced a tool request nor a final answer"), 24)
-    wrong = D.classify(_row("U2", skill="s", hard=0, predicted="458.070", gt="0.011"), 24)
-    right = D.classify(_row("U3", skill="s", hard=1, predicted="0.011", gt="0.011"), 24)
-    budget = D.classify(_row("U4", skill="s", hard=0, predicted="", ok=False,
+    wrong = D.classify(_dg_row("U2", skill="s", hard=0, predicted="458.070", gt="0.011"), 24)
+    right = D.classify(_dg_row("U3", skill="s", hard=1, predicted="0.011", gt="0.011"), 24)
+    budget = D.classify(_dg_row("U4", skill="s", hard=0, predicted="", ok=False,
                              fail="Exceeded tool-turn budget (24)", turns=24), 24)
-    empty = D.classify(_row("U5", skill="s", hard=0, predicted="", ok=True,
+    empty = D.classify(_dg_row("U5", skill="s", hard=0, predicted="", ok=True,
                             fail="predicted '' but the scorer marked it incorrect"), 24)
     assert silent["outcome"] == "no_answer" and silent["why"] == "silent_turn"
     assert silent["agent_ok"] is False, "the flag is False here, and it does NOT mean a crash"
@@ -1986,9 +1986,9 @@ def test_the_four_real_outcome_shapes_are_separated_though_the_gate_scores_three
     assert right["outcome"] == "correct" and right["relation"] == ""
     assert budget["outcome"] == "execution_failure" and budget["why"] == "turn_budget_exceeded"
     assert empty["outcome"] == "no_answer" and empty["why"] == "empty_parse"
-    assert D.classify(_row("U6", skill="s", turns=24), 24)["at_turn_cap"] is True
-    assert D.classify(_row("U7", skill="s", finish="length"), 24)["truncated"] is True
-    assert D.classify(_row("U8", skill="s", ok=False, fail="error: boom"), 24)["why"] == "exception"
+    assert D.classify(_dg_row("U6", skill="s", turns=24), 24)["at_turn_cap"] is True
+    assert D.classify(_dg_row("U7", skill="s", finish="length"), 24)["truncated"] is True
+    assert D.classify(_dg_row("U8", skill="s", ok=False, fail="error: boom"), 24)["why"] == "exception"
 
 
 def test_the_placeholder_epoch_is_not_a_gate_and_the_order_is_the_trainers():
@@ -1996,7 +1996,7 @@ def test_the_placeholder_epoch_is_not_a_gate_and_the_order_is_the_trainers():
     import tempfile
     with tempfile.TemporaryDirectory() as root:
         ids = [f"UID{i:04d}" for i in range(4)]
-        _campaign(root, ids=ids, baseline_correct={ids[0]},
+        _dg_campaign(root, ids=ids, baseline_correct={ids[0]},
                   arms={"A": [("step", 1, "# c1", set(), "reject"),
                               ("step", 2, "# c2", set(), "reject"),
                               ("slow", 2, "# s2", set(), "reject")]})
@@ -2016,7 +2016,7 @@ def test_the_threshold_moves_after_an_acceptance_and_the_decision_is_rederived()
     with tempfile.TemporaryDirectory() as root:
         ids = [f"UID{i:04d}" for i in range(8)]
         base_ok = {ids[0], ids[1]}                      # S0 = 2/8
-        _campaign(root, ids=ids, baseline_correct=base_ok,
+        _dg_campaign(root, ids=ids, baseline_correct=base_ok,
                   arms={"B": [("step", 1, "# c1", {ids[0]}, "reject"),            # 1/8, below
                               ("step", 2, "# c2", {ids[0], ids[1], ids[2]},
                                "accept_new_best"),                                # 3/8, above
@@ -2045,7 +2045,7 @@ def test_a_candidate_file_that_is_not_what_ran_is_reported_not_trusted():
     import tempfile
     with tempfile.TemporaryDirectory() as root:
         ids = [f"UID{i:04d}" for i in range(4)]
-        _campaign(root, ids=ids, baseline_correct=set(),
+        _dg_campaign(root, ids=ids, baseline_correct=set(),
                   arms={"A": [("step", 1, "# the candidate that ran", set(), "reject")]})
         doc = D.cmd_gates(root)
         assert doc["gates"][0]["skill_embedded_verbatim"] is True
@@ -2064,7 +2064,7 @@ def test_a_changed_question_or_prompt_is_caught_so_a_score_difference_is_not_mis
     import tempfile
     with tempfile.TemporaryDirectory() as root:
         ids = [f"UID{i:04d}" for i in range(4)]
-        _campaign(root, ids=ids, baseline_correct=set(),
+        _dg_campaign(root, ids=ids, baseline_correct=set(),
                   arms={"A": [("step", 1, "# c", set(), "reject")]})
         doc = D.cmd_gates(root)
         assert doc["checks"]["every_question_set_matches"]
@@ -2077,7 +2077,7 @@ def test_a_changed_question_or_prompt_is_caught_so_a_score_difference_is_not_mis
         rows = [json.loads(x) for x in open(p, encoding="utf-8") if x.strip()]
         rows[0]["target_user_prompt"] = "## Question\nq?\n## Extra page the baseline never saw\n"
         rows[1]["oracle_parsed_pages_chars"] = 999
-        _write_jsonl(p, rows)
+        _dg_write_jsonl(p, rows)
         doc2 = D.cmd_gates(root)
         assert doc2["gates"][0]["user_prompts_identical_to_baseline"] is False
         assert doc2["gates"][0]["user_prompt_mismatches"] == [rows[0]["id"]]
@@ -2091,7 +2091,7 @@ def test_gains_and_losses_are_counted_per_question_against_the_shared_baseline()
     with tempfile.TemporaryDirectory() as root:
         ids = [f"UID{i:04d}" for i in range(6)]
         # S0 solves 0 and 1. The candidate loses 1 and gains 4.
-        _campaign(root, ids=ids, baseline_correct={ids[0], ids[1]},
+        _dg_campaign(root, ids=ids, baseline_correct={ids[0], ids[1]},
                   arms={"A": [("step", 1, "# c", {ids[0], ids[4]}, "reject")]})
         doc = D.cmd_questions(root)
         g = doc["per_gate"]["A.1.step"]
@@ -2111,7 +2111,7 @@ def test_trace_features_count_repeats_and_files_without_interpreting_them():
     D = _diag()
     import tempfile
     with tempfile.TemporaryDirectory() as root:
-        _conv(os.path.join(root, "conversation.json"), [
+        _dg_conv(os.path.join(root, "conversation.json"), [
             "read(path='/data/a.txt', start=1, limit=5)",
             "read(path='/data/a.txt', start=1, limit=5)",
             "grep(pattern='1943.*Feb', path='/data/b.txt')",
@@ -2164,7 +2164,7 @@ def test_a_candidate_that_scored_zero_still_recomputes():
     import tempfile
     with tempfile.TemporaryDirectory() as root:
         ids = [f"UID{i:04d}" for i in range(4)]
-        _campaign(root, ids=ids, baseline_correct={ids[0]},
+        _dg_campaign(root, ids=ids, baseline_correct={ids[0]},
                   arms={"A": [("step", 1, "# c", set(), "reject")]})
         doc = D.cmd_gates(root)
         g = doc["gates"][0]
