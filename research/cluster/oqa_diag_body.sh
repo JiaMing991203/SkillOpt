@@ -52,6 +52,7 @@ run() {
 run gates     gates     --campaign "$CAMP" --out "$D/DIAG_GATES.json"
 run questions questions --campaign "$CAMP" --out "$D/DIAG_QUESTIONS.json"
 run contracts contracts --campaign "$CAMP" --out "$D/DIAG_CONTRACTS.json"
+run replicates replicates --campaign "$CAMP" --out "$D/DIAG_REPLICATES.json"
 run chains    chains    --campaign "$CAMP" \
     --case B.2.step --case C.3.slow --case A.4.step --case B.4.step --case C.4.step \
     --case A.2.step --case A.3.step --case B.3.step --case C.2.step --case B.2.slow \
