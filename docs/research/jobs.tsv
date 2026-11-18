@@ -102,3 +102,6 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66352197	oqa-fu2-cc	0e04284	COMPLETED	CC re-score/recheck/compare/Lean rc0 + S0 summary
 66352245	oqa-fu2-cc	fa8f1c3	FAILED	all work done; v3 freeze refused a provenance-only diff
 66352312	oqa-fu2-tests	4572c61	COMPLETED	2321 passed, 9 skipped, 368 subtests
+66356410	oqa-aud-audit	ba53007	FAILED	all work done; NameError in the audit tool's interpret step
+66356411	oqa-aud-tests	ba53007	COMPLETED	2326 passed, 9 skipped, 368 subtests
+66356437	oqa-aud-audit	3974433	COMPLETED	audit complete; Lean rc0; 7s

@@ -1418,3 +1418,78 @@ backfill tool refuses to write twice. The arithmetic turned up a second wrong-fi
 backend reads `prompt_cache_hit_tokens`, which is DeepSeek's name, so for EmpirioLabs it sees no cache
 and bills every prompt token — that is the whole of the campaign's 38% conservatism. Left uncorrected on
 purpose, because fixing it would lower the computed charge and weaken the guard.
+
+---
+
+## 2026-11-18 (later) — the offline audit: the records were complete, three summaries were not, and the extraction had three bugs
+
+Rules **OQA-AUD-1** and **OQA-AUD-2**, amendments **A-3** and **B-3**, report
+`docs/research/OFFICEQA_AUDIT_PACKET.md`, artifacts `$CAMP/audit_20261118/`. Jobs 66356410 / 66356411 /
+66356437. **Zero API calls, zero GPUs, 0.87 of 2 authorized requested CPU job-hours.**
+
+**The eight-pass measurement is complete; one published block was computed from a truncated file.** The
+manifest is built from a DECLARED grid — the frozen split's 24 validation ids by the eight pass labels —
+because a grid derived from the rows cannot notice a missing row. All 192 records exist exactly once and
+35 of 35 consistency assertions pass. Every per-pass figure the packet published is confirmed. What was
+wrong: the termination table, over "179 completed question-rollouts" with 158 answers, and the sentence
+"answered in all 8 passes — 20 of 24". **Demonstrated, not inferred:** cutting pass 8 to its first 11
+rows — the ones job 66346540 wrote before its wall limit — reproduces all five published cause counts,
+the 179 and the 158 exactly. Corrected: 192 rollouts, 117 recovered, 53 from content, 18 turn-budget, 3
+truncated, 1 declined; 22 of 192 unanswered; 17 of 24 questions answered in every pass.
+
+**Why the attribution needed two independent facts.** Jobs 66346539 and 66346540 were submitted together
+and ran concurrently, so the clock cannot say which job produced a pass. The passes come from each job's
+own log line; the 11/13 split of pass 8 comes from each row's own final response id matched to the call
+log. The directory mtimes agree and were not used to derive it.
+
+**The four unresolved requests are exactly the gap between one process's 61 `attempt` and 57 `usage`
+records.** It was SIGKILLed, so it ran no atexit hook and its whole 100-attempt claim stays charged
+against 57 measured — the ledger overcharges by about $0.07, which is the safe direction. Six further
+attempts back no record at all: job 66346540 had begun two pass-8 rollouts (UID0159, UID0161) which the
+resuming job re-ran from scratch. Neither is a provider error and neither is an episode outcome.
+
+**The two S0 digests are one document.** `heldout/S0.md` is 887 B `9d377d1c2906`; stripped of its single
+trailing newline it is 886 B `b2f8624c8da8`, which is the campaign audit's "injected S0". And the file
+digest is not what settles it: the rendered system prompt and user prompt are **byte-identical for all
+24 questions in all 8 passes**, and the transmitted payload is the same tuple the campaign sent
+(`qwen3-5-4b`, 0.7, 8000, tools on, `extra_body: null`).
+
+**A deployed-commit claim of mine was wrong and is withdrawn.** The state note said bundle
+`oqa_fu2_20261118`'s commit `4572c61` was "the revision every result was produced under". The bundle was
+rebuilt six times: the episodes ran under `241f8e8`, the S0 passes under `7e4a69a`, the published CC
+artifacts under `fa8f1c3`. It changes nothing — `git diff 241f8e8 4572c61 -- skillopt/` is empty — but
+"every result" was a claim I had not checked.
+
+**Three extraction defects, each against the extractor's own docstring.** (1) `_NUM` let a match end in a
+comma, so the list comma in "odd years (2011, 2013, 2015)" made a YEAR "grouped" and `classify_number`
+returned MONETARY by thousands grouping before any year test ran — 26 such operands across the audited
+records, now 0. (2) `data_cells` never passed `references` to `cells_of`, whose docstring defines them as
+"flat-form tables from elsewhere in the same record"; so the oracle page's SPLIT rendering of UID0014's
+receipts table could not be adjudicated by the FLAT rendering the actor's own `read` had already
+returned, and one figure appeared as two cells "disagreeing about the column" when one copy simply had
+no column. (3) The prefix ended at the operand's message and the later window began one step after it.
+
+**The consequence, measured.** The reserved checking records go from 0 holding bindings to 4, all on
+UID0014, all well bound. **And the comparison says `repeats_what_was_available`:** arm C's own historical
+stage report for that attempt already carries `**VIOLATED** [unit_match] … in the asked scale
+(billions)`. So the repairs bought a sound finding where there was none and **no diagnosis the project
+did not already have** — valid additional diagnosis 0 of 4.
+
+**"No bound header" never meant "header absent", and the header was never the main obstacle.** 105 of 155
+tables in these prefixes have an observed header row; all 29 cells whose binding stayed UNKNOWN are in
+tables whose header row WAS observed and which name no money scale anywhere. The dominant cause is
+earlier: **141 of 196 operands are in no data cell**, because the numbers this actor writes are sums,
+averages and converted figures it computed.
+
+**Two proposals, measured and left alone.** P-1: resolve the conversion from the operand's own message as
+well — this actor writes operand, factor and answer in ONE final message (UID0014's is step 45 of 45), so
+the strictly-later window is empty; applying it makes all four findings `incorrect_factor_stated`,
+VIOLATED, wrong by 10^3, which is the campaign's real error. P-2: let a fully observed header row naming
+no money scale witness the absence of a nearer scale — 29 cells become decidable, 8 reach a binding. Both
+change what the checker decides, so both are the user's call, not mine.
+
+**And one correction to my own framing.** "The contract layer cannot be evaluated on traces recorded with
+thinking on" conflated four interventions. A checker whose evidence is tool observations and the
+committed answer can be evaluated on them today; only a checker that needs the actor's INTERMEDIATE
+numbers cannot. The unit-binding contract is of the second kind because it binds the operand the actor
+wrote — a design choice about the contract, not a property of the trace.

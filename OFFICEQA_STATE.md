@@ -1,14 +1,54 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-18, prepared for a compaction. Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. NOT pushed; pushing is still not authorized. Tracked tree clean. NO OfficeQA job running — the six `e3m-*` jobs pending in `squeue` belong to Experiment 3 and are
-not mine to touch.**
+**Last update: 2026-11-18, after the offline audit. Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`. NOT pushed; pushing is still not authorized. Tracked tree clean. NO OfficeQA job
+running — the six `e3m-*` jobs pending in `squeue` belong to Experiment 3 and are not mine to touch.**
 
-**Deployed vs local:** the bundle `$PROJECT_ROOT/oqa_fu2_20261118` carries commit **`4572c61`**, which is
-the revision every result below was produced under. Every commit after it on this branch is
-**documentation only** — the packet, the state note, the logs — so the bundle does not need rebuilding to
-reproduce anything (`git log --oneline 4572c61..HEAD` shows what they are). **Do not rebuild it while a job is queued OR RUNNING:** bash reads
-a body script lazily, and replacing it under a running job killed 66351468 after its work was done.
+## START HERE -> `docs/research/OFFICEQA_AUDIT_PACKET.md` (rules OQA-AUD-1 / OQA-AUD-2, amendments A-3 / B-3)
+
+**The eight-pass S0 measurement is COMPLETE and its records are sound; one published block was not.**
+All 192 intended `(pass, question)` records exist exactly once, 0 duplicates, 0 missing, **35 of 35
+consistency assertions pass**. Every per-pass score, emission, recovery count, the mean 9.75, the sd
+1.753 and all four paired-question lists are confirmed from the rows. **Withdrawn:** the termination
+table's "179 completed question-rollouts" (there are **192**) and its five cause counts (corrected:
+**117** recovered / **53** content / **18** turn-budget / 3 truncated / 1 declined), "47 answers arrived
+in ordinary content" (**53**), "21 of 179 produced no answer" (**22 of 192**), and "answered in all 8
+passes — 20 of 24" (**17 of 24**). Cause **demonstrated**: an ad-hoc aggregation run while
+`p8/results.jsonl` still held the 11 rows job 66346540 wrote before its wall limit — cutting p8 to 11
+rows reproduces all five published counts exactly. Jobs 66356410 / 66356411 / 66356437.
+
+**Deployed vs local — CORRECTED.** The earlier claim that bundle `oqa_fu2_20261118`'s commit `4572c61`
+"is the revision every result was produced under" was **wrong**. The bundle was rebuilt six times and
+each job logged what it verified: **episodes `241f8e8`**, **S0 passes `7e4a69a`**, published CC artifacts
+**`fa8f1c3`**, tests `4572c61`. It changes nothing, and that is checked: `git diff 241f8e8 4572c61 --
+skillopt/` is **empty**, so the client, the adapter, the recovery policy and the rollout loop are
+byte-identical across all of them. **Do not rebuild a bundle while a job is queued OR RUNNING:** bash
+reads a body script lazily, and replacing it under a running job killed 66351468 after its work was done.
+
+**The connected contract: three extraction repairs, a sound finding, and no new diagnosis.** Amendment
+B-3 fixes three defects against the extractor's own stated semantics — a list comma read as a thousands
+separator (**26 years admitted as money → 0**), the record's own flat headers never passed as
+`references` (**UID0014's 8,006,880 was an "ambiguous match" between a bound and an unbound copy of one
+cell**; unbound data cells 5,791 → 5,184), and one step read by nobody. The reserved checking records go
+from **0 holding bindings to 4**, all on UID0014, all `OUTSTANDING`. **But the comparison verdict is
+`repeats_what_was_available`:** the campaign's own stage report for that attempt already carries
+`**VIOLATED** [unit_match] … in the asked scale (billions)`. Valid additional diagnosis **0 of 4**.
+`CC_BUNDLE_v4` = `1c165508ed8d7aae`; **Lean 4.20.0 return code 0**, 15 statements, 7 evidence examples.
+
+**"No bound header" never meant "header absent."** 105 of 155 tables in these prefixes have an observed
+header row; all 29 cells whose binding stayed UNKNOWN sit in a table whose header row **was** observed
+and names **no money scale at all**. The dominant reason the contract is silent is earlier than the
+header: **141 of 196 operands are in no data cell** — they are sums, averages and converted figures the
+actor computed.
+
+**TWO PROPOSALS, measured and NOT applied — the decision is yours.**
+* **P-1:** resolve the conversion from the operand's own message as well. This actor writes operand,
+  factor and answer in ONE final message (UID0014's is step 45 of 45), so the strictly-later window is
+  empty. Applying it turns the four findings into `incorrect_factor_stated`, **VIOLATED, wrong by 10^3** —
+  the campaign's real 1,000x error. It weakens what "committed before the later steps are read" means.
+* **P-2:** let a fully observed header row that names no money scale witness the absence of a nearer
+  scale. 29 cells become decidable, 8 of them reach a binding. A stronger evaluator for the same
+  condition, not a weaker condition — which is why it is yours and not mine.
 
 ## THE HELD-OUT RESULT IS RELEASED -> `docs/research/OFFICEQA_RELEASE_PROTOCOL.md` (end of file)
 
@@ -54,10 +94,14 @@ MEASURED.** Rules OQA-REC-2 and OQA-CC-2; amendments A-2 and B-2. Everything new
    (`8006880`, `1211749`, `1004461` on UID0014) — and then refuses to bind them, because each matches
    several cells that disagree. All four comparison verdicts are `remains_unknown`, 0 findings, 0
    well-bound findings; no counterexample; **Lean 4.20.0 return code 0, every statement accepted**. The
-   obstacle is now measured rather than guessed: **1,484 to 2,022 of the data cells in these records have
-   no bound column header**, and the applicability condition needs one, so the contract is silent by
-   construction on this corpus. The same holds on the 12 new traces (descriptive check), including the
-   thinking-off ones that DO contain the actor's numbers.
+   obstacle was reported as **1,484 to 2,022 of the data cells having no bound column header**, with the
+   applicability condition needing one, so the contract was "silent by construction on this corpus".
+   **BOTH HALVES OF THAT ARE WITHDRAWN by the 2026-11-18 audit:** the count is 1,107-2,022 once the
+   extractor passes the references its own machinery documents, the condition does NOT need a bound
+   column (it needs the absence of a nearer override, which the observed header row settles in all 29
+   cases), and the ambiguity on UID0014 was an artifact of comparing a bound against an unbound copy of
+   ONE cell. Repaired, the same records give 4 holding bindings and 4 findings - which the campaign's own
+   stage report already had. See `docs/research/OFFICEQA_AUDIT_PACKET.md`.
 
 ### What is in force now (all OFF by default, so the frozen campaign still reproduces)
 
@@ -88,9 +132,15 @@ this follow-up changed them, and nothing should without your word. Three options
 3. **Re-run the three-arm campaign.** I would advise against it until the sample-size question below is
    settled: the client defect is fixed, but the design's other problem is not.
 
-**The sample-size arithmetic, from this measurement.** Draw-to-draw sd ≈ 1.5 of 24. With one draw per
-arm a difference below about 6 questions of 24 is undetectable at 80% power; with four draws, about 3;
-with eight, about 2. **The campaign accepted a candidate on a margin of one question with one draw.**
+**The sample-size arithmetic, from this measurement — and read the audit's §5 before quoting it.**
+Draw-to-draw sd is **1.753** of 24 (not the 1.5 this note used to say). Δ_min = 2.802·σ·√(2/n): one draw
+per arm **6.9** questions of 24, two 4.9, four **3.5**, eight **2.5**. **The campaign accepted a
+candidate on a margin of one question with one draw.** Four qualifications, all in the audit packet §5:
+σ itself has a 95% interval of [1.16, 3.57] from 8 draws, so every threshold carries a band of roughly
+x0.66 to x2.0; the formula is an unpaired approximation while the design is paired (14 of 24 questions
+never change outcome, so a paired test is more sensitive, and its sd needs repeats of TWO documents);
+these are repeated evaluations of ONE FIXED document, which is not a training run and excludes the
+optimizer's proposal variance; and it is about these 24 validation questions, not the 60 held-out ones.
 
 ### And the one finding that constrains any future contract experiment
 
@@ -108,12 +158,19 @@ retries; another training campaign; altering the frozen campaign's artifacts.
 
 ### Tests
 
-**2,321 passed, 9 skipped, 368 subtests** (job 66352312, commit `4572c61`).
+**2,326 passed, 9 skipped, 368 subtests** (job 66356411, commit `ba53007`) - the five new ones are the
+B-3 regressions on the real witnesses. The earlier 2,321 stand for job 66352312, commit `4572c61`.
+NOTE: the local workstation runs Python 3.9 and cannot even COLLECT
+`tests/test_officeqa_answer_recovery.py` (`dataclass(slots=True)`); the cluster's 3.11.17 is
+authoritative.
 
 ### Ready to run
 
 ```
 R=/nfs/turbo/umms-csriram/yaojm/lean_skillopt ; CAMP=$R/runs/20261117-officeqa-3arm-campaign
+AUD=$CAMP/audit_20261118 ; A=$R/oqa_aud_20261118          # the AUDIT bundle, commit 3974433
+OQA_BUNDLE=$A bash $A/oqa_aud_submit.sh audit             # 0:20, free, rewrites $AUD in place
+OQA_BUNDLE=$A bash $A/oqa_aud_submit.sh tests             # 0:12, free
 FU=$CAMP/followup_20261119 ; D=$R/oqa_fu2_20261118        # bundle, commit in $D/COMMIT
 # every phase, free unless marked:
 OQA_BUNDLE=$D bash $D/oqa_fu2_submit.sh tests             # 0:12
@@ -346,7 +403,7 @@ pre-ledger DeepSeek probe of job 66271290 is subtracted from the enforced cap).
 | EmpirioLabs charge | $17.00 | $7.8344 | $9.1656 | 46% |
 | DeepSeek calls | 266 | 106 | 160 | 40% |
 | DeepSeek charge | $10.00 | $3.5100 | $6.4900 | 35% |
-| CPU requested job-hours | 44 | 38.5 (31.6 before + 6.88 this follow-up) | 5.5 | 88% |
+| CPU requested job-hours | 44 | **39.37** (31.6 + 6.88 follow-up + 0.87 audit) | **4.63** | **89%** |
 | GPUs | 0 | 0 | — | — |
 
 **Grant 4's own suballocation** (5,000 attempts / $4.00 actor, 4 / $1.00 optimizer, 8 requested CPU

@@ -1637,3 +1637,48 @@ these records have no bound column header, which the applicability condition req
 
 **Cost:** 1,598 actor attempts, $0.9789 at our price table ($0.6257 provider-reported), **0 DeepSeek
 calls**, 6.88 requested CPU job-hours, 0 GPUs.
+
+---
+
+## 2026-11-18 — AUDIT of the recovery report (rules OQA-AUD-1 / OQA-AUD-2)
+
+**Jobs 66356410 (FAILED, exit 1, all artifacts written), 66356411 (tests, COMPLETED), 66356437
+(COMPLETED, 7 s).** Bundle `$PROJECT_ROOT/oqa_aud_20261118`, commits `ba53007` then `3974433`.
+Artifacts `$CAMP/audit_20261118/`. **0 API calls, 0 GPUs, $0.00, 0.87 requested CPU job-hours of 2.**
+Tests **2,326 passed, 9 skipped, 368 subtests**.
+
+**Workstream A.** 192 of 192 intended `(pass, question)` records present exactly once; 0 duplicates, 0
+extra rows, 0 missing; **35 of 35 assertions pass**. Per pass (records / correct / emitted / recovered /
+content / attempts / errors): p1 24/11/22/16/6/154/0, p2 24/9/19/13/6/215/0, p3 24/12/21/17/4/202/0,
+p4 24/11/22/17/5/148/0, p5 24/9/21/15/6/190/0, p6 24/11/22/15/7/178/0, p7 24/8/20/12/8/212/0,
+p8 24/7/23/12/11/177/0. Totals 78 correct, 170 emitted, 117 recovered, 53 content, 1,476 recorded
+attempts, 0 errors. Mean 9.75, sd 1.753, range 7–12; emitted mean 21.25, range 19–23. Terminations over
+192: 117 recovered / 53 emitted / 18 turn-budget / 3 truncated / 1 declined. Answered in all eight
+passes 17, sometimes 6, never 1; correct always 5, sometimes 10, never 9. **Corrected against the
+published §7:** 179 → 192 rollouts, 111 → 117, 47 → 53, 17 → 18, 21 → 22 unanswered, 20 → 17 always
+answered. Cause: an aggregation over p1–p7 plus the 11 pass-8 rows that existed before the top-up;
+reproducing that cut gives the published numbers exactly. **4 unresolved requests** (one process's 61
+attempt vs 57 usage records, claim retained, no release) and **6 abandoned attempts** (UID0159 ×5,
+UID0161 ×1, re-run from scratch by job 66351468).
+
+**Input match.** System prompt and user prompt byte-identical to the campaign's S0 validation baseline
+for 24 of 24 questions in all 8 passes (digest `b41c9dbeec8d43c5`); transmitted payload identical
+(`qwen3-5-4b`, temp 0.7, max_tokens 8000, tools on, `extra_body: null`); `heldout/S0.md` 887 B
+`9d377d1c2906` = 886 B `b2f8624c8da8` with its trailing newline stripped; `arm_A/skills/skill_v0000.md`
+byte-identical to it. Explained differences: the settings fingerprint is absent from the campaign's rows
+(the field postdates them) and the recovery policy is the intervention under test.
+
+**Workstream B.** Primary causes over 196 operands in 20 records: `operand_is_in_no_cell` 141,
+`several_plausible_bindings` 19, `header_observed_structure_lost` 29, `bound_no_failure` 7;
+`header_never_observed` 0. Table header forms: 50 split, 44 single, 11 flat, 50 none. After amendment
+B-3: year-shaped monetary operands 26 → 0, unbound data cells 5,791 → 5,184, checking records' holding
+bindings **0 → 4** (resolutions 4 OUTSTANDING, 3 UNKNOWN), learning 8 → 12 unique matches, descriptive
+**3 DISCHARGED**. `CC_BUNDLE_v4` = `1c165508ed8d7aae`; v3 reports 5 changed components, all three
+repairs. Comparison: `remains_unknown` 3, **`repeats_what_was_available` 1** (UID0014, 4 findings, 4
+well bound, against a historical report that already states VIOLATED). No counterexample. **Lean 4.20.0
+return code 0**, 15 statements, 7 evidence examples.
+
+**Proposals, measured and not applied.** P-1 (read the operand's own message when resolving): the four
+UID0014 findings become `incorrect_factor_stated`, VIOLATED, wrong by 10^3. P-2 (a fully observed header
+row naming no money scale witnesses the absence of a nearer scale): 29 cells decidable, 8 reach a
+binding.

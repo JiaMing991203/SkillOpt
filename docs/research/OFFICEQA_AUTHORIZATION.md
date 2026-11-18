@@ -144,6 +144,19 @@ wall limit, and their reserve is deliberately not released.
 DeepSeek **106 of 266** and **$3.5100 of $10.00**; CPU **38.5 of 44** requested job-hours — **88%, now
 the binding constraint**; GPUs 0.
 
+### Grant 5 — 2026-11-18, the offline audit (user-authorized, drawn from the remaining allowance)
+
+Up to **2 requested CPU job-hours**, ≤2 CPUs per job, ≤2 concurrent jobs, **zero API calls, zero GPUs,
+zero new gameplay**, saved artifacts only. **Used: 0.87 requested job-hours over 3 jobs (66356410 0:20,
+66356411 0:12, 66356437 0:20), 0 attempts, $0.00, 0 GPUs.** Job 66356410 wrote every artifact and then
+exited 1 on a `NameError` in the audit tool's own interpretation step; 66356437 redid the phase in 7 s
+after the fix, and its requested time is counted anyway.
+
+**Cumulative after Grant 5:** EmpirioLabs **11,756 of 30,024 attempts** and **$7.8344 of $17.00**;
+DeepSeek **106 of 266** and **$3.5100 of $10.00**; CPU **39.37 of 44** requested job-hours — **89%, and
+the binding constraint on everything that remains**; GPUs 0. The held-out re-measurement that is still
+on the table needs about 1.5 of the 4.63 job-hours left.
+
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 
 `research/cluster/oqa_campaign_body.sh` sets the caps the spend ledger enforces. They are not the grant's
