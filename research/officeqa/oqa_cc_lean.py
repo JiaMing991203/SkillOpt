@@ -19,8 +19,11 @@ WHAT LEAN CHECKS HERE, and it is a short list on purpose:
     6. applying a factor to an already-compatible value IS reported;
     7. a missing factor is OUTSTANDING, never VIOLATED;
     8. a correct factor whose result never reaches a later value is OUTSTANDING, not DISCHARGED;
-    9. two statements quantified over every conversion verdict and carry state, showing that neither
-       can turn a withdrawn or unknown binding into an accusation.
+    9. two theorems over every conversion verdict, carry state and pair of scales, showing that neither
+       a withdrawn nor an unknown binding can become an accusation. They are stated with BINDERS, not
+       as quantified propositions: core Lean has no `Decidable` instance for a `forall` over a plain
+       inductive type, so `by decide` cannot close that form, and the first version of this file failed
+       on exactly that.
 
   DEFINITIONAL (labelled MATH, not learned):
    10. the required exponent for thousands -> billions is -6, it is not -3, and the difference is the
@@ -165,12 +168,34 @@ example : resolve BindT.holds Scale.thousands Scale.billions ConvT.correct (some
 /-- The campaign's arm C UID0014 shape: thousands read as millions, wrong by 10^3. -/
 example : resolve BindT.holds Scale.thousands Scale.billions ConvT.incorrect (some (-3 : Int))
     Carried.yes = ObState.violated := by decide
-/-- No conversion verdict and no carry state can turn an unknown binding into an accusation. -/
-example : forall c : ConvT, forall cr : Carried,
-    resolve BindT.unknown Scale.thousands Scale.billions c none cr != ObState.violated := by decide
-/-- Nor a conflicting one, for any binding state, when no factor was stated. -/
-example : forall b : BindT, forall c : ConvT, forall cr : Carried,
-    (resolve b Scale.billions Scale.billions c none cr = ObState.violated) = false := by decide
+/-- No conversion verdict, no carry state and no pair of scales can turn an unknown binding into an
+    accusation. Stated with BINDERS rather than as a quantified proposition: core Lean has no
+    `Decidable` instance for `forall x : MyInductive, p x` (that needs a Fintype, which lives in
+    Mathlib), so `by decide` cannot close the quantified form - and a statement that cannot be checked
+    is worse than no statement. The first attempt at this file failed on exactly that. -/
+theorem unknownNeverAccusesWhateverTheConversion (frm to : Scale) (conv : ConvT) (used : Option Int)
+    (carried : Carried) : resolve BindT.unknown frm to conv used carried != ObState.violated := by
+  simp [resolve]
+
+/-- Nor can a withdrawn one. -/
+theorem withdrawalNeverAccusesWhateverTheConversion (frm to : Scale) (conv : ConvT)
+    (used : Option Int) (carried : Carried) :
+    resolve BindT.conflict frm to conv used carried != ObState.violated := by
+  simp [resolve]
+
+/-- An already-compatible unit requires no factor, at every money scale, by exhaustion. -/
+example : requiredExp Scale.units Scale.units = 0 := by decide
+example : requiredExp Scale.thousands Scale.thousands = 0 := by decide
+example : requiredExp Scale.millions Scale.millions = 0 := by decide
+example : resolve BindT.holds Scale.units Scale.units ConvT.noneStated none Carried.unknown
+    = ObState.discharged := by decide
+example : resolve BindT.holds Scale.thousands Scale.thousands ConvT.noneStated none Carried.unknown
+    = ObState.discharged := by decide
+example : resolve BindT.holds Scale.millions Scale.millions ConvT.noneStated none Carried.unknown
+    = ObState.discharged := by decide
+/-- And a withdrawal reopens, rather than silently becoming "unknown". -/
+example : resolve BindT.conflict Scale.thousands Scale.billions ConvT.noneStated none Carried.unknown
+    = ObState.reopened := by decide
 
 /-- 6 and 7. DEFINITIONAL, labelled MATH: thousands to billions is 10^(-6), and it is not 10^(-3). -/
 example : requiredExp Scale.thousands Scale.billions = -6 := by decide
@@ -297,7 +322,9 @@ def main() -> int:
                    "applying a factor to an already-compatible value is VIOLATED",
                    "a missing factor is OUTSTANDING, never VIOLATED",
                    "a correct factor not carried through is OUTSTANDING",
-                   "no conversion verdict can make an unknown binding accuse",
+                   "unknownNeverAccusesWhateverTheConversion",
+                   "withdrawalNeverAccusesWhateverTheConversion",
+                   "an already-compatible unit needs no factor at every money scale",
                    "requiredExp thousands->billions = -6",
                    "requiredExp thousands->billions != -3", "the 1,000x difference",
                    f"{stats['encoded']} evidence example(s)"],

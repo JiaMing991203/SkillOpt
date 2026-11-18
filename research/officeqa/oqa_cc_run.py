@@ -138,6 +138,7 @@ def cmd_repair(model_path: str, check_path: str, records_path: str, out_dir: str
                 "why": ("no counterexample in the permitted checking records: no checked cell had its "
                         "conditions met and its conclusion contradicted"),
                 "score": chk.get("score")}
+
     c = IR.active(m)[0]
     extra = IR.clause("column_header_states_unit", ["header", "scale"], value=False)
     old, new = IR.repair(c, extra, reason=(
@@ -333,13 +334,28 @@ def main() -> int:
         print(f"  score on the learning records: {doc['score_on_learning']}")
     elif args.cmd == "check":
         doc = cmd_check(args.model, args.records, args.which, args.out)
-        print(f"rule {RULE}  {args.which}: {len(doc['results'])} attempt(s), outcomes {doc['score']}")
+        sc = doc["score"]
+        print(f"rule {RULE}  {args.which}: {len(doc['results'])} attempt(s)")
+        print(f"  outcomes          {sc['outcomes']}")
+        print(f"  match status      {sc['match_status']}")
+        print(f"  resolution states {sc['resolution_states']}")
+        print(f"  operand verdicts  {sc['operand_verdicts']}")
         for r in doc["results"]:
             print(f"  {r['item']} ({r.get('trace_key')}): {len(r.get('predictions') or [])} "
                   f"prediction(s) {r.get('problems') or ''}")
-            for p in (r.get("predictions") or [])[:3]:
+            ex = r.get("extraction") or {}
+            if ex:
+                print(f"     tables {ex.get('n_tables')} cells {ex.get('n_data_cells')} "
+                      f"(row-label cells dropped {ex.get('n_row_label_cells_dropped')}, "
+                      f"no bound header {ex.get('n_cells_without_a_bound_header')})")
+            for p in (r.get("predictions") or [])[:4]:
                 res = p.get("resolution") or {}
-                print(f"     operand {(p.get('operand') or {}).get('raw')} binding "
+                op = p.get("operand") or {}
+                if not res:
+                    print(f"     operand {op.get('raw')!r} [{op.get('verdict')}] "
+                          f"{p.get('outcome')}: {p.get('match_status')}")
+                    continue
+                print(f"     operand {op.get('raw')!r} [{op.get('verdict')}] binding "
                       f"{(p.get('binding') or {}).get('truth')} -> {res.get('state')} "
                       f"({res.get('outcome')}) required 10^{res.get('required_exp')} "
                       f"used 10^{res.get('used_exp')}")

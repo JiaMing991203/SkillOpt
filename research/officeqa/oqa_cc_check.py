@@ -348,9 +348,11 @@ def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative
     for c in contracts:
         for op in ops[:12]:
             match = X.match_operand(op, cells)
+            op_rec = {"raw": op["raw"], "value": op["value"], "verdict": op["verdict"],
+                      "reason": op["reason"], "context": op["context"][:200]}
             if match["status"] in ("no_cell_match", "ambiguous_cell_match"):
                 out["predictions"].append({
-                    "contract": f"{c['id']}@v{c['version']}", "operand": op["raw"],
+                    "contract": f"{c['id']}@v{c['version']}", "operand": op_rec,
                     "outcome": EXTRACTION_ERROR, "match_status": match["status"],
                     "candidates": match["candidates"],
                     "why": ("the operand matches no data cell in the prefix"
@@ -361,8 +363,9 @@ def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative
             cell = match["cell"]
             table = table_of(cell, tabs)
             if table is None:
-                out["predictions"].append({"contract": f"{c['id']}@v{c['version']}", "operand": op["raw"],
+                out["predictions"].append({"contract": f"{c['id']}@v{c['version']}", "operand": op_rec,
                                            "outcome": EXTRACTION_ERROR,
+                                           "match_status": match["status"],
                                            "why": "the cell's own table could not be re-bound from the "
                                                   "prefix by its (source, table index) key"})
                 continue
@@ -373,8 +376,7 @@ def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative
                 "contract": f"{c['id']}@v{c['version']}",
                 "committed_at_step": i,
                 "prefix_steps": len(prefix),
-                "operand": {"raw": op["raw"], "value": op["value"], "verdict": op["verdict"],
-                            "reason": op["reason"], "context": op["context"][:200]},
+                "operand": op_rec,
                 "match_status": match["status"],
                 "cell": {k: cell.get(k) for k in ("raw", "value", "row_label", "column", "scale",
                                                   "period_text", "column_basis", "source",
@@ -399,12 +401,28 @@ def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative
 
 
 def score(results: list) -> dict:
-    counts = {}
+    """Outcome counts, plus WHY an extraction failed and what the resolution states were.
+
+    B-2 adds the second and third blocks because the first one alone hid the interesting change: after
+    the operand reader was repaired most predictions are extraction errors, and "the operand matched no
+    data cell" and "the actor wrote no monetary operand at all" are different facts about a trace.
+    """
+    counts, match_status, states, operands = {}, {}, {}, {}
     for r in results:
+        for pr in r.get("problems") or []:
+            counts[pr] = counts.get(pr, 0) + 0        # keep the key visible even at zero
         for p in r.get("predictions") or []:
             o = (p.get("resolution") or {}).get("outcome") or p.get("outcome") or UNKNOWN_OUT
             counts[o] = counts.get(o, 0) + 1
-    return counts
+            ms = str(p.get("match_status") or "n/a")
+            match_status[ms] = match_status.get(ms, 0) + 1
+            st = str((p.get("resolution") or {}).get("state") or "none")
+            states[st] = states.get(st, 0) + 1
+            ov = str((p.get("operand") or {}).get("verdict") or "n/a")
+            operands[ov] = operands.get(ov, 0) + 1
+    return {"outcomes": counts, "match_status": match_status, "resolution_states": states,
+            "operand_verdicts": operands,
+            "problems": sorted({pr for r in results for pr in (r.get("problems") or [])})}
 
 
 def export_for_lean(results: list) -> list:
