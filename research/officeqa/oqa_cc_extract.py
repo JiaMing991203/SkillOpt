@@ -334,6 +334,13 @@ def conversion(op: dict, later_steps: list, req: int | None) -> dict:
     out = {"required_exp": req, "stated_exp": stated,
            "written_conversions_for_this_operand": mine,
            "converted_value_used": None}
+    if req is None:
+        # The binding did not determine a requirement (an unknown or withdrawn binding, or a scale that
+        # is not a money scale). Without a requirement a stated factor cannot be called right or wrong,
+        # and saying "incorrect" here would be an accusation with nothing behind it.
+        out["verdict"] = "requirement_unknown"
+        out["why"] = "the binding determines no required factor, so no factor can be judged"
+        return out
     if req == 0:
         out["verdict"] = "no_conversion_required"
         out["why"] = ("the bound scale already equals the asked scale, so no factor is needed and an "

@@ -231,7 +231,10 @@ def _conv(v) -> str:
             # `no_conversion_required` reaches the already-compatible branch, where the conversion
             # verdict is not consulted at all: the scales decide it.
             "no_conversion_required": "ConvT.noneStated",
-            "no_factor_stated": "ConvT.noneStated"}.get(str(v), "ConvT.noneStated")
+            "no_factor_stated": "ConvT.noneStated",
+            # no requirement was determined, so the conversion cannot be judged; the binding was
+            # UNKNOWN or CONFLICT in that case and `resolve` never reaches the conversion branch.
+            "requirement_unknown": "ConvT.unknownConv"}.get(str(v), "ConvT.noneStated")
 
 
 def _carried(v) -> str:

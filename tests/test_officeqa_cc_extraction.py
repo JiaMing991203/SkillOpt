@@ -236,6 +236,14 @@ def test_no_factor_stated_is_not_a_violation():
     assert got["verdict"] == "no_factor_stated"
 
 
+def test_an_undetermined_requirement_cannot_make_a_factor_wrong():
+    """With no required factor - an unknown or withdrawn binding, or a non-money scale - a stated factor
+    is neither right nor wrong, and calling it incorrect would be an accusation with nothing behind it."""
+    got = X.conversion({"value": 5.0, "raw": "5"}, [_step("I divided by 1000")], None)
+    assert got["verdict"] == "requirement_unknown"
+    assert got["stated_exp"] == -3
+
+
 def test_the_required_exponent_is_the_definition_and_nothing_else():
     assert X.required_exp("thousands", "billions") == -6
     assert X.required_exp("millions", "billions") == -3
