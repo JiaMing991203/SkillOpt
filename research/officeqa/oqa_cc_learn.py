@@ -248,6 +248,12 @@ def compile_proposal(parsed: dict, learning: list, *, cid: str = "scale.binds") 
     c = IR.contract(cid, conclusion, conds, witnesses=parsed.get("witnesses_obligation"),
                     reason=str(parsed.get("reason") or "")[:400], source="deepseek+deterministic")
     problems = IR.validate(c)
+    # The second gate: a well-formed contract whose condition the checker cannot evaluate is
+    # unfalsifiable, and the first proposal was exactly that.
+    missing = CHK.unevaluable(c)
+    if missing:
+        problems = problems + [f"no evaluator for condition predicate(s) {missing}: the contract would "
+                               f"be unfalsifiable, every cell UNKNOWN"]
     score = {"HOLDS": 0, "UNKNOWN": 0, "CONFLICT": 0, "cells": 0}
     if not problems:
         for pk in learning:

@@ -179,3 +179,37 @@ def test_the_model_freezes_under_its_digest_and_records_its_parent():
             json.dump(doc, f)
         with pytest.raises(RuntimeError):
             IR.load_frozen(p2)
+
+
+def test_a_condition_the_checker_cannot_evaluate_is_refused_as_unfalsifiable():
+    """The defect the first real proposal exposed: well-formedness and evaluability are different.
+
+    DeepSeek's proposal (job 66341664) validated cleanly and then scored UNKNOWN on all 240 learning
+    cells, because one of its conditions had no evaluator. An unfalsifiable hypothesis is worse than a
+    refused one: it looks like a result.
+    """
+    c = IR.contract("x", IR.clause("scale_binds", ["table", "cell", "scale"]),
+                    [IR.clause("asked_scale", ["scale"])])
+    assert IR.validate(c) == [], "it is well formed"
+    assert CHK.unevaluable(c) == ["asked_scale"], "but the checker cannot decide it"
+    good = _good()
+    assert CHK.unevaluable(good) == []
+
+
+def test_the_nearer_annotation_predicate_reads_the_cells_own_header_and_row():
+    """Implemented from the proposer's own withdrawal_reason, and labelled GIVEN for that reason."""
+    table = {"scale": "thousands", "origin": {"kind": "observation", "step": 1}}
+    plain = {"value": 1.0, "raw": "1", "row_label": "1930", "column": "Receipts > Total",
+             "scale": "thousands", "table_index": 0, "source": {}}
+    c = IR.contract("n", IR.clause("scale_binds", ["table", "cell", "scale"]),
+                    [IR.clause("table_states_scale", ["table", "scale"]),
+                     IR.clause("nearer_scale_between", ["table", "cell"], value=False)],
+                    witnesses="unit_match")
+    assert IR.validate(c) == [] and CHK.unevaluable(c) == []
+    assert CHK.evaluate_binding(c, table, plain)["truth"] == IR.HOLDS
+    nearer = dict(plain, column="Receipts > Total (in millions)")
+    got = CHK.evaluate_binding(c, table, nearer)
+    assert got["truth"] == IR.CONFLICT
+    assert got["clauses"][1]["evidence_pointer"]["reading_provenance"].startswith("GIVEN")
+    assert got["clauses"][1]["evidence_pointer"]["differing"] == [["column", "millions"]] or \
+        got["clauses"][1]["evidence_pointer"]["differing"] == [("column", "millions")]

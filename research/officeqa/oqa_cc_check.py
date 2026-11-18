@@ -40,6 +40,18 @@ import oqa_trace as TR  # noqa: E402
 
 ACTOR_ERROR, REFUTED, EXTRACTION_ERROR, UNKNOWN_OUT = ("actor_error", "refuted_hypothesis",
                                                        "extraction_error", "unknown")
+# Predicates `evaluate_binding` can actually decide. A condition outside this set makes a contract
+# UNFALSIFIABLE: every cell comes out UNKNOWN and the hypothesis is never tested. The first proposal
+# (job 66341664) did exactly that, and `oqa_cc_ir.validate` passed it, because well-formedness and
+# evaluability are different questions. `unevaluable` is the second gate.
+EVALUABLE = ("table_states_scale", "cell_in_table", "column_header_states_unit",
+             "row_label_states_scale", "nearer_scale_between")
+
+
+def unevaluable(contract: dict) -> list:
+    """The condition predicates this checker has no evaluator for. Non-empty means do not admit it."""
+    return sorted({cl.get("pred") for cl in (contract.get("conditions") or [])
+                   if cl.get("pred") not in EVALUABLE})
 # 10^e for the money scales, as a definition. MATH, never learned.
 SCALE_EXP = {"units": 0, "thousands": 3, "millions": 6, "billions": 9}
 _SCALE_WORD = re.compile(r"\b(thousand|million|billion)s?\b", re.I)
@@ -183,9 +195,24 @@ def evaluate_binding(c: dict, table: dict, cell: dict) -> dict:
             got = u is not None and u != scale
             ev = {"row_label": cell.get("row_label"), "row_unit": u}
         elif pred == "nearer_scale_between":
-            got = None            # not settled by the current extraction
-            ev = {"note": "the extraction does not record intervening annotations"}
-            unknown = True
+            # IMPLEMENTED FROM THE PROPOSER'S OWN STATED READING, and that provenance matters. The
+            # proposal (job 66341664) gave the withdrawal_reason: "A nearer_scale_between observation,
+            # such as a column header or row label with its own scale annotation closer to the cell,
+            # withdraws the table-level binding." So: a nearer annotation exists when the cell's own
+            # column header or row label states a money scale that differs from the table's. This is a
+            # GIVEN implementation choice about what the predicate MEANS, not a learned claim about the
+            # corpus; the learned part is that the binding holds in its absence.
+            cu, ru = column_unit(cell), row_unit(cell)
+            nearer = [("column", cu), ("row_label", ru)]
+            differing = [(w, u) for w, u in nearer if u is not None and u != scale]
+            got = bool(differing)
+            ev = {"column_unit": cu, "row_label_unit": ru, "table_scale": scale,
+                  "differing": differing,
+                  "reading": "the cell's own column header or row label states a different money scale",
+                  "reading_provenance": "GIVEN (the proposer's stated withdrawal_reason)"}
+            if differing and want is False:
+                conflict = {"kind": "nearer_scale_annotation", "table_scale": scale,
+                            "nearer": differing}
         else:
             got = None
             unknown = True
