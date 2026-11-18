@@ -415,12 +415,6 @@ def _run_custom_search_process(
     final_answer = ""
     fail_reason = ""
     last_response_metadata: dict = {}
-    # A-1 named the loop exits in the local-tools branch only, and the row below reads `termination` for
-    # every branch - so a custom-search, azure-search, no-tools or codex rollout raised NameError when it
-    # built its row. Initialised here; "unrecorded" is what the other branches honestly report.
-    termination = "unrecorded"
-    turns_used = 0
-    recoveries: list[dict] = []
     for turn in range(1, max_tool_turns + 1):
         message, _ = chat_target_messages(
             messages=messages,
@@ -617,6 +611,12 @@ def process_one(
     final_answer = ""
     fail_reason = ""
     last_response_metadata: dict = {}
+    # A-1 named the loop exits in the local-tools branch only, and the row below reads `termination` for
+    # EVERY branch - so a custom-search, azure-search, no-tools or codex rollout raised NameError when it
+    # built its row. Initialised here; "unrecorded" is what the other branches honestly report.
+    termination = "unrecorded"
+    turns_used = 0
+    recoveries: list[dict] = []
     allowed_files = [os.path.basename(path) for path in candidate_files]
     try:
         if normalized_search_mode == _CUSTOM_SEARCH_MODE:

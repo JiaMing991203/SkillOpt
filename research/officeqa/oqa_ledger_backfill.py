@@ -106,10 +106,27 @@ def main() -> int:
            "already_in_ledger": present,
            "prompt_tokens": sum(r["prompt_tokens"] for r in rows),
            "completion_tokens": sum(r["completion_tokens"] for r in rows),
+           "cached_prompt_tokens_the_provider_reports": sum(r["cached_tokens"] for r in rows),
            "provider_cost_usd": round(sum(float(r["provider_cost_usd"] or 0.0) for r in rows), 8),
+           # WHAT THE BACKFILL CHARGES, and why it is the larger of two figures.
+           #
+           # The backend computes its charge with `cached_tokens=prompt_cache_hit_tokens`, which is
+           # DEEPSEEK's field name. EmpirioLabs reports its cache hits as
+           # `usage.prompt_tokens_details.cached_tokens` (and `cache_read_input_tokens`), so the backend
+           # sees 0 and bills every prompt token at the full price. That is why the ledger charged
+           # $5.3159 across the campaign where the provider charged $3.2768: the ledger is conservative
+           # by about 38% on the actor side, which is the safe direction for a cap.
+           #
+           # The backfill therefore charges AS THE BACKEND WOULD HAVE - cache ignored - so that a
+           # back-filled attempt and a live one are charged identically and the recorded cumulative
+           # figure stays an upper bound. The cache-aware figure is reported beside it, never used.
            "project_price_usd": round(sum(
+               L.cost_usd("target", r["prompt_tokens"], r["completion_tokens"], 0) for r in rows), 8),
+           "project_price_usd_if_cache_were_accounted": round(sum(
                L.cost_usd("target", r["prompt_tokens"], r["completion_tokens"], r["cached_tokens"])
                for r in rows), 8),
+           "charge_basis": ("this project's price table with the cache IGNORED, which is how the "
+                            "backend charges a live call for this provider"),
            "sends": rows, "applied": False}
     if present:
         doc["refused"] = (f"{present} usage record(s) already exist under stage {STAGE}: the backfill has "
@@ -118,8 +135,9 @@ def main() -> int:
         charged = 0.0
         for r in rows:
             L.reserve("target", STAGE)
+            # cached_tokens=0 on purpose: see `charge_basis` above.
             charged += L.record_usage("target", STAGE, r["prompt_tokens"], r["completion_tokens"],
-                                      cached_tokens=r["cached_tokens"],
+                                      cached_tokens=0,
                                       provider_cost_usd=r["provider_cost_usd"])
         released = L.release(reason="probe backfill complete")
         doc["applied"] = True
@@ -127,9 +145,12 @@ def main() -> int:
         doc["released"] = released
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1, sort_keys=True, default=str)
-    print(f"rule {RULE}  {doc['n_sends_found']} probe send(s); already in ledger {present}; "
-          f"provider ${doc['provider_cost_usd']:.6f}, this project's price table "
-          f"${doc['project_price_usd']:.6f}")
+    print(f"rule {RULE}  {doc['n_sends_found']} probe send(s); already in ledger {present}")
+    print(f"  provider ${doc['provider_cost_usd']:.6f}; this project's price table "
+          f"${doc['project_price_usd']:.6f} (cache ignored, as the backend charges) / "
+          f"${doc['project_price_usd_if_cache_were_accounted']:.6f} if cache were accounted")
+    print(f"  the provider reports {doc['cached_prompt_tokens_the_provider_reports']} cached prompt "
+          f"token(s) over {doc['prompt_tokens']} prompt token(s)")
     if doc.get("refused"):
         print(f"  REFUSED: {doc['refused']}")
     elif doc["applied"]:

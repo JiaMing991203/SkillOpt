@@ -94,6 +94,15 @@ def test_the_modes_are_named_and_off_is_the_default(monkeypatch):
 
 # ───────────────────────── through the adapter, on real and constructed bodies ─────────────────────────
 
+def _docs(tmp_path, monkeypatch) -> str:
+    """A corpus directory, because `resolve_docs_roots` RAISES when it can find none."""
+    d = tmp_path / "docs" / "transformed"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "treasury_bulletin_1982_08.txt").write_text("a line with 10,102 in it\n", encoding="utf-8")
+    monkeypatch.setenv("OFFICEQA_DOCS_DIR", str(tmp_path / "docs"))
+    return str(tmp_path / "docs")
+
+
 def _adapt(body: dict):
     message, resp, choice = REC.from_body(body)
     return COMMON.compat_message_from_chat_message(message, resp, choice)
@@ -245,10 +254,10 @@ def test_the_row_records_where_the_answer_came_from(monkeypatch, tmp_path):
 
     monkeypatch.setattr(RO, "chat_target_messages", fake_chat)
     monkeypatch.setattr(RO, "is_target_exec_backend", lambda: False)
-    monkeypatch.delenv("OFFICEQA_DOCS_DIR", raising=False)
+    docs = _docs(tmp_path, monkeypatch)
     item = {"id": "UIDTEST", "question": "What were total bids in dollars?", "ground_truth": "x",
             "source_files": [], "source_docs": []}
-    row = RO.process_one(item, str(tmp_path), "skill", max_tool_turns=3, data_dirs=[])
+    row = RO.process_one(item, str(tmp_path), "skill", max_tool_turns=3, data_dirs=[docs])
     assert calls["n"] == 1
     assert row["answer_recovered"] is True
     assert row["answer_recovery_source"] == "reasoning"
@@ -266,13 +275,13 @@ def test_the_row_records_where_the_answer_came_from(monkeypatch, tmp_path):
 def test_a_rollout_without_local_tools_still_builds_its_row(monkeypatch, tmp_path):
     """Amendment A-1 read `termination` in the row for every branch and assigned it in one, so a
     no-tools, custom-search, azure-search or codex OfficeQA rollout raised NameError when it finished."""
-    monkeypatch.delenv("OFFICEQA_DOCS_DIR", raising=False)
+    docs = _docs(tmp_path, monkeypatch)
     monkeypatch.setattr(
         RO, "_run_offline_no_tools_process",
         lambda *a, **k: ("sys", "usr", "<answer>7</answer>", "7", [], "", {}))
     item = {"id": "UIDNOTOOLS", "question": "q", "ground_truth": "7", "source_files": [],
             "source_docs": []}
-    row = RO.process_one(item, str(tmp_path), "skill", use_local_tools=False, data_dirs=[])
+    row = RO.process_one(item, str(tmp_path), "skill", use_local_tools=False, data_dirs=[docs])
     assert row["predicted_answer"] == "7" and row["hard"] == 1
     assert row["termination_cause"] == "unrecorded"
     assert row["answer_recovered"] is False

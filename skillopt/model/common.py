@@ -501,9 +501,14 @@ def compat_message_from_chat_message(message: Any, response: Any = None,
         rec = {**recover_from_alternate_field(message, meta.get("finish_reason")), "policy": mode}
         if rec.get("recovered"):
             content = rec.pop("content")
-    meta = dict(meta)
-    meta["answer_recovery"] = rec
+    # THE COMPATIBILITY GUARANTEE, which a test pins: called with the message alone - as every other
+    # backend calls it - the adapter reports no metadata at all. The recovery decision is attached only
+    # when there is a metadata block to attach it to, or when a recovery actually changed the content.
+    if meta or rec.get("recovered"):
+        meta = dict(meta)
+        meta["answer_recovery"] = rec
     if rec.get("recovered"):
+        meta = dict(meta)
         meta["content_taken_from"] = rec.get("source_field")
         meta["content_fallback_applied"] = True
         meta["content_chars_after_recovery"] = len(content)
