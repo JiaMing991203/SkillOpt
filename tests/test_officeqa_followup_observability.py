@@ -139,7 +139,8 @@ def test_a_field_the_adapter_does_not_model_is_carried_through_instead_of_droppe
                                   "chunk_ids": [1, 2, 3], "nothing": None})
     out = COMMON.compat_message_from_chat_message(m, _Resp(m, "stop"), _Choice(m, "stop"))
     got = out.metadata["unmodelled_message_fields"]
-    assert got["reasoning"]["type"] == "str" and got["reasoning"]["chars"] == 21
+    assert got["reasoning"]["type"] == "str"
+    assert got["reasoning"]["chars"] == len("a long private thought")
     assert got["answer_text"]["prefix"] == "42"
     assert got["chunk_ids"]["type"] == "list" and got["chunk_ids"]["len"] == 3
     assert "nothing" not in got, "a null field is not a surprise"
@@ -198,12 +199,14 @@ def test_the_providers_own_cost_is_recorded_and_the_charge_is_still_ours(tmp_pat
     because the provider does not bill cache reads. Recording both is what let that be seen. The cap
     must still be enforced on OUR figure, so the guard cannot be weakened by a provider's number."""
     d = str(tmp_path)
-    monkeypatch.setenv("SKILLOPT_SPEND_LEDGER_DIR", d)
-    monkeypatch.setenv("SKILLOPT_LEDGER_CAP_TARGET_ATTEMPTS", "100")
-    monkeypatch.setenv("SKILLOPT_LEDGER_CAP_TARGET_USD", "5.0")
-    monkeypatch.setenv("SKILLOPT_LEDGER_BLOCK_TARGET_USD", "0.05")
-    monkeypatch.setenv("SKILLOPT_LEDGER_BLOCK_TARGET_ATTEMPTS", "4")
-    monkeypatch.setenv("SKILLOPT_LEDGER_PRICE_TARGET", "0.04,0.07,0.02")
+    for k, v in (("SKILLOPT_SPEND_LEDGER_DIR", d),
+                 ("SKILLOPT_LEDGER_MAX_ATTEMPTS_TARGET", "100"),
+                 ("SKILLOPT_LEDGER_MAX_USD_TARGET", "5.0"),
+                 ("SKILLOPT_LEDGER_BLOCK_ATTEMPTS_TARGET", "4"),
+                 ("SKILLOPT_LEDGER_BLOCK_USD_TARGET", "0.05"),
+                 ("SKILLOPT_LEDGER_RESERVE_USD_TARGET", "0.02"),
+                 ("SKILLOPT_LEDGER_PRICE_TARGET", "0.04,0.07,0.02")):
+        monkeypatch.setenv(k, v)
     LEDGER._state.clear()
     LEDGER._owner = "fu1r0p1"
     LEDGER.reserve("target", "rollout")

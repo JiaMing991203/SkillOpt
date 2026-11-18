@@ -205,7 +205,9 @@ def usage_from_responses_usage(usage: Any) -> dict[str, int]:
 # `metadata["unmodelled_message_fields"]` rather than dropped, because OQA-FOR-1 could not tell an empty
 # reply from one whose text arrived in a field nobody looked at.
 _MODELLED_MESSAGE_FIELDS = ("role", "content", "tool_calls", "function_call", "refusal",
-                            "annotations", "audio", "parsed")
+                            "annotations", "audio", "parsed",
+                            # reported on its own in `response_metadata`, so not a surprise
+                            "reasoning_content")
 
 
 def _unmodelled_message_fields(message: Any) -> dict[str, Any]:
