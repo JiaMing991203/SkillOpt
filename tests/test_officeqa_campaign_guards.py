@@ -1931,7 +1931,7 @@ def test_the_skill_is_recovered_from_the_system_prompt_even_when_it_contains_a_r
     D = _diag()
     tricky = "# Skill\n- step one.\n\n## Rules\n- a rule the OPTIMIZER wrote, not the template's."
     sysmsg = _dg_system(tricky)
-    assert D.skill_from_dg_system(sysmsg) == tricky
+    assert D.skill_from_system(sysmsg) == tricky
     assert D.scaffold_of(sysmsg) == _dg_system("<SKILL>")
     # and two different skills under the same template share one scaffold
     assert D.scaffold_of(_dg_system("# other")) == D.scaffold_of(sysmsg)
@@ -1939,7 +1939,7 @@ def test_the_skill_is_recovered_from_the_system_prompt_even_when_it_contains_a_r
 
 def test_a_missing_delimiter_returns_none_rather_than_a_guess():
     D = _diag()
-    assert D.skill_from_dg_system("no skill section here") is None
+    assert D.skill_from_system("no skill section here") is None
     assert D.scaffold_of("no skill section here") == "no skill section here"
 
 
@@ -2201,15 +2201,16 @@ def test_replicates_are_grouped_by_skill_and_question_set_and_the_spread_is_repo
                  if any(m["kind"] == "train" for m in g["members"])]
         assert len(train) == 1, [g["members"] for g in doc["groups"]]
         g = train[0]
-        assert g["n_replicates"] == 2 and g["scores"] == [1, 2]
+        # Three members, not two: this miniature campaign gives the S0 baseline the SAME question ids as
+        # the training set, so that evaluation is a third draw of the same document and belongs in the
+        # group. In the real campaign the splits are disjoint (train 24, val 24, test 60, no overlap), so
+        # the baseline forms a group of its own and drops out.
+        assert {m["label"] for m in g["members"]} == {"A.2.train", "A.3.train", "S0.baseline"}
+        assert g["n_replicates"] == 3 and g["scores"] == [1, 1, 2]
         assert g["range_in_questions"] == 1
         assert g["questions_always_correct"] == [ids[0]]
         assert g["questions_never_correct"] == [ids[2]]
         assert sorted(f["id"] for f in g["questions_that_flipped"]) == [ids[1], ids[3]]
-        # the two candidates are different documents, so their selection evals are NOT replicates
-        assert all(m["kind"] != "selection" for gr in doc["groups"] for m in gr["members"]) or True
-        labels = {m["label"] for gr in doc["groups"] for m in gr["members"]}
-        assert "A.2.train" in labels and "A.3.train" in labels
 
 
 def test_the_arms_copies_of_the_baseline_are_not_counted_as_repeat_measurements():
@@ -2225,3 +2226,32 @@ def test_the_arms_copies_of_the_baseline_are_not_counted_as_repeat_measurements(
         doc = D.cmd_replicates(root)
         for g in doc["groups"]:
             assert all(m["kind"] != "baseline_copy" for m in g["members"])
+
+
+def test_one_rollout_copied_into_three_arms_is_one_measurement_not_three():
+    """The campaign really does this, and counting the copies would claim the actor is deterministic.
+
+    Epoch 1's training rollout was run once and injected into all three arms, byte for byte
+    (`arm_A/B/C/steps/step_0001/rollout/results.jsonl` share one md5). Treated as three draws it reports
+    three identical scores and a standard deviation of zero -- the opposite of the truth about an actor
+    sampled at temperature 0.7, and the figure a reader would quote.
+    """
+    D = _diag()
+    import tempfile, shutil
+    with tempfile.TemporaryDirectory() as root:
+        ids = [f"UID{i:04d}" for i in range(4)]
+        _dg_campaign(root, ids=ids, baseline_correct=set(),
+                     arms={"A": [("step", 1, "# a", set(), "reject"),
+                                 ("step", 2, "# b", set(), "reject")],
+                           "B": [("step", 1, "# c", set(), "reject")],
+                           "C": [("step", 1, "# d", set(), "reject")]})
+        src = os.path.join(root, "arm_A", "steps", "step_0001", "rollout", "results.jsonl")
+        for arm in ("B", "C"):
+            shutil.copyfile(src, os.path.join(root, f"arm_{arm}", "steps", "step_0001",
+                                              "rollout", "results.jsonl"))
+        doc = D.cmd_replicates(root)
+        collapsed = {c["duplicate_of_it"] for c in doc["identical_measurements_collapsed"]}
+        assert collapsed == {"B.1.train", "C.1.train"}, collapsed
+        for g in doc["groups"]:
+            labels = [m["label"] for m in g["members"]]
+            assert not ("B.1.train" in labels and "C.1.train" in labels)

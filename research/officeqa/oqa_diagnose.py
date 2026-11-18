@@ -837,15 +837,35 @@ def cmd_replicates(campaign: str) -> dict:
         g = groups.setdefault(key, {"skill_sha256": skill, "n_questions": len(qids),
                                     "question_ids": list(qids), "members": []})
         per_q = {r["id"]: int(r.get("hard") or 0) for r in rows}
+        # A measurement is identified by what the actor SAID, so a rollout injected into three arms is
+        # recognised as one measurement rather than three. The campaign really does this: the epoch-1
+        # training rollout was run once and copied into all three arms, byte for byte, and counting it
+        # three times would report sd 0.00 and suggest a deterministic actor.
+        measurement = sha(json.dumps(sorted((r["id"], str(r.get("response") or ""),
+                                             str(r.get("predicted_answer") or "")) for r in rows)))
         g["members"].append({
             "label": d["label"], "arm": d["arm"], "epoch": d["epoch"], "kind": d["kind"],
             "path": os.path.relpath(d["path"], campaign),
             "correct": sum(per_q.values()), "per_question": per_q,
+            "measurement_sha256": measurement,
         })
-    reps = []
+    reps, copies_found = [], []
     for key, g in groups.items():
         # The arms' injected copies of the baseline are the SAME FILE, not a repeat measurement.
         members = [m for m in g["members"] if m["kind"] != "baseline_copy"]
+        # Collapse identical measurements, and say which labels shared one.
+        seen: dict[str, dict] = {}
+        for m in members:
+            first = seen.get(m["measurement_sha256"])
+            if first is None:
+                seen[m["measurement_sha256"]] = m
+                m["same_measurement_as"] = []
+            else:
+                first["same_measurement_as"].append(m["label"])
+                copies_found.append({"skill_sha256": g["skill_sha256"], "kept": first["label"],
+                                     "duplicate_of_it": m["label"],
+                                     "measurement_sha256": m["measurement_sha256"]})
+        members = list(seen.values())
         if len(members) < 2:
             continue
         scores = sorted(m["correct"] for m in members)
@@ -864,7 +884,8 @@ def cmd_replicates(campaign: str) -> dict:
         reps.append({
             "skill_sha256": g["skill_sha256"], "n_questions": n,
             "n_replicates": len(members),
-            "members": [{k: m[k] for k in ("label", "kind", "correct", "path")} for m in members],
+            "members": [{k: m[k] for k in ("label", "kind", "correct", "path",
+                                           "same_measurement_as")} for m in members],
             "scores": scores, "min": scores[0], "max": scores[-1],
             "mean": mean, "sd": var ** 0.5,
             "range_in_questions": scores[-1] - scores[0],
@@ -880,7 +901,8 @@ def cmd_replicates(campaign: str) -> dict:
                      "question ids. The spread inside a group is the measurement noise of one score, "
                      "which is what a one-question gate margin has to be read against. The arms' injected "
                      "copies of the S0 baseline are excluded: they are one file, not a repeat."),
-            "n_groups_with_replicates": len(reps), "groups": reps}
+            "n_groups_with_replicates": len(reps), "groups": reps,
+            "identical_measurements_collapsed": copies_found}
 
 
 # ───────────────────────── subcommand: chains ─────────────────────────
@@ -991,13 +1013,16 @@ def main() -> int:
         print(f"  never solved by anyone: {len(t['questions_no_candidate_ever_solved'])} of 24")
     elif args.cmd == "replicates":
         doc = cmd_replicates(args.campaign)
-        print(f"rule {RULE}  {doc['n_groups_with_replicates']} group(s) of repeated measurements")
+        print(f"rule {RULE}  {doc['n_groups_with_replicates']} group(s) of repeated measurements, "
+              f"{len(doc['identical_measurements_collapsed'])} identical copy/copies collapsed")
         for g in doc["groups"]:
             print(f"  skill {g['skill_sha256'][:12]}  {g['n_replicates']} draws over "
                   f"{g['n_questions']} questions: scores {g['scores']}  "
                   f"mean {g['mean']:.2f}  sd {g['sd']:.2f}  range {g['range_in_questions']}")
             for m in g["members"]:
-                print(f"      {m['label']:22s} {m['kind']:16s} {m['correct']}/{g['n_questions']}")
+                same = (f"  (same measurement as {', '.join(m['same_measurement_as'])})"
+                        if m.get("same_measurement_as") else "")
+                print(f"      {m['label']:22s} {m['kind']:16s} {m['correct']}/{g['n_questions']}{same}")
             print(f"      always right {len(g['questions_always_correct'])}, "
                   f"never right {len(g['questions_never_correct'])}, "
                   f"flipped {g['n_flipped']}")
