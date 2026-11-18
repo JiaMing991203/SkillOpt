@@ -87,3 +87,4 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-18T00:44:00Z	66337037	oqa_tests	full suite from the diagnostic bundle	66b2b66
 2026-11-18T01:20:29Z	66338091	oqa_forensics	empty replies + contract machinery (OQA-FOR-1) - 0 attempts, $0.00	4cf50fc
 2026-11-18T01:20:29Z	66338092	oqa_tests	full suite - 2223 passed	4cf50fc
+2026-11-18T01:28:13Z	66339127	oqa_tests	full suite after the reconciler fix - 2225 passed	a45a8d6

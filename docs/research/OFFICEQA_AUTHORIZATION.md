@@ -78,10 +78,12 @@ original chain, the four recovery jobs, and the test jobs.
 Read from the ledger on 2026-11-17 after the held-out chain finished: target 10,158 attempts /
 $6.855447, optimizer 102 / $3.460519 in the ledger plus the probe, **zero unresolved requests, zero
 reserve breaches, verdict PASS.** The held-out line is the arithmetic difference between that reading and
-the post-recovery one; the three jobs' own claims could not be released because of a defect in
-`oqa_ledger_reconcile.py` that this session found and fixed (it took the spend to be the larger of two
-roundings, which exceeds the net claim once claims have been reconciled down to equal the spend). The
-money is counted either way: the figures above are **recorded spend**, not reservations.
+the post-recovery one; and after the `oqa_ledger_reconcile.py` defect found and fixed in this
+session (it took the spend to be the larger of two roundings, which exceeds the net claim once claims
+have been reconciled down to equal the spend, so it refused to release anything), the reconciliation ran
+clean: **net claims equal recorded spend exactly in both roles** — optimizer 102 attempts / $3.460519,
+target 10,158 / $6.855447 — and there was nothing left to give back, 0 attempts and $0.000002 released.
+The figures above are **recorded spend**, not reservations.
 
 **A conservatism worth knowing about, from the provider's own accounting.** The raw actor call logs carry
 the provider's `cost_usd` per attempt. Over the 16 jobs that have a log, the provider charged **$3.2768**
