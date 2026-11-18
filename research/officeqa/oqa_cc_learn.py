@@ -184,7 +184,9 @@ def propose(learning: list, *, model: str | None = None) -> dict:
         sys.path.insert(0, root)
     from skillopt.model import chat_optimizer
     prompt = build_prompt(learning)
-    text, usage = chat_optimizer(prompt, max_completion_tokens=2000, retries=1,
+    system = ("You propose structured hypotheses for a contract checker. Reply with one JSON object and "
+              "nothing else. Never invent a predicate. Never relabel a provenance.")
+    text, usage = chat_optimizer(system, prompt, max_completion_tokens=2000, retries=1,
                                  stage="cc_propose")
     raw = str(text or "")
     m = re.search(r"\{.*\}", raw, re.S)
@@ -196,7 +198,7 @@ def propose(learning: list, *, model: str | None = None) -> dict:
             problem = f"the reply is not JSON: {e}"
     else:
         problem = "the reply contains no JSON object"
-    return {"prompt_sha256": IR.sha(prompt), "prompt_chars": len(prompt),
+    return {"prompt_sha256": IR.sha(system + prompt), "prompt_chars": len(prompt) + len(system),
             "reply_chars": len(raw), "reply_prefix": raw[:1500], "usage": usage,
             "parsed": parsed, "problem": problem,
             "model": model or os.environ.get("OPTIMIZER_MODEL") or "deepseek-flash"}
