@@ -1,0 +1,41 @@
+{
+ "files": [
+  {
+   "bytes": 21086,
+   "identical_to_source": true,
+   "path": "learned_contracts/stage_common.py",
+   "sha256": "570f2049205c7c99d8865a66a7712f64af71e67856f82d377f490ae40692d0e3",
+   "source": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract/research/learned_contracts/stage_common.py",
+   "source_mtime": "2026-11-10T21:09:09"
+  },
+  {
+   "bytes": 8209,
+   "identical_to_source": true,
+   "path": "learned_contracts/a4_reading.py",
+   "sha256": "70b707f4f10a434fab1dff6c13403565ae91697748c576961cd12cf3f78b07fd",
+   "source": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract/research/learned_contracts/a4_reading.py",
+   "source_mtime": "2026-11-11T04:26:04"
+  },
+  {
+   "bytes": 10725,
+   "identical_to_source": true,
+   "path": "learned_contracts/vocab.py",
+   "sha256": "e857150a39a166bddbac56545648538aa7a7614d26b50559da87d33d54957827",
+   "source": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract/research/learned_contracts/vocab.py",
+   "source_mtime": "2026-11-10T12:26:26"
+  },
+  {
+   "bytes": 14798,
+   "identical_to_source": true,
+   "path": "trace_only/tor_record.py",
+   "sha256": "b40c448ebaa07f2eafdf77394c59ef433a64af093d6056047afac97b3e3f7c1c",
+   "source": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract/research/trace_only/tor_record.py",
+   "source_mtime": "2026-10-28T19:01:48"
+  }
+ ],
+ "layout_note": "the directory layout mirrors research/ exactly, because vocab.py resolves research/trace_only relative to its own location",
+ "rule": "AWC-1",
+ "schema": "awc.frozen_snapshot.v1",
+ "taken_utc": "2026-11-18T20:52:49.782753+00:00",
+ "why": "a READ-ONLY snapshot of the ALFWorld learned-contract modules this study checks. The live copies are UNCOMMITTED in the sibling worktree SkillOpt-learned-contract (branch contract/learned-contract), which belongs to another track; nothing there is written. The snapshot exists so the study is reproducible from this branch and can run on the cluster, and `awc_manifest.py verify` refuses to proceed if a snapshot file has drifted from its source while that source is reachable."
+}
