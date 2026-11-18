@@ -69,11 +69,21 @@ cc)
 s0)
     # 8 passes of 24 questions. Two concurrent jobs of four passes each: at the campaign's measured
     # 10.32 attempts per question-rollout that is about 990 attempts and ~1 hour per job.
+    #
+    # A PASS THAT IS ALREADY COMPLETE IS SKIPPED and a partial one RESUMES, because `run_batch` resumes
+    # by question id - so a timed-out job is topped up with OQA_S0_FIRST / OQA_S0_PASSES rather than
+    # repaid. That is not hypothetical: job 66346540 timed out with pass 8 at 11 of 24 rows.
     SJ="OQA_JOB_CAP_ACTOR_ATTEMPTS=1600,OQA_JOB_CAP_ACTOR_USD=1.20"
-    P1=$(sub oqa-fu2-s0-a 01:20:00 "PHASE=s0,FIRST=1,PASSES=4,$SJ")
-    P2=$(sub oqa-fu2-s0-b 01:20:00 "PHASE=s0,FIRST=5,PASSES=4,$SJ")
-    echo "s0 passes 1-4  $P1"
-    echo "s0 passes 5-8  $P2"
+    if [ -n "${OQA_S0_FIRST:-}" ]; then
+        J=$(sub oqa-fu2-s0-top-up "${OQA_S0_TIME:-00:30:00}" \
+            "PHASE=s0,FIRST=$OQA_S0_FIRST,PASSES=${OQA_S0_PASSES:-1},OQA_JOB_CAP_ACTOR_ATTEMPTS=400,OQA_JOB_CAP_ACTOR_USD=0.40")
+        echo "s0 top-up from pass $OQA_S0_FIRST  $J"
+    else
+        P1=$(sub oqa-fu2-s0-a 01:20:00 "PHASE=s0,FIRST=1,PASSES=4,$SJ")
+        P2=$(sub oqa-fu2-s0-b 01:20:00 "PHASE=s0,FIRST=5,PASSES=4,$SJ")
+        echo "s0 passes 1-4  $P1"
+        echo "s0 passes 5-8  $P2"
+    fi
     ;;
 *)
     echo "unknown phase: $PHASE" >&2; exit 2 ;;
