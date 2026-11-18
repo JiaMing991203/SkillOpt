@@ -167,8 +167,8 @@ def retrospective(ep: dict, runs: dict) -> dict:
 
 def ordinary_analysis(trace_path: str, item: str) -> dict:
     """The saved ordinary SkillOpt analysis for the same attempt, where the run kept one."""
-    rollout = os.path.dirname(os.path.dirname(trace_path))         # .../rollout
-    step_dir = os.path.dirname(rollout)                            # .../step_000N
+    # .../step_000N/rollout/predictions/<id>/trace.json -> four levels up is the step directory.
+    step_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(trace_path))))
     td = os.path.join(step_dir, "trajectory_digest.json")
     if not os.path.isfile(td):
         return {"found": False, "path": td}
@@ -178,7 +178,13 @@ def ordinary_analysis(trace_path: str, item: str) -> dict:
         return {"found": False, "path": td, "problem": "unreadable"}
     pats = [p.get("pattern") for p in (d.get("failure_patterns") or [])
             if item in (p.get("task_ids") or [])]
+    allp = [{"pattern": (p.get("pattern") or "")[:400], "count": p.get("count"),
+             "n_task_ids": len(p.get("task_ids") or [])} for p in (d.get("failure_patterns") or [])]
     return {"found": True, "path": td, "patterns_naming_this_attempt": pats,
+            "all_patterns_at_this_step": allp, "gate_action": d.get("action"),
+            "n_fail_of_n_total": [d.get("n_fail"), d.get("n_total")],
+            "note": ("`failure_patterns[].task_ids` lists the FAILING attempts of that step, so a "
+                     "changed result on a scored success is not named there by construction"),
             "n_patterns_in_the_digest": len(d.get("failure_patterns") or [])}
 
 

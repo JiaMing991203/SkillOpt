@@ -137,7 +137,7 @@ def heatContext (events : List Temp) (want : Temp) : Bool :=
   | some e => e == want
 
 theorem heatContextEmptyIsSilent (want : Temp) : heatContext [] want = false := by
-  simp [heatContext]
+  rfl
 
 -- CLAUSE (d) IS STRICTLY STRONGER, established by exhaustion over every event list of length at most
 -- two, which is what the records contain (the most temperature events observed on one instance before
