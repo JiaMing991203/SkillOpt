@@ -213,7 +213,13 @@ def propose(learning: list, *, model: str | None = None) -> dict:
     prompt = build_prompt(learning)
     system = ("You propose structured hypotheses for a contract checker. Reply with one JSON object and "
               "nothing else. Never invent a predicate. Never relabel a provenance.")
-    text, usage = chat_optimizer(system, prompt, max_completion_tokens=2000, retries=1,
+    # ROOM FOR THE REASONING PHASE. The first successful call (job 66341547) returned
+    # finish_reason "length", content "" and 8,788 characters of `reasoning_content`: deepseek-flash
+    # spent the whole 2,000-token cap reasoning and never reached the JSON. That is the same shape as
+    # the actor failure Workstream A found, on a different provider and with a different field name -
+    # EmpirioLabs uses `reasoning`, DeepSeek uses `reasoning_content`. The cap is now the campaign's.
+    cap = int(os.environ.get("OQA_CC_MAX_COMPLETION_TOKENS", "16000"))
+    text, usage = chat_optimizer(system, prompt, max_completion_tokens=cap, retries=1,
                                  stage="cc_propose")
     raw = str(text or "")
     m = re.search(r"\{.*\}", raw, re.S)
@@ -226,6 +232,7 @@ def propose(learning: list, *, model: str | None = None) -> dict:
     else:
         problem = "the reply contains no JSON object"
     return {"prompt_sha256": IR.sha(system + prompt), "prompt_chars": len(prompt) + len(system),
+            "max_completion_tokens": cap,
             "reply_chars": len(raw), "reply_prefix": raw[:1500], "usage": usage,
             "parsed": parsed, "problem": problem,
             "model": model or os.environ.get("OPTIMIZER_MODEL") or "deepseek-flash"}
