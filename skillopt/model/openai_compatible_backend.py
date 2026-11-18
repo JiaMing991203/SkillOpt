@@ -25,6 +25,7 @@ it can be selected as the optimizer and/or target backend and routed through
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import os
 import threading
@@ -39,6 +40,8 @@ from skillopt.model.common import (
     _unmodelled_message_fields,
     compat_message_from_chat_message,
     default_model_for_backend,
+    recovery_mode,
+    response_metadata,
     usage_from_openai_usage,
 )
 from skillopt.model import spend_ledger
@@ -155,6 +158,127 @@ def _reset_clients() -> None:
 # or the retry loop: writing errors are swallowed.
 
 _call_log_lock = threading.Lock()
+_raw_capture_lock = threading.Lock()
+
+# ── Serving controls the SDK does not model, and the raw body (amendment A-2) ──
+#
+# TWO SEPARATE THINGS, kept separate on purpose. `<ROLE>_OPENAI_COMPATIBLE_EXTRA_BODY` is a GENERATION
+# setting - it changes what the model does. The answer-recovery policy in `common.py` is an ANSWER-FIELD
+# setting - it changes only what the client reads from a reply it already has. Conflating them would make
+# "thinking off" and "read the field we were dropping" indistinguishable in a result.
+#
+# Both are off unless set, and what is actually TRANSMITTED is recorded, because a flag that a provider
+# ignores is not a condition. OQA-HTTP-1 verified `enable_thinking: false` on the wire for qwen3-5-4b
+# (documented, default true): accepted with 200, the `reasoning` key disappears, completion tokens fall
+# about fivefold.
+
+
+def _extra_body(role: str) -> dict | None:
+    raw = _role_env(role, "EXTRA_BODY", "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"{role.upper()}_OPENAI_COMPATIBLE_EXTRA_BODY is not valid JSON ({exc}); refusing to send a "
+            f"request whose serving controls cannot be recorded") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError(
+            f"{role.upper()}_OPENAI_COMPATIBLE_EXTRA_BODY must be a JSON object, got {type(parsed).__name__}")
+    return parsed or None
+
+
+def _raw_capture_path(role: str) -> str:
+    return _role_env(role, "RAW_CAPTURE", "")
+
+
+def _msg_sha(messages: Any, role: str) -> str:
+    for m in messages or []:
+        if m.get("role") == role:
+            return hashlib.sha256(str(m.get("content") or "").encode("utf-8")).hexdigest()
+    return ""
+
+
+def _capture_raw(path: str, *, role: str, stage: str, attempt: int, kwargs: dict,
+                 extra: dict | None, raw: Any, parsed: Any, compat: Any) -> None:
+    """The four layers of ONE exchange: transmitted request, raw HTTP body, SDK view, compat message.
+
+    The episode's own decision is not written here - it is in the rollout row, joined by `response_id`.
+    Writing it here would mean guessing it. No credential can reach this file: the request record is the
+    serialized BODY, and the response headers are filtered to the same allow-list the probe uses.
+    """
+    try:
+        http = getattr(raw, "http_response", None)
+        body = getattr(http, "text", "") or ""
+        choice = (getattr(parsed, "choices", None) or [None])[0]
+        message = getattr(choice, "message", None)
+        body_json = None
+        if body.strip().startswith("{"):
+            try:
+                body_json = json.loads(body)
+            except json.JSONDecodeError:
+                body_json = None
+        sent = {k: v for k, v in kwargs.items() if k != "messages"}
+        rec = {
+            "schema": "lso.raw_exchange.v1",
+            "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "role": role, "stage": stage, "attempt": attempt + 1,
+            "slurm_job": os.environ.get("SLURM_JOB_ID", ""),
+            "request": {
+                "transmitted": sent,
+                "extra_body": extra,
+                "n_messages": len(kwargs.get("messages") or []),
+                "message_roles": [m.get("role") for m in (kwargs.get("messages") or [])],
+                # Which EPISODE this exchange belongs to. The messages themselves are not copied here
+                # (they are already in the call log and in the saved prompt files), but the digests of
+                # the system and first user message identify the episode exactly, which is how the
+                # OQA-HTTP-1 selection rule identified one too.
+                "system_sha256": _msg_sha(kwargs.get("messages"), "system"),
+                "first_user_sha256": _msg_sha(kwargs.get("messages"), "user"),
+                "tool_names": [t.get("function", {}).get("name") for t in (kwargs.get("tools") or [])],
+                "serialized_sha256": hashlib.sha256(json.dumps(
+                    {**sent, "extra_body": extra, "messages": kwargs.get("messages")},
+                    sort_keys=True, default=str).encode()).hexdigest(),
+            },
+            "http": {
+                "status_code": getattr(http, "status_code", None),
+                "headers": {k.lower(): v for k, v in dict(getattr(http, "headers", {}) or {}).items()
+                            if k.lower() in _HEADER_ALLOW},
+                "body_bytes": len(body.encode("utf-8")),
+                "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                "body": body_json if body_json is not None else body[:20000],
+            },
+            "sdk": {
+                "response_id": getattr(parsed, "id", None),
+                "model": getattr(parsed, "model", None),
+                "finish_reason": getattr(choice, "finish_reason", None),
+                "content_is_null": getattr(message, "content", None) is None,
+                "content_chars": len(str(getattr(message, "content", "") or "")),
+                "reasoning_content_is_null": getattr(message, "reasoning_content", None) is None,
+                "model_extra_keys": sorted((getattr(message, "model_extra", None) or {}).keys()),
+                "metadata": response_metadata(message, parsed, choice),
+            },
+            "compat_message": {
+                "content_chars": len(compat.content or ""),
+                "content": (compat.content or "")[:4000],
+                "tool_calls": [tc.model_dump() for tc in (compat.tool_calls or [])],
+                "answer_recovery": (compat.metadata or {}).get("answer_recovery"),
+                "recovery_policy": recovery_mode(),
+            },
+        }
+        with _raw_capture_lock:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    except Exception:  # noqa: BLE001 - diagnostics must never affect the call
+        pass
+
+
+# Response headers worth keeping; everything else is dropped so that no authentication material and no
+# per-account identifier reaches an artifact. Same list as research/officeqa/oqa_http_probe.py.
+_HEADER_ALLOW = ("content-type", "content-length", "x-request-id", "openai-version",
+                 "openai-processing-ms", "x-ratelimit-limit-requests",
+                 "x-ratelimit-remaining-requests", "retry-after", "server", "date")
 
 
 def _reasoning_log(message: Any) -> dict:
@@ -185,6 +309,8 @@ def _log_call(
     started: float,
     resp: Any = None,
     error: Exception | None = None,
+    extra_body: dict | None = None,
+    compat: Any = None,
 ) -> None:
     try:
         record: dict[str, Any] = {
@@ -201,6 +327,7 @@ def _log_call(
                 "temperature": kwargs.get("temperature"),
                 "timeout": kwargs.get("timeout"),
                 "tools": bool(kwargs.get("tools")),
+                "extra_body": extra_body,
                 "messages": kwargs.get("messages"),
             },
             "outcome": "error" if error is not None else "ok",
@@ -232,6 +359,8 @@ def _log_call(
                 "n_tool_calls": len(tcs),
                 "unmodelled_message_fields": _unmodelled_message_fields(message),
             }
+        if compat is not None:
+            record["recovery"] = (getattr(compat, "metadata", None) or {}).get("answer_recovery")
         if error is not None:
             record["error"] = {
                 "type": type(error).__name__,
@@ -301,6 +430,8 @@ def _chat_messages_impl(
         kwargs["timeout"] = timeout
 
     call_log = _role_env(role, "CALL_LOG", "")
+    extra = _extra_body(role)
+    raw_capture = _raw_capture_path(role)
     last_err: Exception | None = None
     for attempt in range(retries):
         # Authorization BEFORE the request, not accounting after it. `reserve` raises
@@ -310,7 +441,17 @@ def _chat_messages_impl(
         spend_ledger.reserve(role, stage)
         started = time.time()
         try:
-            resp = client.chat.completions.create(**kwargs)
+            # ONE exchange, two views. With a capture directory set the request goes through
+            # `with_raw_response`, so the complete HTTP body and the object the SDK parsed come from the
+            # SAME exchange - a separate raw call would be a different exchange and could not settle a
+            # conversion question. Without it the call is byte-for-byte what it was before.
+            raw_wrapper = None
+            if raw_capture:
+                raw_wrapper = client.chat.completions.with_raw_response.create(
+                    **kwargs, extra_body=extra or None)
+                resp = raw_wrapper.parse()
+            else:
+                resp = client.chat.completions.create(**kwargs, extra_body=extra or None)
             choices = getattr(resp, "choices", None) or []
             if not choices:
                 raise RuntimeError(
@@ -340,17 +481,25 @@ def _chat_messages_impl(
                 cached_tokens=int(getattr(raw_usage, "prompt_cache_hit_tokens", 0) or 0),
                 provider_cost_usd=provider_cost,
             )
+            compat = compat_message_from_chat_message(message, resp, choice)
             if call_log:
                 _log_call(call_log, role=role, stage=stage, attempt=attempt, retries=retries,
-                          kwargs=kwargs, started=started, resp=resp)
+                          kwargs=kwargs, started=started, resp=resp, extra_body=extra, compat=compat)
+            if raw_capture and raw_wrapper is not None:
+                _capture_raw(raw_capture, role=role, stage=stage, attempt=attempt, kwargs=kwargs,
+                             extra=extra, raw=raw_wrapper, parsed=resp, compat=compat)
             if return_message:
-                return compat_message_from_chat_message(message, resp, choice), usage_info
+                return compat, usage_info
+            # The plain-text path is UNCHANGED: it returns `message.content`, so the answer-recovery
+            # policy never touches an optimizer call or any other caller that does not ask for the
+            # message object. Promoting reasoning text into a reply that is then parsed as JSON is a
+            # different question and is not decided here.
             return text, usage_info
         except Exception as e:  # noqa: BLE001
             last_err = e
             if call_log:
                 _log_call(call_log, role=role, stage=stage, attempt=attempt, retries=retries,
-                          kwargs=kwargs, started=started, error=e)
+                          kwargs=kwargs, started=started, error=e, extra_body=extra)
             time.sleep(min(2 ** attempt, 30))
     raise RuntimeError(
         f"OpenAI-compatible chat call failed after {retries} retries: {last_err}"

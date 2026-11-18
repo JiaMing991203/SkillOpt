@@ -39,6 +39,11 @@ schemas, and did not record `tool_choice`. Both are taken from the pinned source
 marks them `reconstructed`. Everything else - model, max_tokens, temperature, timeout, messages - is
 replayed from the log, and a setting the log does not show is left OMITTED, never defaulted.
 
+ACCOUNTING (amendment A-2). Every send is authorised by `spend_ledger.reserve` before it leaves and
+recorded by `record_usage` after it returns, so a raw-response probe is accounted by the same machinery
+as a backend call. The first 23 sends of this probe predate that and were back-filled by
+`oqa_ledger_backfill.py`, which refuses to run twice.
+
 CREDENTIALS. No artifact written here contains a key, an Authorization header or any other
 authentication material: the request record is built from the serialized BODY only, and the response
 headers are filtered to a recorded allow-list.
@@ -288,6 +293,7 @@ def cmd_send(selection_path: str, out_dir: str, setting: str, reps: int, max_sen
     if root not in sys.path:
         sys.path.insert(0, root)
     from openai import OpenAI
+    from skillopt.model import spend_ledger as LEDGER
     from skillopt.model.common import compat_message_from_chat_message, response_metadata
 
     base_url = os.environ.get("TARGET_OPENAI_COMPATIBLE_BASE_URL") or \
@@ -340,6 +346,12 @@ def cmd_send(selection_path: str, out_dir: str, setting: str, reps: int, max_sen
                 },
             }
             try:
+                # THROUGH THE CENTRAL ACCOUNTING MECHANISM. The probe talks to the SDK directly, which
+                # bypasses the backend where the ledger lives - and that is why its first 23 sends had
+                # to be accounted by hand and later back-filled (rule OQA-REC-2). `reserve` authorises
+                # one attempt against the shared, durable ledger and raises if there is no room; with
+                # SKILLOPT_SPEND_LEDGER_DIR unset it is a no-op, exactly as in the backend.
+                LEDGER.reserve("target", "oqa_http_probe")
                 raw = client.chat.completions.with_raw_response.create(**kwargs,
                                                                        extra_body=extra or None)
                 sends += 1
@@ -355,6 +367,15 @@ def cmd_send(selection_path: str, out_dir: str, setting: str, reps: int, max_sen
                 parsed = raw.parse()
                 choice = (getattr(parsed, "choices", None) or [None])[0]
                 msg = getattr(choice, "message", None)
+                _u = getattr(parsed, "usage", None)
+                if _u is not None:
+                    _d = (_u.model_dump() if hasattr(_u, "model_dump") else {}) or {}
+                    LEDGER.record_usage(
+                        "target", "oqa_http_probe",
+                        int(_d.get("prompt_tokens") or 0), int(_d.get("completion_tokens") or 0),
+                        cached_tokens=int((_d.get("prompt_tokens_details") or {}).get("cached_tokens")
+                                          or 0),
+                        provider_cost_usd=_d.get("cost_usd"))
                 rec["sdk"] = {
                     "id": getattr(parsed, "id", None),
                     "model": getattr(parsed, "model", None),

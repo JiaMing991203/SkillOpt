@@ -1,4 +1,4 @@
-"""Amendment B-1: the connected contract's representation, its guards, and the invariant Lean also proves.
+"""Amendments B-1 and B-2: the connected contract's representation, its guards, and the invariant Lean also proves.
 
 These are the deterministic parts - what `validate` refuses, what a repair does, and the stage link's
 behaviour on an unknown binding. The learner's own proposal is checked against these before it is scored,
@@ -92,29 +92,63 @@ def test_a_repair_narrows_the_condition_and_keeps_the_old_version():
     assert IR.validate(new) == []
 
 
+def _conv(verdict, stated=None, required=None, used=None, why=""):
+    """An `oqa_cc_extract.conversion` result, as the checker receives it (amendment B-2)."""
+    return {"verdict": verdict, "stated_exp": stated, "required_exp": required,
+            "converted_value_used": used, "why": why, "written_conversions_for_this_operand": []}
+
+
 @pytest.mark.parametrize("truth", [IR.UNKNOWN, IR.CONFLICT])
 def test_an_unknown_or_conflicting_binding_never_produces_a_violation(truth):
     """The invariant that makes a repair sound, and the first theorem the Lean file proves: withdrawing a
     binding may withdraw a discharge, it may never manufacture an accusation against the actor."""
     link = CHK.stage_link({"truth": truth, "scale": "thousands",
                            "conflict": {"kind": "x"} if truth == IR.CONFLICT else None},
-                          "billions", used_exp=-3)
-    assert link["state"] == "UNKNOWN"
+                          "billions", _conv("incorrect_factor_stated", stated=-3))
     assert link["outcome"] == CHK.UNKNOWN_OUT
+    assert link["state"] == ("REOPENED" if truth == IR.CONFLICT else "UNKNOWN")
+    if truth == IR.CONFLICT:
+        # B-2: a withdrawal REOPENS the obligation and says so, instead of flattening into "unknown".
+        assert link["withdrawn"] is True
+        assert "nothing here says the actor did anything wrong" in link["why"]
 
 
 def test_the_stage_link_computes_the_conversion_from_the_definition():
     """thousands -> billions is 10^-6. The campaign's arm C UID0014 report says the actor used 10^-3 and
     was 'wrong by 1,000x'; this is where that number comes from, and it is MATH, not a hypothesis."""
     holds = {"truth": IR.HOLDS, "scale": "thousands", "conflict": None}
-    bad = CHK.stage_link(holds, "billions", used_exp=-3)
+    bad = CHK.stage_link(holds, "billions", _conv("incorrect_factor_stated", stated=-3))
     assert bad["state"] == "VIOLATED" and bad["outcome"] == CHK.ACTOR_ERROR
     assert bad["required_exp"] == -6 and bad["used_exp"] == -3
     assert "wrong by 10^3" in bad["why"]
-    good = CHK.stage_link(holds, "billions", used_exp=-6)
+    good = CHK.stage_link(holds, "billions", _conv("correct_factor_stated", stated=-6))
     assert good["state"] == "DISCHARGED"
-    missing = CHK.stage_link(holds, "billions", used_exp=None)
+    missing = CHK.stage_link(holds, "billions", _conv("no_factor_stated"))
     assert missing["state"] == "OUTSTANDING" and missing["outcome"] == CHK.UNKNOWN_OUT
+    # and the requirement alone, committed BEFORE the later steps are read
+    pre = CHK.stage_link(holds, "billions", None)
+    assert pre["state"] == "PREDICTED" and pre["required_exp"] == -6
+
+
+def test_an_already_compatible_unit_needs_no_multiplication_by_one():
+    """B-2, audit finding 6. On UID0044 the B-1 prototype reported OUTSTANDING because "the binding
+    requires a factor of 10^0 and no step states one". A factor of 10^0 is no conversion at all."""
+    holds = {"truth": IR.HOLDS, "scale": "billions", "conflict": None}
+    link = CHK.stage_link(holds, "billions", _conv("no_conversion_required", used=True))
+    assert link["required_exp"] == 0
+    assert link["state"] == "DISCHARGED" and link["outcome"] == "discharged"
+    assert "no factor is required" in link["why"]
+    # converting a value that was already in the asked scale IS an error, and is still reported
+    wrong = CHK.stage_link(holds, "billions", _conv("no_conversion_required", stated=-3))
+    assert wrong["state"] == "VIOLATED" and wrong["outcome"] == CHK.ACTOR_ERROR
+
+
+def test_a_correct_factor_whose_result_is_never_used_is_not_a_completed_conversion():
+    """B-2, audit finding 7: "whether the converted value was actually used" is its own question."""
+    holds = {"truth": IR.HOLDS, "scale": "thousands", "conflict": None}
+    link = CHK.stage_link(holds, "billions", _conv("correct_conversion", stated=-6, used=False))
+    assert link["state"] == "OUTSTANDING" and link["outcome"] == CHK.UNKNOWN_OUT
+    assert "not carried through" in link["why"]
 
 
 def test_the_prefix_guard_raises_rather_than_trusting_the_author():
@@ -147,9 +181,13 @@ def test_a_cell_the_condition_does_not_cover_is_silence_not_a_counterexample():
     """The whole reason for having a condition. The restricted form had none, which is why both
     polarities of `row_period_bound` were induced and refuted and the atom had to be struck out."""
     c = _good()
-    table = {"scale": "thousands", "origin": {"kind": "observation", "step": 3}}
+    # B-2: a cell names the table it came from by key, and `cell_in_table` compares the two. Under B-1
+    # that clause read `(A and B) or True` and therefore asserted nothing.
+    table = {"scale": "thousands", "origin": {"kind": "observation", "step": 3},
+             "key": "observation:3:0"}
     covered = {"value": 1.0, "raw": "1", "row_label": "1930", "column": "Receipts > Total",
-               "scale": "thousands", "table_index": 0, "source": {"kind": "observation", "step": 3}}
+               "scale": "thousands", "table_index": 0, "col_index": 1, "table_key": "observation:3:0",
+               "source": {"kind": "observation", "step": 3}}
     assert CHK.evaluate_binding(c, table, covered)["truth"] == IR.HOLDS
     # a cell whose own column states another unit: NOT a counterexample to the conclusion, a conflict
     other = dict(covered, column="Receipts > Total (in millions)")
@@ -157,6 +195,21 @@ def test_a_cell_the_condition_does_not_cover_is_silence_not_a_counterexample():
     assert got["truth"] == IR.CONFLICT
     assert got["conflict"]["column_unit"] == "millions"
     assert got["applicable"] is False
+
+
+def test_a_cell_from_another_table_does_not_satisfy_cell_in_table():
+    """B-2. Under B-1 this clause was `(A and B) or True`: a cell from any table satisfied it, so the
+    contract could be evaluated against a table the cell never came from."""
+    c = _good()
+    table = {"scale": "thousands", "origin": {"kind": "observation", "step": 3},
+             "key": "observation:3:0"}
+    foreign = {"value": 1.0, "raw": "1", "row_label": "1930", "column": "Receipts > Total",
+               "scale": "thousands", "table_index": 1, "col_index": 1,
+               "table_key": "observation:3:1", "source": {"kind": "observation", "step": 3}}
+    got = CHK.evaluate_binding(c, table, foreign)
+    assert got["truth"] == IR.UNKNOWN
+    clause = next(cl for cl in got["clauses"] if cl["pred"] == "cell_in_table")
+    assert clause["observed"] is False and clause["satisfied"] is False
 
 
 def test_the_model_freezes_under_its_digest_and_records_its_parent():
@@ -198,9 +251,11 @@ def test_a_condition_the_checker_cannot_evaluate_is_refused_as_unfalsifiable():
 
 def test_the_nearer_annotation_predicate_reads_the_cells_own_header_and_row():
     """Implemented from the proposer's own withdrawal_reason, and labelled GIVEN for that reason."""
-    table = {"scale": "thousands", "origin": {"kind": "observation", "step": 1}}
+    table = {"scale": "thousands", "origin": {"kind": "observation", "step": 1},
+             "key": "observation:1:0"}
     plain = {"value": 1.0, "raw": "1", "row_label": "1930", "column": "Receipts > Total",
-             "scale": "thousands", "table_index": 0, "source": {}}
+             "scale": "thousands", "table_index": 0, "col_index": 1, "table_key": "observation:1:0",
+             "source": {}}
     c = IR.contract("n", IR.clause("scale_binds", ["table", "cell", "scale"]),
                     [IR.clause("table_states_scale", ["table", "scale"]),
                      IR.clause("nearer_scale_between", ["table", "cell"], value=False)],

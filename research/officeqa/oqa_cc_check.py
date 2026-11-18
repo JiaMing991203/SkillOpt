@@ -33,6 +33,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import oqa_cc_extract as X  # noqa: E402
 import oqa_cc_ir as IR  # noqa: E402
 import oqa_lc_cells as CELLS  # noqa: E402
 import oqa_obligations as OB  # noqa: E402
@@ -85,83 +86,47 @@ def observed_text(steps: list) -> str:
     return "\n".join(str(s.get("obs") or "") for s in steps if s.get("kind") == "tool")
 
 
+# AMENDMENT B-2. The extraction is `oqa_cc_extract`, which REUSES `oqa_lc_cells` and `oqa_lc_chain` and
+# corrects seven things above them. The three thin wrappers below are kept so the call sites read the
+# same, and the weaker local readers they used to contain are gone:
+#
+#   operands_in  took ANY number out of a message (it bound the years 1942 and 07 on UID0014)
+#   cells_in     offered the row-LABEL column as a data cell (so "1942" was a cell)
+#   the table    was any table sharing the cell's scale, not the table the cell came from
+
 def tables_in(steps: list, supplied: list) -> list:
-    """Tables from the supplied pages plus every observation in the prefix, each with its stated scale."""
-    out = []
-    for page in supplied:
-        for t in CELLS.tables(str(page.get("text") or "")):
-            t["origin"] = {"kind": "supplied_page", "ref": page.get("ref")}
-            out.append(t)
-    for s in steps:
-        if s.get("kind") != "tool":
-            continue
-        for t in CELLS.tables(str(s.get("obs") or "")):
-            t["origin"] = {"kind": "observation", "step": s.get("i")}
-            out.append(t)
-    return out
+    return X.tables_in(steps, supplied)
 
 
 def cells_in(steps: list, supplied: list, assumptions) -> list:
-    out = []
-    for page in supplied:
-        out += CELLS.cells_of(str(page.get("text") or ""), assumptions,
-                              source={"kind": "supplied_page", "ref": page.get("ref")})
-    for s in steps:
-        if s.get("kind") != "tool":
-            continue
-        out += CELLS.cells_of(str(s.get("obs") or ""), assumptions,
-                              source={"kind": "observation", "step": s.get("i")})
-    return out
+    kept, _dropped = X.data_cells(steps, supplied, assumptions)
+    return kept
+
+
+def table_of(cell: dict, tabs: list) -> dict | None:
+    """The table the cell CAME FROM, by (source, table index) - not any table with the same scale."""
+    return X.table_of(cell, tabs)
 
 
 def operands_in(step: dict) -> list:
-    """Numbers the actor wrote in one message, with the text around them. OBS about the ACTOR."""
-    text = str(step.get("text") or step.get("content") or "")
-    out = []
-    for m in re.finditer(r"-?\d[\d,]*(?:\.\d+)?", text):
-        raw = m.group(0)
-        try:
-            val = float(raw.replace(",", ""))
-        except ValueError:
-            continue
-        lo, hi = max(0, m.start() - 90), min(len(text), m.end() + 90)
-        out.append({"raw": raw, "value": val, "step": step.get("i"), "context": text[lo:hi]})
-    return out
-
-
-def stated_factor_exp(text: str) -> int | None:
-    """The power of ten the actor says it divided or multiplied by, if it says one. OBS, not inference."""
-    for m in _FACTOR.finditer(text or ""):
-        tok = m.group(1).replace(",", "")
-        try:
-            v = float(tok)
-        except ValueError:
-            continue
-        if v <= 0:
-            continue
-        e = 0
-        x = v
-        while x >= 10 and e < 12:
-            x /= 10.0
-            e += 1
-        while x < 1 and e > -12:
-            x *= 10.0
-            e -= 1
-        if abs(x - 1.0) < 1e-9:
-            word = (m.group(0) or "").lower()
-            return -e if ("divide" in word or "/" in word) else e
-    return None
+    """Monetary operands only. Years, dates, list numbers, footnotes, percentages and prose digits are
+    rejected by name, and an unsettled four-digit number is AMBIGUOUS and not used."""
+    return X.monetary_operands(step)
 
 
 def column_unit(cell: dict) -> str | None:
-    """A unit the cell's own COLUMN header states, which is what can withdraw a table-level binding."""
-    m = _SCALE_WORD.search(str(cell.get("column") or ""))
-    return CELLS.canon_scale(m.group(1)) if m else None
+    """A unit the cell's own COLUMN header states - only when that column was actually observed."""
+    if not cell.get("column") or cell.get("column_basis") == CELLS.COL_UNKNOWN:
+        return None
+    return X.scale_word(cell.get("column"))
 
 
 def row_unit(cell: dict) -> str | None:
-    m = _SCALE_WORD.search(str(cell.get("row_label") or ""))
-    return CELLS.canon_scale(m.group(1)) if m else None
+    return X.scale_word(cell.get("row_label"))
+
+
+def stated_factor_exp(text: str) -> int | None:
+    return X.stated_factor_exp(text)
 
 
 # ───────────────────────── evaluation ─────────────────────────
@@ -180,39 +145,50 @@ def evaluate_binding(c: dict, table: dict, cell: dict) -> dict:
             got = scale in SCALE_EXP
             ev = {"table_scale": table.get("scale"), "origin": table.get("origin")}
         elif pred == "cell_in_table":
-            got = (cell.get("table_index") is not None
-                   and cell.get("source", {}) == table.get("origin", {}) or True)
-            ev = {"cell_table_index": cell.get("table_index")}
+            # B-2. This read `(A and B) or True`, which is True for every input: the clause asserted
+            # nothing at all. It now compares the cell's own table KEY with the table being evaluated.
+            got = bool(cell.get("table_key")) and cell.get("table_key") == table.get("key")
+            ev = {"cell_table_key": cell.get("table_key"), "table_key": table.get("key"),
+                  "cell_table_index": cell.get("table_index")}
         elif pred == "column_header_states_unit":
-            u = column_unit(cell)
-            got = u is not None and u != scale
-            ev = {"column": cell.get("column"), "column_unit": u}
-            if u is not None and u != scale:
+            near = X.nearer_scale(cell, table)
+            u = near["scopes"].get("column_unit")
+            if not near["scopes"].get("column_observed"):
+                got = None          # the column was never bound: nothing is asserted either way
+            else:
+                got = u is not None and u != scale
+            ev = {"column": cell.get("column"), "column_unit": u,
+                  "column_observed": near["scopes"].get("column_observed"),
+                  "column_basis": cell.get("column_basis")}
+            if got and u is not None and u != scale:
                 conflict = {"kind": "column_header_states_another_unit", "table_scale": scale,
                             "column_unit": u, "column": cell.get("column")}
         elif pred == "row_label_states_scale":
             u = row_unit(cell)
-            got = u is not None and u != scale
-            ev = {"row_label": cell.get("row_label"), "row_unit": u}
+            got = (None if not str(cell.get("row_label") or "").strip()
+                   else (u is not None and u != scale))
+            ev = {"row_label": cell.get("row_label"), "row_unit": u,
+                  "row_label_observed": bool(str(cell.get("row_label") or "").strip())}
         elif pred == "nearer_scale_between":
             # IMPLEMENTED FROM THE PROPOSER'S OWN STATED READING, and that provenance matters. The
             # proposal (job 66341664) gave the withdrawal_reason: "A nearer_scale_between observation,
             # such as a column header or row label with its own scale annotation closer to the cell,
-            # withdraws the table-level binding." So: a nearer annotation exists when the cell's own
-            # column header or row label states a money scale that differs from the table's. This is a
-            # GIVEN implementation choice about what the predicate MEANS, not a learned claim about the
-            # corpus; the learned part is that the binding holds in its absence.
-            cu, ru = column_unit(cell), row_unit(cell)
-            nearer = [("column", cu), ("row_label", ru)]
-            differing = [(w, u) for w, u in nearer if u is not None and u != scale]
-            got = bool(differing)
-            ev = {"column_unit": cu, "row_label_unit": ru, "table_scale": scale,
-                  "differing": differing,
+            # withdraws the table-level binding." The reading is therefore GIVEN; only "the binding
+            # holds in its absence" is learned.
+            #
+            # B-2 MAKES IT A TRI-STATE. `False` previously followed from an EMPTY column field, which
+            # happens when the header is missing, unreadable or unbound - not because the column carries
+            # no unit. An unobserved scope cannot witness an absence, so that case is now UNKNOWN and
+            # the contract stays silent about the cell instead of claiming it.
+            near = X.nearer_scale(cell, table)
+            got = (None if near["state"] == X.UNKNOWN else (near["state"] == X.PRESENT))
+            ev = {**near["scopes"], "state": near["state"], "differing": near["differing"],
+                  "why": near["why"],
                   "reading": "the cell's own column header or row label states a different money scale",
                   "reading_provenance": "GIVEN (the proposer's stated withdrawal_reason)"}
-            if differing and want is False:
+            if near["state"] == X.PRESENT and want is False:
                 conflict = {"kind": "nearer_scale_annotation", "table_scale": scale,
-                            "nearer": differing}
+                            "nearer": near["differing"]}
         else:
             got = None
             unknown = True
@@ -240,39 +216,82 @@ def evaluate_binding(c: dict, table: dict, cell: dict) -> dict:
             "conflict": conflict, "applicable": ok and conflict is None}
 
 
-def stage_link(binding: dict, asked_scale: str | None, used_exp: int | None) -> dict:
+def stage_link(binding: dict, asked_scale: str | None, conv: dict | None) -> dict:
     """The obligation the binding witnesses, resolved. An UNKNOWN binding may never make a violation.
 
     `unit_match` is the campaign's own obligation name, and the campaign's stage layer resolved it from
-    the operand alone. Here it is resolved THROUGH the binding, so that withdrawing the binding
-    withdraws the witness.
+    the operand alone. Here it is resolved THROUGH the binding, so that withdrawing the binding withdraws
+    the witness. `conv` is `oqa_cc_extract.conversion(...)` for this operand, or None before the
+    prediction is committed.
+
+    B-2 adds three states the B-1 version could not express:
+      * REOPENED        a conflict withdraws the binding, so the obligation is open again - and that is
+                        NOT an actor error. The campaign's complaint was the reverse: an outstanding
+                        obligation reported as if the agent had done something wrong.
+      * no conversion   when the bound scale already equals the asked scale the required factor is 10^0.
+                        Demanding an explicit "x 1" was a false alarm.
+      * stated but
+        unused          a correct factor that never reaches a later value is not a completed conversion.
     """
-    if binding["truth"] in (IR.UNKNOWN,):
-        return {"obligation": "unit_match", "state": "UNKNOWN", "outcome": UNKNOWN_OUT,
-                "why": "the binding is not established for this cell, so there is no witness",
-                "required_exp": None, "used_exp": used_exp}
+    used_exp = (conv or {}).get("stated_exp")
+    base = {"obligation": "unit_match", "used_exp": used_exp}
+    if binding["truth"] == IR.UNKNOWN:
+        return {**base, "state": "UNKNOWN", "outcome": UNKNOWN_OUT, "required_exp": None,
+                "why": "the binding is not established for this cell, so there is no witness"}
     if binding["truth"] == IR.CONFLICT:
-        return {"obligation": "unit_match", "state": "UNKNOWN", "outcome": UNKNOWN_OUT,
-                "why": f"conflicting evidence: {binding['conflict']}",
-                "required_exp": None, "used_exp": used_exp}
+        return {**base, "state": "REOPENED", "outcome": UNKNOWN_OUT, "required_exp": None,
+                "withdrawn": True,
+                "why": (f"conflicting evidence withdraws the binding ({binding['conflict']}), so the "
+                        f"obligation is open again; nothing here says the actor did anything wrong")}
+    if binding["truth"] != IR.HOLDS:
+        # Only a HOLDING binding may witness an obligation. `evaluate_binding` returns HOLDS, UNKNOWN or
+        # CONFLICT, so this is unreachable today - it is spelled out because the Lean encoding has the
+        # same clause, and two implementations that agree only on the reachable cases are not checked
+        # against each other.
+        return {**base, "state": "UNKNOWN", "outcome": UNKNOWN_OUT, "required_exp": None,
+                "why": f"the binding is {binding['truth']}, which cannot witness an obligation"}
     frm, to = binding.get("scale"), asked_scale
-    if frm not in SCALE_EXP or to not in SCALE_EXP:
-        return {"obligation": "unit_match", "state": "UNKNOWN", "outcome": UNKNOWN_OUT,
-                "why": f"the asked scale {to!r} or the bound scale {frm!r} is not a money scale",
-                "required_exp": None, "used_exp": used_exp}
-    required = SCALE_EXP[frm] - SCALE_EXP[to]      # MATH: 10^required converts frm -> to
-    if used_exp is None:
-        return {"obligation": "unit_match", "state": "OUTSTANDING", "outcome": UNKNOWN_OUT,
-                "why": f"the binding requires a factor of 10^{required} and no step states one",
-                "required_exp": required, "used_exp": None}
-    if used_exp == required:
-        return {"obligation": "unit_match", "state": "DISCHARGED", "outcome": "discharged",
-                "why": f"the actor used 10^{used_exp}, which is what {frm}->{to} requires",
-                "required_exp": required, "used_exp": used_exp}
-    return {"obligation": "unit_match", "state": "VIOLATED", "outcome": ACTOR_ERROR,
-            "why": (f"the binding gives this cell scale {frm} and the question asks {to}, which requires "
-                    f"10^{required}; the actor used 10^{used_exp}, wrong by 10^{used_exp - required}"),
-            "required_exp": required, "used_exp": used_exp}
+    required = X.required_exp(frm, to)
+    if required is None:
+        return {**base, "state": "UNKNOWN", "outcome": UNKNOWN_OUT, "required_exp": None,
+                "why": f"the asked scale {to!r} or the bound scale {frm!r} is not a money scale"}
+    out = {**base, "required_exp": required}
+    if conv is None:                       # before the observation: the REQUIREMENT only
+        return {**out, "state": "PREDICTED", "outcome": UNKNOWN_OUT,
+                "why": (f"{frm} -> {to} requires a factor of 10^{required}"
+                        if required else
+                        f"the cell is already in the asked scale ({to}), so no conversion is required")}
+    v = conv.get("verdict")
+    if required == 0:
+        if used_exp in (None, 0):
+            return {**out, "state": "DISCHARGED", "outcome": "discharged",
+                    "why": (f"the cell is already in the asked scale ({to}); no factor is required and "
+                            f"none was applied"),
+                    "converted_value_used": conv.get("converted_value_used")}
+        return {**out, "state": "VIOLATED", "outcome": ACTOR_ERROR,
+                "why": (f"the cell is already in the asked scale ({to}), so the required factor is "
+                        f"10^0, and the actor applied 10^{used_exp}")}
+    if v in ("correct_conversion", "correct_factor_stated"):
+        if conv.get("converted_value_used") is False:
+            return {**out, "state": "OUTSTANDING", "outcome": UNKNOWN_OUT,
+                    "why": (f"a correct factor of 10^{required} is stated, but the converted value does "
+                            f"not appear in any later step, so the conversion was not carried through"),
+                    "conversion": v}
+        return {**out, "state": "DISCHARGED", "outcome": "discharged",
+                "why": conv.get("why") or f"the actor used 10^{required}, which {frm}->{to} requires",
+                "conversion": v}
+    if v in ("incorrect_conversion", "incorrect_factor_stated"):
+        wrong_by = (used_exp - required) if used_exp is not None else None
+        return {**out, "state": "VIOLATED", "outcome": ACTOR_ERROR,
+                "why": (f"the binding gives this cell scale {frm} and the question asks {to}, which "
+                        f"requires 10^{required}; " + str(conv.get("why") or "")
+                        + (f" wrong by 10^{wrong_by}" if wrong_by else "")),
+                "conversion": v}
+    if v == "unknown_conversion":
+        return {**out, "state": "UNKNOWN", "outcome": UNKNOWN_OUT, "conversion": v,
+                "why": conv.get("why") or "the written conversion's source scale cannot be established"}
+    return {**out, "state": "OUTSTANDING", "outcome": UNKNOWN_OUT, "conversion": v,
+            "why": conv.get("why") or f"the binding requires 10^{required} and no step states one"}
 
 
 def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative",)) -> dict:
@@ -286,73 +305,95 @@ def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative
         asked = CELLS.canon_scale(mm.group(1))
     out = {"item": packet.get("id"), "trace_key": packet.get("trace_key"),
            "trace_sha256": packet.get("trace_sha256"), "asked_scale": asked,
-           "asked_scale_provenance": IR.TASK, "predictions": [], "problems": []}
+           "asked_scale_provenance": IR.TASK, "predictions": [], "problems": [],
+           "extraction": {}}
     contracts = IR.active(m)
     if not contracts:
         out["problems"].append("no active contract")
         return out
 
+    # WHICH MESSAGE FIRST CARRIES A MONETARY OPERAND. B-1 took the first message with ANY number, which
+    # on several traces was a planning message full of list numbers, and then bound whatever it found.
     first_operand_step = None
-    for s in steps:
-        if s.get("kind") == "message" and operands_in(s):
-            first_operand_step = s
+    rejected_before = []
+    for st in steps:
+        if st.get("kind") != "message":
+            continue
+        seen = X.operands(st)
+        if any(o["is_operand"] for o in seen):
+            first_operand_step = st
             break
+        rejected_before += [{"step": st.get("i"), "raw": o["raw"], "verdict": o["verdict"],
+                             "reason": o["reason"]} for o in seen]
+    out["extraction"]["numbers_rejected_before_the_first_operand"] = rejected_before[:40]
     if first_operand_step is None:
-        out["problems"].append("the actor wrote no number in any message")
+        out["problems"].append("the actor wrote no monetary operand in any message")
         return out
     i = int(first_operand_step.get("i") or 0)
 
     prefix = rev.upto(i)
     supplied = packet.get("oracle_pages") or []
     tabs = tables_in(prefix, supplied)
-    cells = cells_in(prefix, supplied, assumptions)
-    ops = operands_in(first_operand_step)
+    cells, dropped = X.data_cells(prefix, supplied, assumptions)
+    ops_all = X.operands(first_operand_step)
+    ops = [o for o in ops_all if o["is_operand"]]
+    out["extraction"].update({
+        "n_tables": len(tabs), "n_data_cells": len(cells),
+        "n_row_label_cells_dropped": len(dropped),
+        "n_cells_without_a_bound_header": sum(1 for c in cells if not c.get("header_known")),
+        "operands_considered": [{"raw": o["raw"], "verdict": o["verdict"], "reason": o["reason"],
+                                 "is_operand": o["is_operand"]} for o in ops_all[:40]],
+    })
 
     for c in contracts:
         for op in ops[:12]:
-            hits = [cl for cl in cells if abs(cl["value"] - op["value"]) <= 1e-9]
-            if not hits:
+            match = X.match_operand(op, cells)
+            if match["status"] in ("no_cell_match", "ambiguous_cell_match"):
+                out["predictions"].append({
+                    "contract": f"{c['id']}@v{c['version']}", "operand": op["raw"],
+                    "outcome": EXTRACTION_ERROR, "match_status": match["status"],
+                    "candidates": match["candidates"],
+                    "why": ("the operand matches no data cell in the prefix"
+                            if match["status"] == "no_cell_match" else
+                            "the operand matches several data cells that disagree about scale, column "
+                            "or row, so the contract stays silent rather than picking one")})
                 continue
-            cell = hits[0]
-            table = next((t for t in tabs
-                          if CELLS.canon_scale(t.get("scale") or "") == CELLS.canon_scale(
-                              cell.get("scale") or "")), None)
+            cell = match["cell"]
+            table = table_of(cell, tabs)
             if table is None:
                 out["predictions"].append({"contract": f"{c['id']}@v{c['version']}", "operand": op["raw"],
                                            "outcome": EXTRACTION_ERROR,
-                                           "why": "the operand matched a cell whose table could not be "
-                                                  "re-bound from the prefix"})
+                                           "why": "the cell's own table could not be re-bound from the "
+                                                  "prefix by its (source, table index) key"})
                 continue
             binding = evaluate_binding(c, table, cell)
             rev.open_prediction = True
+            link_pre = stage_link(binding, asked, None)
             pred = {
                 "contract": f"{c['id']}@v{c['version']}",
                 "committed_at_step": i,
                 "prefix_steps": len(prefix),
-                "operand": {"raw": op["raw"], "value": op["value"], "context": op["context"][:200]},
+                "operand": {"raw": op["raw"], "value": op["value"], "verdict": op["verdict"],
+                            "reason": op["reason"], "context": op["context"][:200]},
+                "match_status": match["status"],
                 "cell": {k: cell.get(k) for k in ("raw", "value", "row_label", "column", "scale",
-                                                  "period_text", "column_basis", "source")},
+                                                  "period_text", "column_basis", "source",
+                                                  "table_key", "col_index", "header_known")},
                 "table_scale": table.get("scale"), "table_origin": table.get("origin"),
+                "table_key": table.get("key"),
                 "binding": binding,
-                "requirement": None, "resolution": None,
+                "requirement": {"obligation": link_pre["obligation"],
+                                "required_exp": link_pre["required_exp"],
+                                "state": link_pre["state"], "why": link_pre["why"]},
+                "resolution": None,
             }
-            link_pre = stage_link(binding, asked, None)
-            pred["requirement"] = {"obligation": link_pre["obligation"],
-                                   "required_exp": link_pre["required_exp"],
-                                   "why": link_pre["why"]}
             out["predictions"].append(pred)
             rev.open_prediction = False
 
             later = rev.beyond(i + 1)
-            used = None
-            for s in later:
-                if s.get("kind") != "message":
-                    continue
-                e = stated_factor_exp(str(s.get("text") or s.get("content") or ""))
-                if e is not None:
-                    used = e
-                    break
-            pred["resolution"] = stage_link(binding, asked, used)
+            conv = X.conversion(op, later, link_pre.get("required_exp"))
+            pred["conversion"] = conv
+            pred["resolution"] = stage_link(binding, asked, conv)
             pred["resolution"]["read_from_steps_after"] = i
     return out
 
@@ -372,11 +413,16 @@ def export_for_lean(results: list) -> list:
     for r in results:
         for p in r.get("predictions") or []:
             res = p.get("resolution") or {}
+            if not res:
+                continue        # an extraction error has no resolution to re-decide
             rows.append({
                 "item": r.get("item"), "trace_key": r.get("trace_key"),
                 "contract": p.get("contract"), "operand": (p.get("operand") or {}).get("raw"),
                 "binding": (p.get("binding") or {}).get("truth"),
                 "required_exp": res.get("required_exp"), "used_exp": res.get("used_exp"),
+                "conversion": res.get("conversion"),
+                "converted_value_used": res.get("converted_value_used"),
+                "withdrawn": bool(res.get("withdrawn")),
                 "state": res.get("state"), "outcome": res.get("outcome"),
             })
     return rows

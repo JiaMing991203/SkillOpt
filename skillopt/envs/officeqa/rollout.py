@@ -156,6 +156,13 @@ def _no_answer_cause(response: str, metadata: dict, suffix: str) -> str:
         cause = "empty_reply_content_blank"
     else:
         cause = "prose_without_answer_tag"
+    # Amendment A-2. When the recovery policy looked at this reply and DECLINED, say which test it failed.
+    # "the alternate field held two different answers" and "the alternate field held nothing" are
+    # different facts about a run, and neither may be reported as a successful recovery.
+    rec = (metadata or {}).get("answer_recovery") or {}
+    outcome = str(rec.get("outcome") or "")
+    if outcome and not rec.get("recovered") and outcome not in ("recovery_disabled", "ordinary_content_present"):
+        cause += "+recovery_" + outcome
     return cause + (("+" + suffix) if suffix else "")
 
 
@@ -408,6 +415,12 @@ def _run_custom_search_process(
     final_answer = ""
     fail_reason = ""
     last_response_metadata: dict = {}
+    # A-1 named the loop exits in the local-tools branch only, and the row below reads `termination` for
+    # every branch - so a custom-search, azure-search, no-tools or codex rollout raised NameError when it
+    # built its row. Initialised here; "unrecorded" is what the other branches honestly report.
+    termination = "unrecorded"
+    turns_used = 0
+    recoveries: list[dict] = []
     for turn in range(1, max_tool_turns + 1):
         message, _ = chat_target_messages(
             messages=messages,
@@ -690,6 +703,13 @@ def process_one(
                     return_message=True,
                 )
                 last_response_metadata = _message_debug_metadata(message)
+                rec = last_response_metadata.get("answer_recovery") or {}
+                if rec and rec.get("outcome") not in ("recovery_disabled", "ordinary_content_present"):
+                    recoveries.append({"turn": turn, "outcome": rec.get("outcome"),
+                                       "recovered": bool(rec.get("recovered")),
+                                       "source_field": rec.get("source_field"),
+                                       "source_chars": rec.get("source_chars"),
+                                       "finish_reason": last_response_metadata.get("finish_reason")})
                 response = message.content or ""
                 final_response = response
                 assistant_message = {"role": "assistant", "content": response}
@@ -712,7 +732,8 @@ def process_one(
                     continue
                 if "<answer>" in response.lower():
                     final_answer = _extract_answer(response)
-                    termination = "answer_emitted"
+                    termination = ("answer_recovered_from_" + str(rec.get("source_field") or "alternate")
+                                   if rec.get("recovered") else "answer_emitted")
                     break
                 if turn == max_tool_turns:
                     fail_reason = f"Exceeded tool-turn budget ({max_tool_turns})"
@@ -778,6 +799,18 @@ def process_one(
         "response_metadata": last_response_metadata or {},
         "response_metadata_source": (last_response_metadata.get("metadata_source")
                                      if last_response_metadata else "unavailable"),
+        # Amendment A-2. Was this episode's answer recovered from a provider field the client used to
+        # drop, and what did the policy decide on every turn it looked at? `answer_recovered` is about
+        # WHERE the answer came from and says nothing about whether it is CORRECT: `hard` and `soft`
+        # above are the scorer's business and are computed from the same answer either way.
+        "answer_recovered": bool((last_response_metadata.get("answer_recovery") or {}).get("recovered")),
+        "answer_recovery_source": ((last_response_metadata.get("answer_recovery") or {}).get("source_field")
+                                   if last_response_metadata else None),
+        "answer_recovery_outcome": ((last_response_metadata.get("answer_recovery") or {}).get("outcome")
+                                    if last_response_metadata else None),
+        "answer_recovery_policy": ((last_response_metadata.get("answer_recovery") or {}).get("policy")
+                                   if last_response_metadata else None),
+        "answer_recovery_turns": recoveries,
         "target_system_prompt": system,
         "target_user_prompt": user,
         "rollout_settings_fingerprint": rollout_settings_fingerprint(

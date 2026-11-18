@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from dataclasses import dataclass, field
 from typing import Any
@@ -226,6 +227,44 @@ _REASONING_FIELDS = ("reasoning", "reasoning_content", "thinking")
 # is an explicit, recorded choice and not a silent repair.
 _CONTENT_FALLBACK_ENV = "SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK"
 
+# THE RECOVERY POLICY (amendment A-2). Two modes, and the difference is the whole point.
+#
+#   COMMITTED_ANSWER  the narrow policy. Recover ONLY an unambiguous, complete, TERMINAL
+#                     `<answer>...</answer>` block, and recover the block alone - never the prose around
+#                     it. Everything else is recorded as its own named outcome and the reply is left
+#                     empty, so a case the policy declines cannot be mistaken for a recovery.
+#   REASONING_TEXT    the permissive promotion shipped on 2026-11-18, which used the WHOLE reasoning text
+#                     as content. Kept only so that the recorded outcomes of the OQA-HTTP-1 probe, which
+#                     ran under it, stay reproducible. No new run uses it.
+#
+# The generic truthy spellings mean the NARROW policy, because that is the one that is safe to ask for
+# without naming it.
+MODE_OFF, MODE_COMMITTED_ANSWER, MODE_REASONING_TEXT = "off", "committed_answer", "reasoning_text"
+_MODE_WORDS = {
+    "": MODE_OFF, "0": MODE_OFF, "off": MODE_OFF, "false": MODE_OFF, "no": MODE_OFF, "none": MODE_OFF,
+    "1": MODE_COMMITTED_ANSWER, "true": MODE_COMMITTED_ANSWER, "yes": MODE_COMMITTED_ANSWER,
+    "on": MODE_COMMITTED_ANSWER, "answer": MODE_COMMITTED_ANSWER,
+    "committed_answer": MODE_COMMITTED_ANSWER, "committed": MODE_COMMITTED_ANSWER,
+    "reasoning": MODE_REASONING_TEXT, "reasoning_text": MODE_REASONING_TEXT,
+}
+
+# The outcomes of the narrow policy. Exactly one is recorded for every reply it looks at.
+R_RECOVERED = "recovered_committed_answer"
+R_RECOVERED_TRUNCATED = "recovered_committed_answer_despite_truncation"
+R_NO_TAG = "no_answer_tag_in_alternate_field"
+R_NO_ALTERNATE = "no_alternate_field_text"
+R_INCOMPLETE = "incomplete_answer_tag"
+R_AMBIGUOUS = "ambiguous_competing_answers"
+R_NOT_TERMINAL = "answer_tag_not_terminal"
+R_EMPTY_PAYLOAD = "empty_answer_payload"
+R_TOOL_CALL = "tool_call_present_no_recovery"
+R_CONTENT_PRESENT = "ordinary_content_present"
+R_DISABLED = "recovery_disabled"
+
+_ANSWER_BLOCK = re.compile(r"<answer>(.*?)</answer>", re.IGNORECASE | re.DOTALL)
+_ANSWER_OPEN = re.compile(r"<answer>", re.IGNORECASE)
+_ANSWER_CLOSE = re.compile(r"</answer>", re.IGNORECASE)
+
 
 def reasoning_text(message: Any) -> tuple[str, str]:
     """The model's text when it did not arrive in `content`, and the field name it arrived in."""
@@ -239,10 +278,87 @@ def reasoning_text(message: Any) -> tuple[str, str]:
     return "", ""
 
 
-def content_fallback_enabled() -> bool:
+def recovery_mode() -> str:
+    """Which answer-recovery policy is in force, from the environment. `off` unless asked for."""
     import os as _os
-    return str(_os.environ.get(_CONTENT_FALLBACK_ENV, "")).strip().lower() in {
-        "1", "true", "yes", "on", "reasoning"}
+    raw = str(_os.environ.get(_CONTENT_FALLBACK_ENV, "")).strip().lower()
+    return _MODE_WORDS.get(raw, MODE_OFF)
+
+
+def content_fallback_enabled() -> bool:
+    return recovery_mode() != MODE_OFF
+
+
+def committed_answer(text: str) -> dict:
+    """Is there an unambiguous, complete, terminal `<answer>` block in `text`, and what is it?
+
+    WHY EACH TEST EXISTS, because a recovery that is wrong is worse than none:
+
+      * complete    an unclosed `<answer>` is what a truncated completion looks like. Half an answer is
+                    not a commitment.
+      * unambiguous two blocks with DIFFERENT payloads are two answers, and picking one would be the
+                    client choosing the model's answer for it. Identical repeats are allowed and said to
+                    be repeats.
+      * terminal    nothing but whitespace may follow the closing tag. This is what separates a
+                    commitment from a worked example quoted mid-thought ("e.g. `<answer>[1, 2]</answer>`,
+                    but let me check the column first"), and it is the same signal the ordinary content
+                    path relies on.
+
+    Returns the outcome, the payload, and the counts a reader needs to check the judgement.
+    """
+    text = text if isinstance(text, str) else ""
+    blocks = [m for m in _ANSWER_BLOCK.finditer(text)]
+    opens = len(_ANSWER_OPEN.findall(text))
+    closes = len(_ANSWER_CLOSE.findall(text))
+    info = {"blocks": len(blocks), "open_tags": opens, "close_tags": closes,
+            "payload": None, "payload_chars": 0, "terminal": False,
+            "distinct_payloads": 0, "repeated_identical": False}
+    if opens == 0:
+        return {**info, "outcome": R_NO_TAG}
+    if not blocks:
+        return {**info, "outcome": R_INCOMPLETE}
+    payloads = [m.group(1).strip() for m in blocks]
+    distinct = sorted(set(payloads))
+    info["distinct_payloads"] = len(distinct)
+    info["repeated_identical"] = len(payloads) > 1 and len(distinct) == 1
+    if len(distinct) > 1:
+        return {**info, "outcome": R_AMBIGUOUS}
+    last = blocks[-1]
+    info["terminal"] = not text[last.end():].strip()
+    if not info["terminal"]:
+        return {**info, "outcome": R_NOT_TERMINAL}
+    payload = payloads[-1]
+    if not payload:
+        # `<answer></answer>` commits to nothing. Recovering it would hand the loop an "answer emitted"
+        # exit with an empty prediction, which is exactly the confusion A-2 exists to remove.
+        return {**info, "payload": "", "outcome": R_EMPTY_PAYLOAD}
+    return {**info, "payload": payload, "payload_chars": len(payload), "outcome": R_RECOVERED}
+
+
+def recover_from_alternate_field(message: Any, finish_reason: Any = None) -> dict:
+    """The narrow policy applied to one reply, with its outcome named whatever happens.
+
+    The caller has already established that `content` is empty and that there is NO tool call: those two
+    conditions are the loop's own, and this function must never override them.
+    """
+    rtext, rfield = reasoning_text(message)
+    if not rtext.strip():
+        return {"outcome": R_NO_ALTERNATE, "source_field": rfield or None, "recovered": False,
+                "source_chars": 0}
+    found = committed_answer(rtext)
+    out = {"source_field": rfield, "source_chars": len(rtext), "recovered": False, **found}
+    if found["outcome"] != R_RECOVERED:
+        return out
+    # A complete, terminal block whose completion was nevertheless cut short at the token cap. The block
+    # itself is intact, so the answer was committed; the outcome says the completion was truncated so
+    # that it is never silently equated with an ordinary one.
+    if str(finish_reason or "").lower() == "length":
+        out["outcome"] = R_RECOVERED_TRUNCATED
+    out["recovered"] = True
+    # The RECOVERED CONTENT IS THE BLOCK ALONE. Not the reasoning prose, not a quoted example, not the
+    # working. This is what the environment, the saved trace and therefore the contract learner receive.
+    out["content"] = f"<answer>{found['payload']}</answer>"
+    return out
 
 
 def _unmodelled_message_fields(message: Any) -> dict[str, Any]:
@@ -330,6 +446,7 @@ def response_metadata(message: Any, response: Any = None, choice: Any = None) ->
         "reasoning_field_name": rfield,
         "reasoning_has_answer_tag": "<answer>" in rtext.lower(),
         "content_fallback_enabled": content_fallback_enabled(),
+        "recovery_policy": recovery_mode(),
         "n_tool_calls": len(tool_calls),
         "tool_names": [getattr(getattr(tc, "function", None), "name", "") or "" for tc in tool_calls],
         "unmodelled_message_fields": _unmodelled_message_fields(message),
@@ -359,16 +476,37 @@ def compat_message_from_chat_message(message: Any, response: Any = None,
             )
         )
     meta = response_metadata(message, response, choice) if response is not None or choice is not None else {}
-    # THE SMALLEST CORRECTION for the defect OQA-HTTP-1 found: when the provider put the model's text in
-    # a reasoning field and left `content` null, use that text. Off unless asked for, so the frozen
-    # campaign's behaviour remains the default and this cannot retroactively change what it did.
-    if not content.strip() and not tool_calls and content_fallback_enabled():
+    # ANSWER RECOVERY (amendment A-2), and the three guards on it are deliberate:
+    #   1. ORDINARY CONTENT WINS. A reply with content is handled exactly as before.
+    #   2. A TOOL CALL WINS. The loop continues on a tool call and never looks at this turn's answer; a
+    #      recovery here would invent a final answer out of a turn that asked for evidence.
+    #   3. OFF BY DEFAULT, so the frozen campaign's behaviour is still what runs unless asked for.
+    # Whatever happens is NAMED in `answer_recovery`, so a declined case cannot pass for a recovery.
+    mode = recovery_mode()
+    if mode == MODE_OFF:
+        rec = {"outcome": R_DISABLED, "recovered": False, "policy": mode}
+    elif content.strip():
+        rec = {"outcome": R_CONTENT_PRESENT, "recovered": False, "policy": mode}
+    elif tool_calls:
+        rec = {"outcome": R_TOOL_CALL, "recovered": False, "policy": mode,
+               "tool_names": [tc.function.name for tc in tool_calls]}
+    elif mode == MODE_REASONING_TEXT:
+        # The superseded permissive promotion. Kept reproducible, not recommended.
         rtext, rfield = reasoning_text(message)
+        rec = {"outcome": "promoted_whole_reasoning_text", "recovered": bool(rtext.strip()),
+               "policy": mode, "source_field": rfield or None, "source_chars": len(rtext)}
         if rtext.strip():
             content = rtext
-            meta = dict(meta)
-            meta["content_taken_from"] = rfield
-            meta["content_fallback_applied"] = True
+    else:
+        rec = {**recover_from_alternate_field(message, meta.get("finish_reason")), "policy": mode}
+        if rec.get("recovered"):
+            content = rec.pop("content")
+    meta = dict(meta)
+    meta["answer_recovery"] = rec
+    if rec.get("recovered"):
+        meta["content_taken_from"] = rec.get("source_field")
+        meta["content_fallback_applied"] = True
+        meta["content_chars_after_recovery"] = len(content)
     return CompatAssistantMessage(content=content, tool_calls=tool_calls, metadata=meta)
 
 
