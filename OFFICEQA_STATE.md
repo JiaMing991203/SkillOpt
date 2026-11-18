@@ -1,7 +1,15 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-18 (second follow-up finished). Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. HEAD `bacf6d0`+ (NOT pushed; pushing is still not authorized). Tracked tree clean.**
+**Last update: 2026-11-18, prepared for a compaction. Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`. Local HEAD `6282f78` (NOT pushed; pushing is still not authorized). Tracked tree
+clean. NO OfficeQA job running — the six `e3m-*` jobs pending in `squeue` belong to Experiment 3 and are
+not mine to touch.**
+
+**Deployed vs local:** the bundle `$PROJECT_ROOT/oqa_fu2_20261118` carries commit **`4572c61`**, which is
+the revision every result below was produced under. The three commits after it (`6282f78` and its two
+predecessors) are **documentation only** — the packet, the state note, the logs — so the bundle does not
+need rebuilding to reproduce anything. **Do not rebuild it while a job is queued OR RUNNING:** bash reads
+a body script lazily, and replacing it under a running job killed 66351468 after its work was done.
 
 ## THE HELD-OUT RESULT IS RELEASED -> `docs/research/OFFICEQA_RELEASE_PROTOCOL.md` (end of file)
 
