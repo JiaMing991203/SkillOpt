@@ -1369,3 +1369,52 @@ the provider's own cost_usd.
 
 Tests 2,259 passed, 9 skipped, 368 subtests (job 66341945). CPU exactly 4.00 of 4 requested job-hours over
 17 jobs, so no further job was submitted.
+
+## 2026-11-18 (later) — the recovery is verified on complete episodes, and the extraction repair removes a false finding
+
+**The headline: twelve complete episodes, twelve answers, twelve correct, and under the historical
+generation payload every one of those answers came out of `message.reasoning`.** Rule OQA-REC-2, jobs
+66346177 (tests), 66346233 (prep), 66346256 (episodes), 66346539/66346540 (S0), amendments A-2 and B-2.
+Everything new is under `<campaign>/followup_20261119/`.
+
+**The policy was narrowed before it was used.** Yesterday's fallback promoted the whole reasoning text
+into `content`, which would make reasoning prose, a quoted example or one of two competing answers into
+an episode's final answer. It now recovers only an unambiguous, complete, **terminal**
+`<answer>…</answer>` block, recovers the block **alone**, and gives every other case its own name that
+reaches the row's `termination_cause`. Eleven reply shapes are tested, including the real captured body
+and the truncation cases. What the contract learner receives is the block and nothing else, and a test
+asserts the saved trace contains exactly that one string.
+
+**Two defects the tests caught before anything was paid for.** A-1's row initialisation had been inserted
+after the first matching block in `rollout.py`, which is inside `_run_custom_search_process` — so every
+local-tools rollout raised `NameError` when it built its row. And the adapter must return empty metadata
+when it is called with the message alone, which is the compatibility guarantee for every other backend.
+Both were found by job 66346074 and fixed before the episodes ran.
+
+**A finding that connects the two workstreams.** In condition A, **0 of 45 captured replies had non-null
+`content`** — not just the terminal ones. The client was losing the actor's entire written reasoning on
+every turn, which is exactly why `conversation.json` holds empty assistant messages and why the
+connected contract had almost nothing to read ("only 7 of 24 traces contain any number the actor wrote
+in a message"). Counted in the new traces: a trace-based checker can read 20–36 characters of actor text
+per episode under thinking-on, and 575–8,864 under `enable_thinking: false`. **So the contract layer
+cannot be evaluated on traces recorded with thinking on**, and restoring that text means changing what
+the actor does — a decision about the next experiment's design, not a defect.
+
+**Workstream B removed a false finding rather than adding a true one.** The prototype now reuses
+`oqa_lc_cells` / `oqa_lc_chain` (unmodified) and corrects seven things above them, each with a test: the
+row-label column is not a data cell; years, dates, month fragments, list numbers, footnote markers and
+prose digits are rejected by name while a four-digit number with an adjacent marker is still money; an
+ambiguous cell match is silence; a cell binds to its own table; `cell_in_table` no longer reads
+`(A and B) or True`, which was true for every input; and `nearer_scale_between` is UNKNOWN rather than
+False when the scope was never observed. The stage link gained REOPENED, "no conversion required" (a
+factor of 10^0 needs no explicit multiplication by one — the false alarm B-1 printed on UID0044) and
+"stated but not carried through". A complete semantic bundle now freezes what the hypothesis *means* —
+vocabulary, extractor and evaluator source digests, stage definitions, renderer, learner prompt,
+learning manifest — because the model digest fixes only what it *says*, and B-1's evaluator was written
+after the model was frozen.
+
+**The accounting hole is closed.** The 23 probe sends are in the ledger, once, under a stage name the
+backfill tool refuses to write twice. The arithmetic turned up a second wrong-field-name defect: the
+backend reads `prompt_cache_hit_tokens`, which is DeepSeek's name, so for EmpirioLabs it sees no cache
+and bills every prompt token — that is the whole of the campaign's 38% conservatism. Left uncorrected on
+purpose, because fixing it would lower the computed charge and weaken the guard.
