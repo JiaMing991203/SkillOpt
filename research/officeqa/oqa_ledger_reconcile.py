@@ -197,14 +197,21 @@ def plan(ledger: str, *, exited_jobs: set[str] | None, assume_all_exited: bool) 
         for role, r in sorted(rec["roles"].items()):
             unresolved = max(0, r["attempts"] - r["resolved"])
             hold_usdmicro = unresolved * int(round(r["reserve_usd"] * 1_000_000))
-            # Which sum counts as "spent"? The ledger adds a per-record rounded integer, so that is the
-            # quantity the cap is enforced on - but a reader who sums the raw floats instead gets a slightly
-            # LARGER number (26 microdollars larger over this campaign's 7,313 records). Retaining the larger
-            # of the two costs a few microdollars of headroom and means no reader, whichever way it sums, can
-            # ever see recorded spend exceed the net claim.
-            used_usdmicro = max(r["usdmicro"], math.ceil(r["usdfloat"] * 1_000_000))
+            # Which sum counts as "spent"? THE PER-RECORD INTEGER, because that is the quantity the ledger
+            # adds and the cap is enforced on. A reader who sums the raw floats instead gets a slightly
+            # larger number (2.14 microdollars larger over this campaign's 10,158 records), so that excess
+            # is held back as a MARGIN rather than counted as spend.
+            #
+            # My first version used max(micro_sum, ceil(float_sum)) as the spend, and that was wrong in a
+            # way only a finished campaign shows: when claims have been reconciled down to equal the spend,
+            # the inflated figure EXCEEDS the net claim, and the planner then reports "the invariant
+            # spent <= claimed is BROKEN" and refuses to release anything. It declared a sound ledger
+            # broken over two microdollars. Subtracting the margin instead releases a hair less when there
+            # is slack and simply releases nothing extra when there is none.
+            used_usdmicro = r["usdmicro"]
+            float_margin = max(0, math.ceil(r["usdfloat"] * 1_000_000) - r["usdmicro"])
             for resource, used, hold in (("attempts", r["attempts"], 0),
-                                         ("usdmicro", used_usdmicro, hold_usdmicro)):
+                                         ("usdmicro", used_usdmicro, hold_usdmicro + float_margin)):
                 claimed = st["claimed_by_owner"].get((owner, role, resource), 0)
                 already = st["released_by_owner"].get((owner, role, resource), 0)
                 amount = claimed - already - used - hold
@@ -231,13 +238,16 @@ def plan(ledger: str, *, exited_jobs: set[str] | None, assume_all_exited: bool) 
         ca = st["claimed_total"].get((role, "attempts"), 0) - st["released_total"].get((role, "attempts"), 0)
         cu = st["claimed_total"].get((role, "usdmicro"), 0) - st["released_total"].get((role, "usdmicro"), 0)
         used_a = sum(r["roles"].get(role, {}).get("attempts", 0) for r in st["owners"].values())
-        used_u = sum(max(r["roles"].get(role, {}).get("usdmicro", 0),
-                         math.ceil(r["roles"].get(role, {}).get("usdfloat", 0.0) * 1_000_000))
-                     for r in st["owners"].values())
+        used_u = sum(r["roles"].get(role, {}).get("usdmicro", 0) for r in st["owners"].values())
+        # Reported, and checked against a tolerance below: a gap of a few microdollars is per-record
+        # rounding, a gap of a cent is something else.
+        used_u_float = sum(r["roles"].get(role, {}).get("usdfloat", 0.0) for r in st["owners"].values())
         rel = totals.get(role, {})
         before[role] = {
             "net_claimed_attempts": ca, "net_claimed_usd": round(cu / 1e6, 6),
             "recorded_attempts": used_a, "recorded_usd": round(used_u / 1e6, 6),
+            "recorded_usd_float_sum": round(used_u_float, 8),
+            "float_minus_micro_usdmicro": round(used_u_float * 1_000_000 - used_u, 3),
             "would_release_attempts": rel.get("attempts", 0),
             "would_release_usd": round(rel.get("usdmicro", 0) / 1e6, 6),
             "net_claimed_attempts_after": ca - rel.get("attempts", 0),
@@ -253,6 +263,13 @@ def plan(ledger: str, *, exited_jobs: set[str] | None, assume_all_exited: bool) 
                             f"${b['net_claimed_usd']:.4f} - the invariant spent <= claimed is BROKEN")
         if b["net_claimed_usd_after"] + 1e-9 < b["recorded_usd"]:
             problems.append(f"{role}: the plan would release actual charges, which rule {RULE} forbids")
+        # The two ways of summing the same charges must agree to within per-record rounding. A few
+        # microdollars over ten thousand records is arithmetic; a cent is a different kind of problem and
+        # the plan should stop rather than guess which figure is the spend.
+        if abs(b["float_minus_micro_usdmicro"]) > 1_000:
+            problems.append(f"{role}: the float sum of the charges and the per-record integer sum differ by "
+                            f"{b['float_minus_micro_usdmicro']:.0f} microdollars, which is more than "
+                            f"rounding can explain")
     if st["claimed_unattributed"]:
         problems.append(f"claims with no owner recorded: {st['claimed_unattributed']} - these are never "
                         f"released, because the process that made them cannot be shown to have exited")

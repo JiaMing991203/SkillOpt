@@ -2497,3 +2497,73 @@ def test_the_models_epoch_field_is_not_the_epoch_it_was_frozen_at():
         assert m0["corpus_epochs"] == [1]
         assert c4["epoch"] == 1, "the field really does say 1"
         assert c4["corpus_epochs"] == [1, 2, 3, 4], "the corpus does not"
+
+
+def test_a_reconciled_ledger_with_no_slack_left_still_reconciles(tmp_path, monkeypatch):
+    """The defect a finished campaign shows and a fresh one cannot.
+
+    Once claims have been reconciled down to equal the recorded spend, there is no slack. My first
+    version of the planner took the spend to be max(per-record integer sum, ceil(float sum)), which is a
+    hair LARGER than anything ever claimed, so it reported "recorded spend exceeds net claims - the
+    invariant spent <= claimed is BROKEN" and refused to release anything. It declared the real
+    campaign's sound ledger broken over 2.14 microdollars across 10,158 records.
+
+    The spend is now the per-record integer sum, which is what the ledger adds and the cap is enforced
+    on, and the float-sum excess is held back as a margin instead of counted as spend.
+    """
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=5000, usd=5.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    monkeypatch.setenv("SKILLOPT_LEDGER_PRICE_TARGET", "0.0411,0.0733,0.02")
+    LEDGER._state.clear()
+    LEDGER._owner = "777r0p1"
+    for i in range(300):
+        LEDGER.reserve("target", "test")
+        LEDGER.record_usage("target", "test", 1_111 + i, 37)
+    LEDGER._state.clear()
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+
+    # First pass: release the unused claims, which is what a clean exit would have done.
+    first = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert not first["problems"], first["problems"]
+    R.apply_plan(first, reason="test")
+
+    # Second pass, now with no slack at all. This is the case that used to refuse.
+    second = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert not second["problems"], second["problems"]
+    b = second["by_role"]["target"]
+    assert b["net_claimed_usd"] + 1e-9 >= b["recorded_usd"], b
+    assert b["float_minus_micro_usdmicro"] is not None
+    assert abs(b["float_minus_micro_usdmicro"]) <= 1_000, "rounding, not a real disagreement"
+    assert b["would_release_usd"] <= 0.000001, "there is nothing left to give back"
+    # and the ledger still covers its own integer accounting
+    micros = 0
+    with open(os.path.join(str(tmp_path), "spend", "777r0p1.jsonl"), encoding="utf-8") as f:
+        for line in f:
+            rec = json.loads(line)
+            if rec.get("kind") == "usage":
+                micros += int(round(float(rec["usd"]) * 1_000_000))
+    assert LEDGER._granted()[("target", "usdmicro")] >= micros
+
+
+def test_a_real_disagreement_between_the_two_sums_stops_the_plan(tmp_path, monkeypatch):
+    """A few microdollars is rounding. A cent is not, and then the planner must not pick a figure."""
+    R = _reconciler()
+    _apply(_env(str(tmp_path), attempts=200, usd=5.0, block_usd=0.05, reserve=0.02), monkeypatch)
+    LEDGER._state.clear()
+    LEDGER._owner = "778r0p1"
+    LEDGER.reserve("target", "test")
+    LEDGER.record_usage("target", "test", 1000, 10)
+    LEDGER._state.clear()
+    # Forge a usage record whose float value disagrees with the per-record integer by a whole cent.
+    path = os.path.join(str(tmp_path), "spend", "778r0p1.jsonl")
+    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+    for r in rows:
+        if r.get("kind") == "usage":
+            r["usd"] = float(r["usd"]) + 0.01
+    with open(path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    monkeypatch.setattr(R, "_live_jobs", lambda: set())
+    plan = R.plan(str(tmp_path), exited_jobs=None, assume_all_exited=True)
+    assert any("more than\nrounding can explain" in p.replace("  ", " ") or "more than rounding" in p
+               for p in plan["problems"]), plan["problems"]
