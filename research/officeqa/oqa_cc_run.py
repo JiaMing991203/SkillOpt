@@ -65,8 +65,28 @@ def cmd_freeze(proposal_path: str, records_path: str, out_dir: str) -> dict:
     m["proposal_sha256"] = IR.sha(IR.canon(prop.get("proposal", {}).get("parsed") or {}))
     path = os.path.join(out_dir, "CC_MODEL_v1.json")
     digest = IR.freeze(m, path)
+    # Recomputed HERE with the evaluator in force now, not echoed from the proposal file. The score
+    # stored with the proposal was taken before `nearer_scale_between` had an evaluator, so echoing it
+    # would report all-UNKNOWN for a contract that now decides.
+    recomputed = {"HOLDS": 0, "UNKNOWN": 0, "CONFLICT": 0, "VIOLATED": 0, "cells": 0}
+    import oqa_lc_cells as _CELLS
+    for r in rec["learning"]:
+        pk = _packet(r["predictions"], r["item"], r["epoch"])
+        steps, supplied = pk.get("steps") or [], pk.get("oracle_pages") or []
+        tabs = CHK.tables_in(steps, supplied)
+        for cell in CHK.cells_in(steps, supplied, ("flat_header_authoritative",))[:60]:
+            table = next((t for t in tabs
+                          if _CELLS.canon_scale(t.get("scale") or "")
+                          == _CELLS.canon_scale(cell.get("scale") or "")), None)
+            if table is None:
+                continue
+            recomputed["cells"] += 1
+            recomputed[CHK.evaluate_binding(c, table, cell)["truth"]] += 1
     return {"rule": RULE, "utc": _utc(), "model": path, "sha256": digest,
-            "contract": IR.render(c), "score_on_learning": comp.get("score"),
+            "contract": IR.render(c), "score_on_learning": recomputed,
+            "score_at_proposal_time": comp.get("score"),
+            "score_note": ("recomputed with the evaluator in force at freeze time; the proposal-time "
+                           "score was taken before `nearer_scale_between` had one"),
             "withdrawal_reason": comp.get("withdrawal_reason")}
 
 

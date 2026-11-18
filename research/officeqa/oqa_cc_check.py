@@ -223,7 +223,12 @@ def evaluate_binding(c: dict, table: dict, cell: dict) -> dict:
             unknown = True
         elif bool(got) != bool(want):
             ok = False
-    if conflict is not None and ok:
+    # CONFLICT TAKES PRECEDENCE over "the condition is not met", and the test that caught this is the
+    # reason. The same observation that withdraws the binding - the cell's own column header stating
+    # another unit - also fails the condition, so ordering "not met" first flattened every withdrawal
+    # into silence and `find_counterexample` could never see one. A withdrawal is informative and must
+    # be reported as what it is.
+    if conflict is not None:
         truth = IR.CONFLICT
     elif not ok:
         truth = IR.UNKNOWN      # the condition does not cover this cell: the contract is SILENT

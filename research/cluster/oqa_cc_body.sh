@@ -80,6 +80,7 @@ import json,sys; print(json.load(open(sys.argv[1])).get('optimizer_openai_compat
     R="research/officeqa/oqa_cc_run.py"
     "$OQA_PY" -I $R freeze --proposal "$FU/PROPOSAL.json" --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" --out "$FU" \
         2>&1 | tee "$OUTDIR/freeze.txt" || status=1
+    rm -f "$FU/CC_MODEL_v2.json"
     "$OQA_PY" -I $R check --model "$FU/CC_MODEL_v1.json" --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" \
         --which learning --out "$FU" 2>&1 | tee "$OUTDIR/check_learning.txt" || status=1
     "$OQA_PY" -I $R check --model "$FU/CC_MODEL_v1.json" --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" \
@@ -88,7 +89,9 @@ import json,sys; print(json.load(open(sys.argv[1])).get('optimizer_openai_compat
         --records "$FU/${OQA_CC_RECORDS:-CC_RECORDS_v2.json}" --out "$FU" 2>&1 | tee "$OUTDIR/repair.txt" || status=1
     "$OQA_PY" -I $R compare --campaign "$CAMP" --check "$FU/CC_CHECK_checking.json" --arm C \
         --out "$FU" 2>&1 | tee "$OUTDIR/compare.txt" || status=1
-    LEAN="${OQA_LEAN_BIN:-/nfs/turbo/umms-csriram/yaojm/lean/elan/bin/lean}"
+    # The elan SHIM needs a configured default toolchain and the first attempt (job 66341802) failed with
+    # "no default toolchain configured". Point at the toolchain's own binary instead.
+    LEAN="${OQA_LEAN_BIN:-/nfs/turbo/umms-csriram/yaojm/lean/elan/toolchains/leanprover--lean4---v4.20.0/bin/lean}"
     "$OQA_PY" -I research/officeqa/oqa_cc_lean.py --check "$FU/CC_CHECK_checking.json" \
         --out "$FU" --lean-bin "$LEAN" 2>&1 | tee "$OUTDIR/lean.txt" || status=1 ;;
   *) log "unknown phase"; exit 2 ;;
