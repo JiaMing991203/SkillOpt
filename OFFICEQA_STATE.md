@@ -3,17 +3,25 @@
 **Last update: 2026-11-17 after the diagnostic read. Branch `officeqa-contracts`, worktree
 `SkillOpt-officeqa`. HEAD `66b2b66`+ (NOT pushed; pushing is still not authorized).**
 
-## RIGHT NOW: the HELD-OUT chain's last job is RUNNING. Do not resubmit it.
+## THE HELD-OUT RESULT IS RELEASED -> `docs/research/OFFICEQA_RELEASE_PROTOCOL.md` (end of file)
+
+All three jobs COMPLETED. Read ONCE, after both evidence packets' proposed tests were already written, so
+nothing in them is tuned on it.
 
 ```
-66332133  oqa-ho-S0                   COMPLETED   hard 0.0500 (3/60)
-66332134  oqa-ho-primary_B_selected   COMPLETED   -- NUMBER DELIBERATELY NOT YET READ
-66332135  oqa-ho-exploratory_A_last   RUNNING
+66332133  oqa-ho-S0                   3 of 60   hard 0.0500  S0            9d377d1c2906   887 B  PRIMARY
+66332134  oqa-ho-primary_B_selected   6 of 60   hard 0.1000  arm B best    95989ce5ebad  3603 B  PRIMARY
+66332135  oqa-ho-exploratory_A_last   8 of 60   hard 0.1333  arm A/C last  5bd17ea109bc   940 B  exploratory
 ```
 
-**Why 66332134's number is unread:** the diagnostic packet's proposed next tests (§9) had to be written
-without seeing it, so that nothing in them is tuned on held-out. Read all three together when 66332135
-finishes, under `docs/research/OFFICEQA_RELEASE_PROTOCOL.md`.
+One question on this split is **1.7 points**. Arms A and C selected S0, so the primary comparison has two
+distinct documents, not four.
+
+**The table refutes itself, and that is the point.** The exploratory document differs from S0 by two HTML
+comment lines and carries the **identical advice digest** `3e70328ffb65`. Two documents with the same
+advice scored **3/60 and 8/60** — five questions, 8.3 points apart. Arm B's +3 over S0 is smaller than
+that. **Verified:** the scores. **Interpretation:** nothing here separates a skill effect from a draw, and
+the design could not have separated the arms at all, because only arm B has an edited selected skill.
 
 ## THE FORENSICS AUDIT IS DONE -> `docs/research/OFFICEQA_FORENSICS_PACKET.md`
 

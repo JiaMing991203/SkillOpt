@@ -1282,3 +1282,34 @@ field records the last model-CHANGING decision, so every arm-C model says 1 and 
 epoch 1. Fixed to take it from the file name and backed by a model-independent cross-epoch identity
 matrix, which gave the same answer. (b) My first `_dg_`-prefixed rename matched inside
 `skill_from_system(`; caught by the test job.
+
+### 2026-11-17, same evening — the held-out result, released under the protocol
+
+The chain finished and was read once, after both evidence packets' proposed next tests had been written,
+so nothing in them is tuned on it. S0 **3 of 60** (0.0500), arm B's validation-selected skill **6 of 60**
+(0.1000), arm A's and C's last skill **8 of 60** (0.1333, exploratory). One question is 1.7 points.
+
+The table carries its own refutation. The exploratory document differs from S0 by exactly two HTML comment
+lines — the empty slow-update placeholder — so its advice digest is identical to S0's. **Two documents
+that give the actor the same advice scored 3/60 and 8/60.** Arm B's three-question margin over S0 is
+smaller than the five-question gap between two copies of the same advice. That is the held-out echo of the
+training-split replicates (one fixed document, seven draws, 1 to 6 of 24, sd 1.95), and it is why the
+primary comparison is reported as a number and not as a finding.
+
+Spend reconciled: target 10,158 attempts / $6.8554 of 30,000 / $16.00; optimizer 103 / $3.5016 of
+260 / $8.00; CPU 27.61 of 40 core-hours over 57 jobs; zero unresolved requests, zero reserve breaches,
+ledger verdict PASS. Recorded alongside: the provider's own `cost_usd` is $3.2768 where the ledger charged
+$5.3159 for the same 7,909 attempts, because the provider does not bill cache reads — the ledger is
+conservative by about 38% on the actor side, and the ceilings are left as they are.
+
+**One defect of mine, found by trying to use it.** `oqa_ledger_reconcile.py` refused to release the
+held-out jobs' unused claims, reporting "recorded spend $6.8555 exceeds net claims $6.8554 — the invariant
+spent <= claimed is BROKEN" on a ledger whose own read says PASS. I had taken the spend to be
+max(per-record integer sum, ceil(float sum)) so that no reader could see spend exceed claims; once claims
+have been reconciled down to equal the spend there is no slack, and the inflated figure exceeds the net
+claim. It declared a sound ledger broken over 2.14 microdollars across 10,158 records. The spend is now
+the per-record integer sum — what the ledger adds and the cap enforces — with the float excess held back
+as a margin. My first replacement guard and its test were both wrong too: a flat 1,000-microdollar
+tolerance (unreachable at small record counts, exceedable by rounding at large ones) and a test that
+forged a one-cent gap by adding 0.01 to each stored `usd`, which moves both sums equally and proves
+nothing. The bound is now half a microdollar per record, which is what the arithmetic allows.
