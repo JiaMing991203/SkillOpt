@@ -378,9 +378,13 @@ def check_attempt(packet: dict, m: dict, assumptions=("flat_header_authoritative
                 "prefix_steps": len(prefix),
                 "operand": op_rec,
                 "match_status": match["status"],
+                # B-4 adds `column_leaf`/`column_leaf_basis`: column/series identity recovered from a
+                # split header's child row. They are CARRIED, never consulted - `header_known` still
+                # decides the unit question and `_well_bound` still requires it.
                 "cell": {k: cell.get(k) for k in ("raw", "value", "row_label", "column", "scale",
                                                   "period_text", "column_basis", "source",
-                                                  "table_key", "col_index", "header_known")},
+                                                  "table_key", "col_index", "header_known",
+                                                  "column_leaf", "column_leaf_basis")},
                 "table_scale": table.get("scale"), "table_origin": table.get("origin"),
                 "table_key": table.get("key"),
                 "binding": binding,

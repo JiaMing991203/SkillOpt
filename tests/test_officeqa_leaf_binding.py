@@ -220,3 +220,31 @@ def test_the_index_alignment_assumption_is_still_not_in_force():
     assert all(c["basis"] == CELLS.COL_UNKNOWN for c in cols)
     with_assumption = CELLS.bind_columns(t, tuple(ASSUMPTIONS) + ("index_alignment",))
     assert all(c["basis"] == CELLS.COL_INDEX_MERGE for c in with_assumption)
+
+
+# ───────────────────────── the leaf must be RECORDED, not merely computed ─────────────────────────
+
+def test_the_leaf_is_carried_into_both_witness_projections():
+    """A repair whose output appears in no artifact is not evidence.
+
+    The first replay measured `operands_whose_cell_has_a_leaf: 0` not because no leaf was recovered but
+    because both downstream projections copy a fixed key list. Both now carry the two B-4 fields, and
+    both still decide the unit question on `header_known` alone.
+    """
+    for name in ("oqa_cc_check", "oqa_audit_bind"):
+        src = open(os.path.join(RESEARCH, f"{name}.py"), encoding="utf-8").read()
+        assert '"column_leaf"' in src, name
+        assert '"column_leaf_basis"' in src, name
+
+
+def test_carrying_the_leaf_does_not_add_it_to_any_decision():
+    """It is copied into the witness and read by no condition, cause or verdict."""
+    import re as _re
+    for name in ("oqa_cc_check", "oqa_audit_bind", "oqa_cc_run"):
+        src = open(os.path.join(RESEARCH, f"{name}.py"), encoding="utf-8").read()
+        for m in _re.finditer(r"[^\n]*column_leaf[^\n]*", src):
+            line = m.group(0)
+            # the only permitted appearances are the projection key lists and comments
+            assert ('for k in (' in line or line.strip().startswith("#")
+                    or '"column_leaf"' in line or '"column_leaf_basis"' in line), (name, line)
+            assert "if " not in line and "==" not in line, (name, line)

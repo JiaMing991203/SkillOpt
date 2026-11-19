@@ -254,9 +254,13 @@ def audit_record(packet: dict, model: dict, assumptions=ASSUMPTIONS) -> dict:
 
         cell = match["cell"]
         table = CHK.table_of(cell, tabs)
+        # B-4's leaf is CARRIED here so the audit RECORDS column/series identity beside the unit
+        # question, and never in place of it: the cause taxonomy below is unchanged and still decides
+        # on `header_known`.
         rec["cell"] = {k: cell.get(k) for k in ("raw", "value", "row_label", "column", "scale",
                                                 "period_text", "column_basis", "table_key",
-                                                "col_index", "header_known")}
+                                                "col_index", "header_known",
+                                                "column_leaf", "column_leaf_basis")}
         if table is None:
             rec["primary_cause"] = MATCHED_WRONGLY
             rec["secondary_causes"] = []
