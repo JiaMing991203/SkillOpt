@@ -157,6 +157,33 @@ DeepSeek **106 of 266** and **$3.5100 of $10.00**; CPU **39.37 of 44** requested
 the binding constraint on everything that remains**; GPUs 0. The held-out re-measurement that is still
 on the table needs about 1.5 of the 4.63 job-hours left.
 
+### Grant 6 — 2026-11-18, the status-and-evidence packet (user-authorized, drawn from the remaining allowance)
+
+Up to **1 requested CPU job-hour**, ≤2 CPUs per job, **zero model API calls, zero provider probes, zero
+GPUs, zero new gameplay, training or evaluation**, saved artifacts only. Scope: establish what has
+happened since answer recovery, inventory the usable training/development traces, assemble three worked
+examples and trace one feedback path. **Not** authorized by it: implementing the pending checker changes,
+the proposed held-out comparison, or opening a sealed score.
+
+**Used: 0.90 requested job-hours over 4 jobs, 0 attempts, $0.00, 0 GPUs.**
+
+| job | phase | requested | elapsed | commit | result |
+|---|---|---|---|---|---|
+| 66395263 | status | 0:15 | 0:33 | `d777d2d` | all six statements HOLD |
+| 66395275 | tests | 0:12 | 0:59 | `d777d2d` | 2,366 passed |
+| 66395597 | status | 0:15 | 0:04 | `855612c` | **authoritative**; the trace-size fix in force |
+| 66395598 | tests | 0:12 | 0:57 | `855612c` | **2,367 passed**, 9 skipped, 368 subtests |
+
+The second pair re-ran the same phases after a counting defect was found in the packet's own new tool:
+`actor_written` measured the actor-visible trace by joining the conversation's entries, so the harness's
+separators between empty turns were counted as actor text. Both runs' requested time is counted, which is
+why a two-line fix cost 0.45 job-hours.
+
+**Cumulative after Grant 6:** EmpirioLabs **11,756 of 30,024 attempts** and **$7.8344 of $17.00**;
+DeepSeek **106 of 266** and **$3.5100 of $10.00**; CPU **40.27 of 44** requested job-hours — **92%, and
+still the binding constraint on everything that remains**; GPUs 0. The held-out re-measurement that is
+still on the table needs about 1.5 of the **3.73** job-hours left.
+
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 
 `research/cluster/oqa_campaign_body.sh` sets the caps the spend ledger enforces. They are not the grant's

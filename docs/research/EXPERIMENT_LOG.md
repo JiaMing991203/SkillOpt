@@ -1739,3 +1739,69 @@ goal object" — which is false of it.
 attempts of a step, so 18 of the 19 changes (all on successes) are not named there by construction; every
 affected step's digest reports the single pattern `navigation_loop`. The context-aware reading improves
 *when* a success is recognised and produces no failure diagnosis the ordinary analysis lacked.
+
+## OQA-ST-1 — the status-and-evidence packet, 2026-11-18
+
+**Purpose.** Not an experiment: an evidence read, so the next step can be chosen from the records. Report:
+`docs/research/OFFICEQA_STATUS_PACKET.md`. Artifacts: `<campaign>/status_20261118/`.
+
+**Authorization.** Grant 6: 1 requested CPU job-hour, ≤2 CPUs per job, zero model API calls, zero provider
+probes, zero GPUs, zero gameplay/training/evaluation, saved artifacts only. **Used 0.90 job-hours, 0
+attempts, $0.00, 0 GPUs.**
+
+| job | phase | requested | elapsed | commit | outcome |
+|---|---|---|---|---|---|
+| 66395263 | status | 0:15 | 0:33 | `d777d2d` | inventory, statements, feedback chain written |
+| 66395275 | tests | 0:12 | 0:59 | `d777d2d` | 2,366 passed, 9 skipped, 368 subtests |
+| 66395597 | status | 0:15 | 0:04 | `855612c` | **authoritative** |
+| 66395598 | tests | 0:12 | 0:57 | `855612c` | **2,367 passed**, 9 skipped, 368 subtests |
+
+**Method.** `research/officeqa/oqa_status.py`, three subcommands. `inventory` establishes which record
+sets came through the corrected client from each run's own call log — the transmitted model, sampling
+controls and `extra_body`, and the recovery policy the client applied — never from a directory date, and
+takes training/development membership from the frozen split record. `feedback` joins one attempt's trace,
+extracted facts, delivered report, ordinary SkillOpt analysis, optimizer proposal, merge, gate decision
+and skill survival. `statements` decides six status claims by assertion, reporting an absent artifact as
+UNDECIDED rather than as a pass. The 2026-11-18 audit's `BIND_AUDIT.json` and `S0_AUDIT_MANIFEST.json`
+are joined, not recomputed.
+
+**Results — recorded.**
+
+| | |
+|---|---|
+| Six status statements | **6 of 6 HOLD**, 0 undecided, 0 failing |
+| Corrected-client record sets | 4 development runs (12 records, all `train`) + S0 × 8 passes (192 records, `val`) |
+| Campaign arm rollout files carrying any recovery policy | **0 of 12** — every one predates amendment A-2 |
+| Held-out runs carrying any recovery policy | **0 of 3** (S0 3/60, arm-B selected 6/60, exploratory 8/60) |
+| **Corrected-client training failures** | **0** — all twelve episodes `hard = 1` |
+| Actor-visible trace, thinking on (A1/A2) | **20–36 characters**, 0 monetary operands, no arithmetic, 6 of 6 records |
+| Actor-visible trace, `enable_thinking: false` (B1/B2) | **575–8,864 characters**, 2–66 monetary operands, arithmetic present, 6 of 6 records |
+| Records reaching a holding binding | **1 of 12** (B2/UID0163, 3 operands, resolution `DISCHARGED`, required factor 10⁰) |
+| Provider alternate field, A-condition episodes | 667–10,349 characters, kept only in `actor_calls.jsonl` / `raw_capture.jsonl` |
+| UID0014 final call | `finish_reason: "length"` — truncated at the 8,000-token cap, so no answer; **not** the empty-content defect |
+| UID0014 operands | 693 candidates → 42 monetary → 12 predictions → **4 holding bindings** (3 distinct values), required factor 10⁻⁶ |
+| UID0014 deployed resolution | **OUTSTANDING ×4** — the operand's message is step 45 of 45, so the later window is empty |
+| UID0014 under proposal P-1 (diagnostic only) | **VIOLATED ×4**, `incorrect_factor_stated`, wrong by 10³ |
+| UID0014 gate | candidate 0.0833 vs incumbent 0.1667 → **reject**; instruction present in `candidate_skill.md`, absent from every retained skill (887/940 bytes) |
+| Reports delivered to the optimizer carrying a Lean certificate | **0 of 192** (96 arm B + 96 arm C) |
+| Lean, standalone demonstration | return code **0**, 15 checks, 7 evidence examples |
+
+**Deviations and defects.**
+
+1. **A counting defect in this packet's own tool, found and fixed.** `actor_written` joined the
+   conversation's entries, so the harness's separators between empty turns were counted as actor text
+   (A1/UID0017: 47 instead of 36). Fixed in `855612c`; the corrected measurement reproduces the recovery
+   packet's published 20–36 / 575–8,864 ranges exactly. A regression with a several-message fixture pins
+   the definition. Cost: the second pair of jobs, 0.45 requested job-hours, both counted.
+2. **The exact optimizer request is unavailable** for every arm and epoch: no `optimizer_calls.jsonl`, no
+   saved analyst prompt, no minibatch composition. The analyst views in `status_20261118/` are a
+   RECONSTRUCTION from SkillOpt's own `fmt_minibatch_trajectories`, and only the block contributed by the
+   named item is certainly what the optimizer saw.
+3. **The two item-identity views disagree for UID0014.** `trajectory_digest.json` names it under a stall
+   pattern; `minibatch_fail_001.json` names a thousands-vs-billions slip without naming any item. The
+   slip is attributable to UID0014 because UID0014 is the only item among the 24 in that rollout whose
+   actor-written text mentions both scales — established by scanning all 24, not inferred from wording.
+
+**What was NOT done.** No checker semantics changed (P-1 and P-2 measured only). No historical artifact
+written. No sealed score opened. No validation or held-out trajectory used for development. Nothing
+launched.

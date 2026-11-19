@@ -1549,3 +1549,74 @@ live ALFWorld implementation is uncommitted in the sibling worktree and was read
 note was not touched. Pending user decisions that predate this study (INSPECT rev 3, a lamp-state atom,
 a co-location relation) are untouched, because implementing a rule against a counterexample that is
 already known would be fitting the checker to a known failure.
+
+## 2026-11-18 (evening) — the OfficeQA status-and-evidence packet (rule OQA-ST-1)
+
+Back to OfficeQA after the accidentally routed ALFWorld study, which is handed to its owner and is not
+continued here. The user asked for one self-contained packet from which they and Codex could judge the
+next step **from the underlying records** rather than from my summaries: current state, what has actually
+happened since answer recovery, every usable trace, three worked examples, the same-message timing issue,
+what was learned versus supplied, and one complete feedback path. Evidence gathering only — zero model
+calls, zero probes, zero GPUs, zero gameplay, 1 authorized CPU job-hour.
+
+**`docs/research/OFFICEQA_STATUS_PACKET.md`** is the deliverable. Jobs 66395263 / 66395275 (commit
+`d777d2d`) and 66395597 / 66395598 (commit `855612c`, authoritative). 0.90 of 1 requested job-hour,
+$0.00, 2,367 tests passing.
+
+**The design decision worth recording: join the existing audit, do not recompute it.** The 2026-11-18
+audit already measured the per-operand extraction over exactly the records this packet needed
+(`BIND_AUDIT.json`'s `descriptive` group IS the twelve corrected episodes), and it already computed the
+P-1 reading beside the deployed one. A second implementation of the same counts would have given the
+reader two things to trust instead of one. `oqa_status.py` therefore joins `BIND_AUDIT.json` and
+`S0_AUDIT_MANIFEST.json` by a run-name key — deliberately not by absolute path, so an inventory built
+from a copy of the tree still joins — and computes only what did not exist: the producing configuration
+per run, the actor-visible trace size, and the feedback chain.
+
+**What the records said that the summaries did not.**
+
+* **There are ZERO corrected-client training failures.** All twelve episodes are `hard = 1`. I had been
+  carrying "twelve complete episodes, twelve correct" as a success; read as an evidence base it is the
+  binding gap, because a contract layer can only be judged where the actor wrote something down and got
+  it wrong. Validation failures do not substitute — different split, out of bounds for development.
+* **The thinking setting decides whether a trace contains anything to check.** Thinking on: 20–36
+  characters of actor text, 0 operands, 0 arithmetic, contract silent by construction on 6 of 12. Thinking
+  off: 575–8,864 characters, 2–66 monetary operands, and exactly one record (B2/UID0163) reaching a
+  holding binding — which DISCHARGES correctly, so the machinery does work end to end when the trace
+  carries an operand.
+* **UID0014's failure is a completion-cap truncation, not the empty-content defect.** The campaign's own
+  call log gives that call `finish_reason: "length"`; the one 13,127-character final message is cut off
+  mid-sentence. The answer-recovery fix would not have saved it. I had been filing it loosely under the
+  campaign's empty replies.
+* **The gate, not the contract layer, is where the right instruction died.** The scale diagnosis reached
+  the optimizer, the proposed edit named the correct factors in both directions, it was ranked, merged and
+  applied — and the candidate scored 0.0833 against 0.1667 and was rejected. Arm C kept no skill
+  containing it. Tracing this needed `trajectory_digest.json`, which carries `task_ids` per failure
+  pattern where the per-minibatch records do not.
+* **The report cannot be credited with that diagnosis.** Arm A, with no report in any analyst prompt,
+  produced "conflated units/columns (net vs gross income taxes, thousands vs billions)" on its own. And
+  the minibatch line that did name the scale slip is attributable to UID0014 only because UID0014 is the
+  *only* item in arm C's epoch-3 rollout whose actor text mentions both scales — established by scanning
+  all 24, not assumed from the wording.
+* **Zero of the 192 delivered reports carried a Lean certificate.** Checked mechanically rather than
+  recalled: no `.md` stage report contains "Lean", and the only `.lean` files in the campaign tree are the
+  three prototype demonstrations. Lean ran, with return code 0 over 15 checks — as a standalone
+  demonstration of the decision rules, which is a different claim from verifying a delivered report, and
+  the packet now says which one it is.
+* **The exact optimizer request was never saved**, and neither was the minibatch composition. The launch's
+  report-injection checks ran on a dress rehearsal and only their verdicts were kept. The packet
+  re-renders the analyst view with SkillOpt's own formatter and labels it a RECONSTRUCTION rather than
+  pretending the bytes survive.
+
+**One defect in my own new tool, found by comparing against a published figure.** `actor_written` measured
+the trace by joining the conversation's entries and taking the length, so every empty entry the harness
+wrote between turns contributed a separator: A1/UID0017 came out at 47 characters instead of 36, and the
+packet would have contradicted the recovery packet's measured 20–36 range. Summing the message contents
+reproduces it exactly. Fixed in `855612c` with a regression that uses a several-message fixture — the
+only case where the two readings differ, which is why the first thirteen tests passed under both. The
+re-run cost 0.45 requested job-hours for a two-line fix, and both runs are counted.
+
+**Recommendation, costed and not launched:** one pass over the 24 frozen TRAINING questions, one attempt
+each, S0 unchanged, `enable_thinking: false` — ~248 attempts, $0.16, ~0.4 job-hours, expected yield about
+14 failures — to find out whether a corrected-client failure carries a bindable operand at all. The
+held-out re-measurement (~$0.79, ~1.5 of the 3.73 job-hours left) answers the campaign's question rather
+than the contract layer's, and stays the user's call.

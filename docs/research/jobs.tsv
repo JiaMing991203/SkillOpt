@@ -108,3 +108,7 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66385774	awc-tests	d98fd6a	COMPLETED	2353 passed, 9 skipped, 368 subtests
 66385775	awc-lean	d98fd6a	FAILED	Lean rc1: heatContextEmptyIsSilent needed rfl
 66385916	awc-lean	7abbb91	COMPLETED	Lean 4.20.0 rc0, 46 statements, 20 evidence examples
+66395263	oqa-st-status	d777d2d	COMPLETED	inventory+statements ok; feedback render ok; 33s
+66395275	oqa-st-tests	d777d2d	COMPLETED	2366 passed, 9 skipped, 368 subtests
+66395597	oqa-st-status	855612c	COMPLETED	authoritative; all 6 statements HOLD; trace size 20-36/575-8864
+66395598	oqa-st-tests	855612c	COMPLETED	2367 passed, 9 skipped, 368 subtests

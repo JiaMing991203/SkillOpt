@@ -1,10 +1,56 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-18, after the offline audit. Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. NOT pushed; pushing is still not authorized. Tracked tree clean. NO OfficeQA job
-running — the six `e3m-*` jobs pending in `squeue` belong to Experiment 3 and are not mine to touch.**
+**Last update: 2026-11-18, after the status-and-evidence packet. Branch `officeqa-contracts`, revision
+`855612c`, worktree `SkillOpt-officeqa`. NOT pushed; pushing is still not authorized. Tracked tree clean.
+NO OfficeQA job running, queued or held — the six `e3m-*` jobs are Experiment 3 and `lc-lean` belongs to
+the learned-contract session; neither is mine to touch.**
 
-## START HERE -> `docs/research/OFFICEQA_AUDIT_PACKET.md` (rules OQA-AUD-1 / OQA-AUD-2, amendments A-3 / B-3)
+## START HERE -> `docs/research/OFFICEQA_STATUS_PACKET.md` (rule OQA-ST-1)
+
+**One self-contained read of where OfficeQA stands, what is implemented versus opt-in versus proposed,
+every usable trace, three worked examples and one complete feedback path.** Jobs 66395263 / 66395275 /
+66395597 / 66395598, 0.90 of 1 authorized CPU job-hour, $0.00.
+
+**The six status claims were each decided against the records, and ALL SIX HOLD** — twelve complete
+training episodes on three questions; eight passes of the unchanged skill on 24 validation questions;
+9.75/24 correct and 21.25/24 emitted; no corrected-client training comparison; no corrected held-out
+comparison; P-1 and P-2 still proposals. An absent artifact would have been reported UNDECIDED, never as
+a pass; none was. One figure needed correcting and it is the packet's own: the actor-visible trace with
+thinking on is **20-36 characters**, which the tool now reproduces after a counting defect in it was
+fixed (it had been joining the conversation's entries and counting the harness's separators).
+
+**THE BINDING EVIDENCE GAP: there are ZERO corrected-client training failures.** All twelve corrected
+episodes are correct (`hard = 1`). The contract layer can only be judged on records where the actor wrote
+something down and got something wrong, and no such record exists. **Validation failures do not
+substitute** — different split, out of bounds for development.
+
+**And the thinking setting decides whether a trace contains anything to check at all.** With the
+historical payload (thinking on) the permitted trace is **20-36 characters** — the recovered answer block
+alone, 0 operands, 0 arithmetic, contract silent by construction on 6 of the 12 episodes. With
+`enable_thinking: false` it is **575-8,864 characters** with 2-66 monetary operands; exactly ONE of the
+twelve records (B2/UID0163) reaches a holding binding, and it DISCHARGES correctly.
+
+**The feedback path for UID0014 is now traced end to end, and the gate is where it died.** The scale
+diagnosis reached the optimizer, the proposed instruction was correct ("thousands->billions is x1e-6 ...
+a 1000x slip is the most common scale bug"), it was ranked, merged and applied to the candidate — and the
+candidate scored 0.0833 against the incumbent's 0.1667 and was **rejected**. No skill arm C kept contains
+it: v0000-v0004 are 887/940 bytes and the probe is false on every one. **The report cannot be credited
+with the diagnosis:** arm A, which received no report in any analyst prompt, produced "conflated
+units/columns (net vs gross income taxes, thousands vs billions)" on its own.
+
+**MISSING ARTIFACTS, named rather than inferred.** The campaign saved **no optimizer request** (no
+`optimizer_calls.jsonl`, no analyst prompt) and **no minibatch composition**; the launch's
+report-injection checks ran on a dress rehearsal and only their verdicts were kept. The packet re-renders
+the analyst view with SkillOpt's own formatter and labels it a RECONSTRUCTION. And **zero of the 192
+delivered reports carried a Lean certificate** — checked mechanically; Lean ran only as a standalone
+compiled demonstration (rc 0, 15 checks, 7 evidence examples), which is a different claim.
+
+**THE SMALLEST NEXT STEP, costed and NOT launched:** one pass over the 24 frozen TRAINING questions, one
+attempt each, S0 unchanged, with `enable_thinking: false` — **~248 attempts, $0.16, ~0.4 job-hours** — to
+find out whether a corrected-client failure carries a bindable operand at all. Expected yield about 14
+failures. Everything else is blocked on that.
+
+## THE AUDIT -> `docs/research/OFFICEQA_AUDIT_PACKET.md` (rules OQA-AUD-1 / OQA-AUD-2, amendments A-3 / B-3)
 
 **The eight-pass S0 measurement is COMPLETE and its records are sound; one published block was not.**
 All 192 intended `(pass, question)` records exist exactly once, 0 duplicates, 0 missing, **35 of 35
@@ -70,7 +116,7 @@ advice scored **3/60 and 8/60** — five questions, 8.3 points apart. Arm B's +3
 that. **Verified:** the scores. **Interpretation:** nothing here separates a skill effect from a draw, and
 the design could not have separated the arms at all, because only arm B has an edited selected skill.
 
-## RESUME HERE -> `docs/research/OFFICEQA_RECOVERY_PACKET.md`
+## THE ANSWER RECOVERY -> `docs/research/OFFICEQA_RECOVERY_PACKET.md`
 
 **The `reasoning`-field defect is FIXED, VERIFIED ON COMPLETE EPISODES, and its effect on a score is now
 MEASURED.** Rules OQA-REC-2 and OQA-CC-2; amendments A-2 and B-2. Everything new is under
@@ -169,6 +215,9 @@ authoritative.
 ```
 R=/nfs/turbo/umms-csriram/yaojm/lean_skillopt ; CAMP=$R/runs/20261117-officeqa-3arm-campaign
 AUD=$CAMP/audit_20261118 ; A=$R/oqa_aud_20261118          # the AUDIT bundle, commit 3974433
+ST=$CAMP/status_20261118 ; S=$R/oqa_st_20261118           # the STATUS bundle, commit 855612c
+OQA_BUNDLE=$S bash $S/oqa_st_submit.sh status             # 0:15, free, rewrites $ST in place
+OQA_BUNDLE=$S bash $S/oqa_st_submit.sh tests              # 0:12, free
 OQA_BUNDLE=$A bash $A/oqa_aud_submit.sh audit             # 0:20, free, rewrites $AUD in place
 OQA_BUNDLE=$A bash $A/oqa_aud_submit.sh tests             # 0:12, free
 FU=$CAMP/followup_20261119 ; D=$R/oqa_fu2_20261118        # bundle, commit in $D/COMMIT
@@ -390,10 +439,10 @@ included.** It does NOT separate the arms, and it does NOT turn arm B's acceptan
 Caveat applied to both tails: all gates in an arm share the same 24 questions, so 0.001 could be several times
 larger; a 56-question pooled deficit is far too large for within-arm correlation to explain.
 
-## THE AUTHORIZATION, AS AMENDED, and what is left after Grant 4
+## THE AUTHORIZATION, AS AMENDED, and what is left after Grant 6
 
 TOTALS including everything already spent. `docs/research/OFFICEQA_AUTHORIZATION.md` is authoritative and
-records all four grants; the figures below are the ledger's own reading plus the two paid calls that ran
+records all six grants; the figures below are the ledger's own reading plus the two paid calls that ran
 outside it (both accounted: the 23 probe sends are now back-filled INTO the ledger, and the one
 pre-ledger DeepSeek probe of job 66271290 is subtracted from the enforced cap).
 
@@ -403,14 +452,14 @@ pre-ledger DeepSeek probe of job 66271290 is subtracted from the enforced cap).
 | EmpirioLabs charge | $17.00 | $7.8344 | $9.1656 | 46% |
 | DeepSeek calls | 266 | 106 | 160 | 40% |
 | DeepSeek charge | $10.00 | $3.5100 | $6.4900 | 35% |
-| CPU requested job-hours | 44 | **39.37** (31.6 + 6.88 follow-up + 0.87 audit) | **4.63** | **89%** |
+| CPU requested job-hours | 44 | **40.27** (31.6 + 6.88 follow-up + 0.87 audit + 0.90 status) | **3.73** | **92%** |
 | GPUs | 0 | 0 | — | — |
 
 **Grant 4's own suballocation** (5,000 attempts / $4.00 actor, 4 / $1.00 optimizer, 8 requested CPU
 job-hours, 0 GPUs) was drawn from that headroom and verified against it before anything was submitted.
 **Used: 1,598 attempts, $0.9789, 0 DeepSeek calls, 6.88 requested job-hours, 0 GPUs.** Left in it: 3,402
 attempts, $3.02, 4 DeepSeek calls, 1.12 job-hours. **CPU is now the binding constraint on the whole
-authorization at 88% of 44 requested job-hours.**
+authorization at 92% of 44 requested job-hours, with 3.73 left.**
 The caps the jobs enforce are ABSOLUTE and were computed once: **target 15,181 / $10.8626, optimizer
 109 / $4.4688**. A cap derived from "what has been spent so far" would hand every job a fresh allowance.
 
