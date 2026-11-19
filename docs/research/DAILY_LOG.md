@@ -1689,3 +1689,63 @@ the digest the collect job logged.
 requested walltime (every grant since). Uniformly over 122 OfficeQA jobs: requested walltime 79.65 h,
 elapsed 19.90 h, core-hours 43.92 h, against a 44-hour ceiling. The reported mixed figure is 41.69 of 44.
 Which convention governs is the user's call.
+
+## 2026-11-19 — the source-binding investigation (rule OQA-BIND-1, amendment B-4)
+
+Grant 8, a separate 0.5 requested CPU job-hours, fully used over two jobs. `OFFICEQA_BIND_PACKET.md`.
+The question: can the permitted observations support reliable source-column bindings, and does repairing
+extraction let the frozen contract produce useful findings? **No, and no.** But the investigation's
+by-product is more valuable than its subject.
+
+**What I got right by inspecting before coding.** `header_observed_structure_lost` turned out to be three
+situations. 15.6% of data cells ALREADY have a bound header and `pair_tables` already finds 9 pairs, so my
+previous "166 of 166" was a statement about the bindings that reached a cell, not about the corpus. The
+real defect is narrow and specific: a `grep` whose pattern matched a header line returns that line ALONE
+with `rows = 0`, so the shared-data-row identity test can never fire. And for most tables there is no
+flat rendering in the permitted view at all.
+
+**The temptation I avoided, and the measurement that made it obvious.** Admitting the span reading
+(`index_alignment`) would have lifted bound-header coverage from 15.6% to 76.8% — a headline number — on
+an assumption the model does not hold. I could test it on exactly one table, and it was wrong at 1 of 10
+indices. That is the difference between a repair and a coverage statistic.
+
+**What I got wrong, and only found by implementing it.** I measured leaf agreement at 10 of 10 on that
+same one table and concluded the leaf was a sound basis. Implemented and replayed, the recorded leaves
+are correct on UID0019 and **wrong or spurious on three other records**: UID0026 yields two different
+leaves at the same column index (two renderings with different offsets), UID0163 attaches a month name to
+the actor's own computed result, UID0014 reports `Gross (5)` where the actor read `Income taxes > Net (4)`.
+n=1 did not generalise, and I should have said so when I wrote the amendment rather than after.
+
+The design decision in B-4 — record the leaf, let nothing read it, keep `header_known` deciding the unit
+question — turned out to be right for a reason I had not anticipated. Had the leaf been promoted to a
+binding, three of four records would now carry a wrong source attribution.
+
+**Three of four disputed diagnoses are contradicted, and this is the real finding.** The user was right
+on every count:
+* **UID0019** is not a unit error. The actor's conversions are correct and both land in millions of USD.
+  `Net options positions` is column (3) — observed as −74 (yen) and 369 (pound) — and the actor
+  differenced `Purchased (1)`/`Sold (2)` from the spot/forward group. `|−74000/114.0 − 369×1.41| =
+  1169.41`, the ground truth exactly. I had called it a scale error because the two tables state
+  different scales; different starting scales prove nothing on their own.
+* **UID0028** is a two-hop question. The full text asks for the railroad retirement receipts *in the
+  month the spread minimised*, so reading the second table is the task. My "measure-identity error" came
+  from reading a truncated question — a lesson about quoting questions in full.
+* **UID0044** is not ambiguous between sum and difference. The window is one reporting week, so a single
+  cited value is asked and `operation: UNKNOWN` is correct. The real error is the same class: the actor
+  read **Canada** instead of **Latin America** in 6 of 8 sub-table reads, and the right column gives
+  1,461 = the ground truth. Its header is rendered with 9 cells for a 14-cell row, so the column names
+  are absent from the observation.
+* **UID0026** is a corrected attempt, not an error in the answer.
+
+**Both witnessed error classes are column selection, which the learned hypothesis cannot express** — it
+is about units. So the next milestone is not more parsing and not the vocabulary: it is a tool-interface
+change that returns the table's column structure beside the text, because the pipe rendering has already
+destroyed the spans that identify a column. Then ask a learner, in that order.
+
+**Two operational notes.** The CPU discrepancy is rebuilt from individual job records
+(`OFFICEQA_CPU_LEDGER.json`, 0 problems): inside the ceiling, requested 66.483, elapsed 17.833,
+core-hours 35.649. Under requested walltime the ceiling was exceeded during the campaign itself (53.583
+against 40); under core-hours it stands at 81%. The reported 41.69 was a mixed total and rebuilds to
+40.585. I have not chosen a convention. And job 66414832 exited 1 because the semantic-bundle guard
+refused to let the label v6 mean two things after I changed two semantic-function sources between runs —
+the guard working, and a real inconsistency in my own artifacts that the packet records rather than hides.

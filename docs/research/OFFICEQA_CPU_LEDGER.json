@@ -1,0 +1,393 @@
+{
+ "all_officeqa_for_reference": {
+  "alloc_cpus": [
+   1,
+   2,
+   4
+  ],
+  "core_h": 43.92,
+  "elapsed_h": 19.901,
+  "jobs_never_started": 9,
+  "jobs_started": 113,
+  "jobs_total": 122,
+  "label": "every OfficeQA job in the window, for reference only",
+  "never_started_ids": [
+   "66195992",
+   "66219432",
+   "66234928",
+   "66234929",
+   "66262999",
+   "66263561",
+   "66346541",
+   "66351452",
+   "66351606"
+  ],
+  "requested_h": 72.983,
+  "requested_h_if_never_started_were_counted": 79.65,
+  "states": {
+   "CANCELLED": 9,
+   "COMPLETED": 86,
+   "FAILED": 25,
+   "TIMEOUT": 2
+  }
+ },
+ "counting_rules": [
+  "one record per job: sacct -X, no step records (asserted)",
+  "started jobs only, each charged its FULL requested limit",
+  "never-started jobs excluded (Start is None/Unknown, not read from State)",
+  "OfficeQA membership by the oqa-/officeqa naming convention, with every other prefix in the window listed as excluded",
+  "the pre-campaign feasibility phase is reported separately, outside the 44-hour ceiling"
+ ],
+ "excluded_non_officeqa_jobs": 140,
+ "excluded_prefixes": {
+  "ac": 29,
+  "awc": 3,
+  "e": 41,
+  "gpuprobe": 1,
+  "lc": 33,
+  "loc": 2,
+  "lso": 19,
+  "papp": 9,
+  "s": 3
+ },
+ "inside_the_ceiling": {
+  "alloc_cpus": [
+   1,
+   2
+  ],
+  "core_h": 35.649,
+  "elapsed_h": 17.833,
+  "jobs_never_started": 5,
+  "jobs_started": 105,
+  "jobs_total": 110,
+  "label": "everything the 44-hour ceiling covers (campaign + Grants 3-8)",
+  "never_started_ids": [
+   "66262999",
+   "66263561",
+   "66346541",
+   "66351452",
+   "66351606"
+  ],
+  "requested_h": 66.483,
+  "requested_h_if_never_started_were_counted": 68.65,
+  "states": {
+   "CANCELLED": 5,
+   "COMPLETED": 81,
+   "FAILED": 22,
+   "TIMEOUT": 2
+  }
+ },
+ "n_records_read": 262,
+ "officeqa_jobs": 122,
+ "outside_the_ceiling": {
+  "alloc_cpus": [
+   4
+  ],
+  "core_h": 8.271,
+  "elapsed_h": 2.068,
+  "jobs_never_started": 4,
+  "jobs_started": 8,
+  "jobs_total": 12,
+  "label": "pre-campaign feasibility, outside the ceiling",
+  "never_started_ids": [
+   "66195992",
+   "66219432",
+   "66234928",
+   "66234929"
+  ],
+  "requested_h": 6.5,
+  "requested_h_if_never_started_were_counted": 11.0,
+  "states": {
+   "CANCELLED": 4,
+   "COMPLETED": 5,
+   "FAILED": 3
+  }
+ },
+ "per_grant": [
+  {
+   "alloc_cpus": [
+    4
+   ],
+   "authorized_requested_h": null,
+   "core_h": 8.271,
+   "elapsed_h": 2.068,
+   "grant": "pre-campaign feasibility (OUTSIDE the 44-hour ceiling)",
+   "job_names": [
+    "oqa-feas"
+   ],
+   "jobs_never_started": 4,
+   "jobs_started": 8,
+   "jobs_total": 12,
+   "never_started_ids": [
+    "66195992",
+    "66219432",
+    "66234928",
+    "66234929"
+   ],
+   "note": "ran 2026-11-15/16, before the campaign authorization of 2026-11-17 existed",
+   "requested_h": 6.5,
+   "requested_h_if_never_started_were_counted": 11.0,
+   "states": {
+    "CANCELLED": 4,
+    "COMPLETED": 5,
+    "FAILED": 3
+   }
+  },
+  {
+   "alloc_cpus": [
+    1,
+    2
+   ],
+   "authorized_requested_h": 40.0,
+   "core_h": 27.684,
+   "elapsed_h": 13.851,
+   "grant": "Grants 1-2: the three-arm campaign",
+   "job_names": [
+    "oqa-A-e1",
+    "oqa-A-e2",
+    "oqa-A-e3",
+    "oqa-A-e4",
+    "oqa-B-e1",
+    "oqa-B-e2",
+    "oqa-B-e3",
+    "oqa-B-e4",
+    "oqa-C-e1",
+    "oqa-C-e2",
+    "oqa-C-e3",
+    "oqa-C-e4",
+    "oqa-api-smoke",
+    "oqa-camp-prep",
+    "oqa-camp-prep2",
+    "oqa-control",
+    "oqa-ctl-curl",
+    "oqa-ctl-home",
+    "oqa-ctl-import",
+    "oqa-ctl-tar",
+    "oqa-diag",
+    "oqa-diag-tests",
+    "oqa-forensics",
+    "oqa-ho-S0",
+    "oqa-ho-exploratory_A_last",
+    "oqa-ho-primary_B_selected",
+    "oqa-lean",
+    "oqa-rec-A-e4",
+    "oqa-rec-B-e4",
+    "oqa-rec-C-e3",
+    "oqa-rec-C-e4",
+    "oqa-rec-tests",
+    "oqa-rec-tests2",
+    "oqa-rec-tests3",
+    "oqa-rec-tests4",
+    "oqa-rec-tests5",
+    "oqa-shared",
+    "oqa-slow-probe",
+    "oqa-tests-full"
+   ],
+   "jobs_never_started": 2,
+   "jobs_started": 65,
+   "jobs_total": 67,
+   "never_started_ids": [
+    "66262999",
+    "66263561"
+   ],
+   "note": "the ceiling the 20 -> 40 amendment set; section 3b of the authorization reported this phase in CORE-HOURS (27.61), which is where the unit mixing begins",
+   "requested_h": 53.583,
+   "requested_h_if_never_started_were_counted": 54.583,
+   "requested_over_authorized": 13.583,
+   "states": {
+    "CANCELLED": 2,
+    "COMPLETED": 50,
+    "FAILED": 15
+   }
+  },
+  {
+   "alloc_cpus": [
+    2
+   ],
+   "authorized_requested_h": 4.0,
+   "core_h": 0.237,
+   "elapsed_h": 0.119,
+   "grant": "Grant 3: the OQA-FOR-1 follow-up",
+   "job_names": [
+    "oqa-cc-prompt",
+    "oqa-cc-propose",
+    "oqa-cc-select",
+    "oqa-cc-select2",
+    "oqa-fu-demo-tests",
+    "oqa-fu-demo2",
+    "oqa-fu-http-A",
+    "oqa-fu-http-B",
+    "oqa-fu-http-C",
+    "oqa-fu-http-D",
+    "oqa-fu-rederive",
+    "oqa-fu-select",
+    "oqa-fu-tests"
+   ],
+   "jobs_never_started": 0,
+   "jobs_started": 17,
+   "jobs_total": 17,
+   "never_started_ids": [],
+   "note": "recorded as 4.00 requested job-hours over 17 jobs",
+   "requested_h": 4.0,
+   "requested_h_if_never_started_were_counted": 4.0,
+   "requested_over_authorized": 0.0,
+   "states": {
+    "COMPLETED": 15,
+    "FAILED": 2
+   }
+  },
+  {
+   "alloc_cpus": [
+    2
+   ],
+   "authorized_requested_h": 8.0,
+   "core_h": 6.024,
+   "elapsed_h": 3.012,
+   "grant": "Grant 4: the answer-recovery follow-up",
+   "job_names": [
+    "oqa-fu2-cc",
+    "oqa-fu2-episodes",
+    "oqa-fu2-prep",
+    "oqa-fu2-s0-a",
+    "oqa-fu2-s0-b",
+    "oqa-fu2-s0-c",
+    "oqa-fu2-s0-top-up",
+    "oqa-fu2-tests"
+   ],
+   "jobs_never_started": 3,
+   "jobs_started": 11,
+   "jobs_total": 14,
+   "never_started_ids": [
+    "66346541",
+    "66351452",
+    "66351606"
+   ],
+   "note": "recorded as 6.88 requested job-hours over 14 jobs",
+   "requested_h": 5.717,
+   "requested_h_if_never_started_were_counted": 6.883,
+   "requested_over_authorized": -2.283,
+   "states": {
+    "CANCELLED": 3,
+    "COMPLETED": 6,
+    "FAILED": 4,
+    "TIMEOUT": 1
+   }
+  },
+  {
+   "alloc_cpus": [
+    2
+   ],
+   "authorized_requested_h": 2.0,
+   "core_h": 0.045,
+   "elapsed_h": 0.022,
+   "grant": "Grant 5: the offline audit",
+   "job_names": [
+    "oqa-aud-audit",
+    "oqa-aud-tests"
+   ],
+   "jobs_never_started": 0,
+   "jobs_started": 3,
+   "jobs_total": 3,
+   "never_started_ids": [],
+   "note": "recorded as 0.87 requested job-hours over 3 jobs",
+   "requested_h": 0.867,
+   "requested_h_if_never_started_were_counted": 0.867,
+   "requested_over_authorized": -1.133,
+   "states": {
+    "COMPLETED": 2,
+    "FAILED": 1
+   }
+  },
+  {
+   "alloc_cpus": [
+    2
+   ],
+   "authorized_requested_h": 1.0,
+   "core_h": 0.085,
+   "elapsed_h": 0.043,
+   "grant": "Grant 6: the status packet",
+   "job_names": [
+    "oqa-st-status",
+    "oqa-st-tests"
+   ],
+   "jobs_never_started": 0,
+   "jobs_started": 4,
+   "jobs_total": 4,
+   "never_started_ids": [],
+   "note": "recorded as 0.90 requested job-hours over 4 jobs",
+   "requested_h": 0.9,
+   "requested_h_if_never_started_were_counted": 0.9,
+   "requested_over_authorized": -0.1,
+   "states": {
+    "COMPLETED": 4
+   }
+  },
+  {
+   "alloc_cpus": [
+    2
+   ],
+   "authorized_requested_h": 1.5,
+   "core_h": 1.574,
+   "elapsed_h": 0.787,
+   "grant": "Grant 7: the training collection",
+   "job_names": [
+    "oqa-col-analyze",
+    "oqa-col-collect",
+    "oqa-col-freeze",
+    "oqa-col-tests"
+   ],
+   "jobs_never_started": 0,
+   "jobs_started": 5,
+   "jobs_total": 5,
+   "never_started_ids": [],
+   "note": "recorded as 1.418 requested job-hours over 5 jobs",
+   "requested_h": 1.417,
+   "requested_h_if_never_started_were_counted": 1.417,
+   "requested_over_authorized": -0.083,
+   "states": {
+    "COMPLETED": 4,
+    "TIMEOUT": 1
+   }
+  },
+  {
+   "alloc_cpus": [],
+   "authorized_requested_h": 0.5,
+   "core_h": 0.0,
+   "elapsed_h": 0.0,
+   "grant": "Grant 8: this source-binding investigation",
+   "job_names": [],
+   "jobs_never_started": 0,
+   "jobs_started": 0,
+   "jobs_total": 0,
+   "never_started_ids": [],
+   "note": "a NEW separate allocation; explicitly not retrospective approval of any overrun",
+   "requested_h": 0.0,
+   "requested_h_if_never_started_were_counted": 0.0,
+   "requested_over_authorized": -0.5,
+   "states": {}
+  }
+ ],
+ "previously_reported_figures": {
+  "41.69_as_reported": {
+   "how_it_is_built": "CORE-HOURS for the campaign phase plus REQUESTED walltime for every grant after it",
+   "rebuilt_here": 40.585,
+   "verdict": "reproducible, and not a quantity in any single unit",
+   "what_it_is": "the MIXED figure reported since Grant 3"
+  },
+  "43.92_as_reported": {
+   "rebuilt_here": 43.92,
+   "verdict": "an over-count on one ground: the pre-campaign phase is not inside the ceiling",
+   "what_it_is": "core-hours over EVERY oqa- job in the window, including the pre-campaign feasibility phase"
+  },
+  "79.65_as_reported": {
+   "rebuilt_here": 79.65,
+   "verdict": "an over-count on two separate grounds; superseded by the figure below",
+   "what_it_is": "requested walltime over EVERY oqa- job in the window, including the pre-campaign feasibility phase and including jobs that never started"
+  }
+ },
+ "problems": [],
+ "rule": "OQA-BIND-1",
+ "sacct_source": "/Users/yaojiaming/dev/lean_skillopt/runs/20261119-officeqa-bind/work/all_jobs.psv",
+ "schema": "lso.officeqa_cpu_ledger.v1",
+ "utc": "2026-11-19T04:35:58.640818+00:00"
+}

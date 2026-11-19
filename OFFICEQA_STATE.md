@@ -1,10 +1,83 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-18, after the corrected-client training collection. Branch `officeqa-contracts`,
-revision at or after `455e267`, worktree `SkillOpt-officeqa`. NOT pushed. Tracked tree clean. NO OfficeQA
-job running.**
+**Last update: 2026-11-19, after the source-binding investigation. Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`. NOT pushed. Tracked tree clean. NO OfficeQA job running.**
 
-## START HERE -> `docs/research/OFFICEQA_COLLECT_PACKET.md` (rule OQA-COL-1)
+## START HERE -> `docs/research/OFFICEQA_BIND_PACKET.md` (rule OQA-BIND-1, amendment B-4)
+
+**THE ANSWER IS NO: the permitted observations do NOT support reliable source-column bindings.** Grant 8,
+0.500 of 0.5 requested CPU job-hours over jobs 66414726 / 66414832, $0.00, 2,406 tests pass. All new
+output in `collect_20261118/v2_bind/`; the baseline was digest-verified unchanged in both jobs.
+
+**`header_observed_structure_lost` was three situations, not one.** 4,117 of 26,437 data cells (15.6%)
+ALREADY have a bound header and `pair_tables` already finds 9 pairs, so "166 of 166" was true of the
+bindings that reached a cell, not of the corpus. The real defect is narrow: a `grep` that matched a header
+line returns it ALONE with `rows = 0`, so the shared-data-row identity test cannot fire. And for most
+tables no flat rendering exists at all - UID0019, UID0063, UID0163 have ZERO flat tables in their prefix.
+
+**The span reading is refuted, and admitting it would have been the convenient mistake.** It agrees with
+the one observable flat header at 9 of 10 indices and fails at the tenth. It would have lifted
+bound-header coverage from 15.6% to **76.8%** on an assumption the model does not hold. Not done.
+
+**B-4 was implemented and it earns nothing, exactly as the amendment predicted.** The split header's
+child row gives the column LEAF (10/10 where testable); the PATH does not (9/10). So `oqa_cc_extract`
+records `column_leaf` at a `LEAF_ONLY` basis and leaves `column`/`column_basis`/`header_known` alone -
+a leaf is column/series identity, not unit scope. Replayed over all 24: 113 predictions, 566 operands,
+166 bindings, **0 supported bindings, 0 findings - identical to baseline on every contract measure**;
+43 operands and 12 predictions now carry a leaf.
+
+**AND THE LEAF ITSELF IS UNRELIABLE - inspect section 6a before trusting it.** Correct on UID0019
+(`528,979 -> Purchased (1)`, `533,325 -> Sold (2)`), WRONG on three: UID0026 gives two different leaves
+at the same column index (two renderings with different offsets), UID0163 attaches `Mar.` to the actor's
+own computed result, UID0014 reports `Gross (5)` where the actor read `Income taxes > Net (4)`. The
+10/10 agreement was one table and did not generalise.
+
+## THREE OF FOUR DISPUTED DIAGNOSES ARE CONTRADICTED -> packet section 4
+
+* **UID0019** - NOT a unit error. The conversions are correct and both land in millions of USD. The
+  error is COLUMN SELECTION: `Net options positions` is column (3), observed as **-74** (yen) and **369**
+  (pound); the actor differenced `Purchased (1)`/`Sold (2)` from `Spot, forward and future contracts`.
+  `|-74000/114.0 - 369x1.41| = 1169.41` = the ground truth EXACTLY. A third reason the contract is silent:
+  both tables state a FOREIGN-CURRENCY scale, and the scale reader requires "of dollars".
+* **UID0028** - NOT a measure-identity error. The FULL question is explicitly two-hop ("In that
+  corresponding calendar month and year, what were the railroad retirement account trust receipts..."),
+  so reading the second table is the TASK. My earlier reading came from a truncated question.
+* **UID0044** - NOT a genuinely ambiguous operation. The window is ONE reporting week, so a single cited
+  value is asked and `operation: UNKNOWN` is correct, not a missing cue. The real error is the same
+  column class: the actor read the **Canada** column instead of **Latin America** in **6 of 8** reads;
+  the right column gives `1,323 + 155 - 229 + 212 = 1,461` = the ground truth. Its header row is rendered
+  with 9 cells for a 14-cell data row, so the needed column names are ABSENT from the observation.
+* **UID0026** - a CORRECTED/REPLACED attempt, not an error in the answer. The superseded
+  `30,442 - 29,726 = 716` used a year-offset pair; the committed `31,336 - 30,442 = 894` is right.
+  Report it as recovered work; do not accuse a correct answer because an earlier calculation was replaced.
+
+**The two witnessed error classes are both COLUMN SELECTION, which the learned hypothesis cannot express
+at all** - it is about units.
+
+## THE CPU DISCREPANCY IS REBUILT, AND THE CEILING'S STATUS DEPENDS ON THE UNIT -> packet section 1
+
+`docs/research/OFFICEQA_CPU_LEDGER.json`, 0 problems. Started jobs at full requested limit, never-started
+excluded, OfficeQA-only, pre-campaign phase separated.
+
+| inside the 44-hour ceiling | requested **66.483** | elapsed **17.833** | core-hours **35.649** |
+|---|---|---|---|
+
+**Under requested walltime the ceiling was exceeded during the CAMPAIGN itself: 53.583 against its own
+40-hour authorization.** Under core-hours the cumulative figure is 35.649 of 44 (81%). The reported
+41.69 was a MIXED total (core-hours for the campaign, requested walltime after), rebuilt as 40.585; 79.65
+and 43.92 were over-counts including the pre-campaign phase. **Which convention governs is your decision
+and is NOT settled.** Grant 8's 0.5 h is recorded separately and does not depend on it.
+
+## NEXT STEP: a TOOL-INTERFACE change, not more parsing -> packet section 7
+
+Both witnessed errors failed for one reason: the pipe rendering the document tools return has already
+destroyed the column spans, and the span is what identifies a column. The proposed change is to have the
+tools return the table's own column structure beside the text (a `columns` field, or repeating a spanning
+parent in each column it covers). Then ask a learner for a hypothesis over column/series identity - in
+that order, because asking first produces a predicate with no evidence path. ~0.2 CPU job-hours, $0.00.
+NOT launched.
+
+## THE COLLECTION -> `docs/research/OFFICEQA_COLLECT_PACKET.md` (rule OQA-COL-1) — read section 4 of the BIND packet first; three of its case diagnoses are contradicted
 
 **THE EVIDENCE GAP IS CLOSED, AND IT REVEALED A DIFFERENT OBSTACLE THAN EITHER PENDING PROPOSAL.**
 24 frozen TRAINING questions, one attempt each, S0 unchanged, `enable_thinking: false`, narrow

@@ -1900,3 +1900,74 @@ whose records hold only stage, char count and prompt digest.
 checker semantics changed, neither pending repair deployed, no rescoring of the frozen prototype under
 changed semantics, no validation or held-out record used or re-run, no sealed score opened, and the new
 vocabulary not implemented.
+
+## OQA-BIND-1 — the source-binding investigation, 2026-11-19
+
+**Purpose.** Can the permitted observations support reliable source-column bindings, and does repairing
+extraction let the frozen contract produce useful, correct findings? Report:
+`docs/research/OFFICEQA_BIND_PACKET.md`. Amendment B-4 recorded before any code change. Artifacts:
+`<campaign>/collect_20261118/v2_bind/`.
+
+**Authorization (Grant 8).** A separate 0.5 requested CPU job-hours including verification and failed
+jobs; zero paid API/provider probes, zero actor/optimizer/learner calls, zero GPUs, zero new collection.
+**Used 0.500 requested job-hours (2 jobs), elapsed 0.036 h, core-hours 0.072 h, $0.00.**
+
+| job | requested | elapsed | commit | outcome |
+|---|---|---|---|---|
+| 66414726 | 0:20 | 1:08 | `13ca17c` | 2,404 tests; bundle v6 `36c37a397eddaa65`; replay identical to baseline |
+| 66414832 | 0:10 | 1:00 | `f80ec8d` | 2,406 tests; leaf carried into the witnesses; **exit 1 = the v6 bundle guard refusing to redefine a label** |
+
+**Measurements — deterministic, over all 24 saved records.**
+
+| | |
+|---|---|
+| data cells in the permitted prefixes | 26,437 |
+| cells already carrying a bound header | **4,117 (15.6%)** |
+| split/single tables / flat tables | 306 / 65 |
+| pairs `pair_tables` already finds | **9** |
+| width-equal split/flat combinations | 227; full leaf agreement **2**, partial 1, refuted 224 |
+| bound-header coverage if the span reading were admitted | **76.8%** — refused |
+| span reading vs the one observable flat header | **9 of 10** indices agree; fails at the tenth |
+| leaf vs the same flat header | **10 of 10** — but on ONE table |
+
+**Replay, baseline against repaired (`BIND_COMPARE.json`).** Predictions 113 → 113; monetary operands
+566 → 566; bindings 166 → 166; **supported bindings 0 → 0; findings 0 → 0**; primary causes, match
+statuses and resolution states identical; same-message postcondition column UNKNOWN 166 → UNKNOWN 166.
+Leaf-bearing operands 0 → **43**; predictions whose cell carries a leaf 0 → **12**. Classification: 4
+records recovered a leaf with nothing else changed, 20 identical with no leaf.
+
+**The decisive negative result (packet §6a).** The recorded leaves are **correct on UID0019** (`528,979
+→ Purchased (1)`, `533,325 → Sold (2)`) and **wrong or spurious on UID0026, UID0163 and UID0014**. Two
+different leaves at the same column index in UID0026 prove two renderings with different offsets. So the
+10-of-10 agreement did not generalise and the answer to the headline question is **no**.
+
+**Corrections to prior diagnoses (packet §4).** UID0019 column selection, not a unit error — the right
+columns give `1169.41` exactly. UID0028 an intended two-hop question. UID0044 a single cited value with
+the Canada column read instead of Latin America in 6 of 8 reads — the right column gives `1,461` exactly.
+UID0026 a corrected/replaced attempt. Three CONTRADICTED, one PARTLY CONTRADICTED.
+
+**CPU reconciliation (`OFFICEQA_CPU_LEDGER.json`, 0 problems).** Inside the 44-hour ceiling: requested
+**66.483**, elapsed **17.833**, core-hours **35.649**, over 105 started jobs with 5 never-started
+excluded. Campaign phase alone: 53.583 requested against a 40-hour authorization; 27.684 core-hours
+against the recorded 27.61. Grants 3, 5, 6, 7 agree exactly; Grant 4's recorded 6.88 included 1.17 h of
+never-started jobs that the stated rule excludes. 41.69 rebuilds to 40.585 (mixed units); 79.65 and 43.92
+were over-counts including the pre-campaign phase. **Convention unresolved, deliberately.**
+
+**Verification.** 16 new focused checks: supported alignment, bare-ordinal ambiguity, conflicting and
+repeated headers, duplicate values, previously working flat headers, preservation of unknowns and source
+pointers, the frozen-module boundary (`oqa_lc_cells` contains neither new identifier), that a leaf cannot
+satisfy `_well_bound`, that `index_alignment` is still not in force, that both fields reach both witness
+projections, and that the identifier appears in no condition or verdict. **Lean not compiled and not
+claimed:** B-4 changes no encoded decision rule, so there is no changed fact to verify; no Python mirror
+was substituted.
+
+**Deviations.** (1) Job 66414832 exited 1 on the semantic-bundle guard — correct behaviour; the directory
+holds a v6 bundle from run 1 beside run-2 analysis artifacts, and the honest label for the run-2 state is
+v7, which needs an allocation this task exhausted. (2) The first replay measured
+`operands_whose_cell_has_a_leaf: 0` because two witness projections dropped the new fields; fixed and
+pinned by two tests. (3) The leaf's reliability was asserted from n=1 in the amendment and refuted by the
+replay; the amendment's own prediction of zero effect on bindings was correct.
+
+**What was NOT done.** No vocabulary expansion, no same-message postcondition change, no table-unit
+scope-rule change, no learned-model change, no skill edit, no learner call, no validation or held-out
+evaluation, no performance campaign. The baseline was digest-verified unchanged in both jobs.

@@ -221,6 +221,43 @@ uniformly over all 122 OfficeQA jobs, `sacct` gives **requested walltime 79.65 h
 exceeded; under a uniform core-hour reading it stands at 99.8%. Which convention governs is the user's
 call; the mixed figure is what has been reported since Grant 3.
 
+### Grant 8 — 2026-11-19, the source-binding investigation (user-authorized, SEPARATE allocation)
+
+**A NEW, separate allocation of up to 0.5 requested CPU job-hours**, including verification and failed or
+recovery jobs. Zero paid API or provider-probe calls, zero actor/optimizer/learner calls, zero GPUs, zero
+new gameplay or question collection. **Recorded separately from the disputed historical CPU balance: it
+does not retrospectively approve any overrun and does not settle which accounting convention governs.**
+
+**Used: 0.500 requested job-hours over 2 jobs (66414726 at 0:20, 66414832 at 0:10) — the full
+allocation. Elapsed 0.036 h, core-hours 0.072 h. 0 attempts, $0.00, 0 GPUs.** Job 66414832 exited 1, and
+the cause is the semantic-bundle guard working correctly: it refused to let the label v6 mean two
+different things after two semantic-function sources changed between the runs.
+
+**THE HISTORICAL CPU DISCREPANCY, now rebuilt from individual job records**
+(`docs/research/OFFICEQA_CPU_LEDGER.json`, `research/officeqa/oqa_cpu_ledger.py`; 0 problems). Counting
+rules: one record per job (`sacct -X`, no step records), started jobs charged their FULL requested limit,
+never-started jobs excluded by the Start field, OfficeQA membership by naming convention, and the
+pre-campaign feasibility phase separated because it predates the campaign authorization.
+
+| scope | started | requested h | elapsed h | core-hours |
+|---|---|---|---|---|
+| inside the 44-hour ceiling (campaign + Grants 3-8) | 105 | **66.483** | 17.833 | **35.649** |
+| outside it (pre-campaign feasibility) | 8 | 6.500 | 2.068 | 8.271 |
+
+**The ceiling's status depends on the unit, and under requested walltime it was exceeded during the
+campaign itself:** the campaign phase alone is **53.583 requested hours against its own 40-hour
+authorization**, while its core-hours are 27.684. Cumulatively: requested **66.483 of 44 (151%)**,
+core-hours **35.649 of 44 (81%)**, elapsed 17.833 of 44 (41%).
+
+The three previously reported figures are explained rather than re-chosen: **41.69** was the MIXED total
+(core-hours for the campaign, requested walltime after), rebuilt as 40.585 under the stated rule — the
+gap being Grant 4's three never-started jobs, which it counted and this rule excludes; **79.65** was
+requested walltime over every `oqa-` job including the pre-campaign phase and never-started jobs;
+**43.92** was core-hours over every `oqa-` job including the pre-campaign phase. Per-grant figures agree
+with the record exactly for Grants 3, 5, 6 and 7, and the campaign's core-hour figure agrees (27.684
+against the recorded 27.61). **Which convention governs the 44-hour ceiling is the user's decision and is
+not settled here.**
+
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 
 `research/cluster/oqa_campaign_body.sh` sets the caps the spend ledger enforces. They are not the grant's

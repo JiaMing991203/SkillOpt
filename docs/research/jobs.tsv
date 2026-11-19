@@ -117,3 +117,5 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66410230	oqa-col-collect	455e267	COMPLETED	PAID; resumed 16, collected 8 more; 24 of 24; verify all_ok
 66412182	oqa-col-analyze	455e267	COMPLETED	50 predictions all UNKNOWN; 166 bindings all UNKNOWN; 13 optimizer logs found
 66412183	oqa-col-tests	455e267	COMPLETED	2390 passed, 9 skipped, 368 subtests
+66414726	oqa-bind-all	13ca17c	COMPLETED	B-4 replay; 2404 tests; bundle v6 36c37a397eddaa65; 0 supported bindings
+66414832	oqa-bind-all	f80ec8d	FAILED	leaf carried (43 operands, 12 predictions); exit 1 = v6 bundle guard refusing to redefine a label
