@@ -4,15 +4,18 @@
 #   OQA_BUNDLE=<bundle> bash oqa_col_submit.sh <phase> [--dry-run]
 #
 #     freeze   0:10  free   the collection freeze and the prototype's v5 semantic bundle
-#     collect  0:30  PAID   the 24 TRAINING questions, one attempt each (<=800 attempts, <=$0.75)
-#     analyze  0:15  free   records, the frozen prototype, the bind audit, the 24-row inventory
-#     tests    0:12  free   the whole test suite
+#     collect  0:30  PAID   the 24 TRAINING questions, one attempt each (<=800 attempts, <=$0.75).
+#                           OQA_COL_TIME overrides the wall; the phase RESUMES, so a second shorter job
+#                           finishes what the first did not.
+#     analyze  0:10  free   records, the frozen prototype, the bind audit, provenance, the inventory
+#     tests    0:10  free   the whole test suite
 #
 # THE ALLOCATION is 1.5 REQUESTED CPU job-hours, 800 actor attempts and $0.75, zero GPUs and ZERO
-# optimizer calls. All four phases at these limits request 1.12 job-hours, which leaves room for one
-# bounded retry. The walltimes are sized from measured precedents: twelve episodes with thinking ON took
-# 8:58 of a 45:00 request (job 66346256), and thinking off cuts completion tokens about fivefold, so
-# twenty-four episodes in 30 minutes is a deliberately loose bound rather than a guess.
+# optimizer calls. MEASURED, not estimated: the first collect job ran at about 2 minutes per episode -
+# slower than the twelve-episode precedent (8:58 for 12, job 66346256) because that job's episodes were
+# shorter, not because anything here is wrong - so 24 episodes need about 48 minutes and the first 0:30
+# job stops around episode 14. The plan is therefore 0:10 + 0:30 + 0:25 resume + 0:10 + 0:10 = 1.42 of
+# the 1.5 authorized job-hours, and the resume never recollects a completed episode.
 #
 # ONLY THE ACTOR KEY IS EVER LOADED, and only in `collect`. The body never loads a DeepSeek key.
 set -euo pipefail
@@ -42,8 +45,8 @@ sub() {                       # sub <name> <time> <extra-exports>
 
 case "$PHASE" in
 freeze)  J=$(sub oqa-col-freeze  00:10:00 "PHASE=freeze");  echo "freeze  $J" ;;
-collect) J=$(sub oqa-col-collect 00:30:00 "PHASE=collect"); echo "collect $J  PAID" ;;
-analyze) J=$(sub oqa-col-analyze 00:15:00 "PHASE=analyze"); echo "analyze $J" ;;
-tests)   J=$(sub oqa-col-tests   00:12:00 "PHASE=tests");   echo "tests   $J" ;;
+collect) J=$(sub oqa-col-collect "${OQA_COL_TIME:-00:30:00}" "PHASE=collect"); echo "collect $J  PAID  wall ${OQA_COL_TIME:-00:30:00}" ;;
+analyze) J=$(sub oqa-col-analyze 00:10:00 "PHASE=analyze"); echo "analyze $J" ;;
+tests)   J=$(sub oqa-col-tests   00:10:00 "PHASE=tests");   echo "tests   $J" ;;
 *)       echo "unknown phase: $PHASE" >&2; exit 2 ;;
 esac

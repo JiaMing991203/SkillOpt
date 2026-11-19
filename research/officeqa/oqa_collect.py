@@ -135,6 +135,28 @@ def _read_jsonl(path: str) -> list:
     return rows
 
 
+def _source_files(raw: str) -> list:
+    """The question's source documents, however the split spells the list.
+
+    DEFECT FOUND 2026-11-18, after the freeze of digest 2083b4587253 was already in force: this split
+    separates several source files with a NEWLINE, and splitting on "," alone returned one element
+    holding both names, which then resolved to no document at all. Nine of the twenty-four questions
+    have more than one source file, so their `resolved_documents` came out empty. The COLLECTION itself
+    is unaffected - the dataloader reads the CSV, not this field - but the frozen manifest under-recorded
+    those digests, and that is recorded in the packet rather than repaired by re-freezing.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            return [str(x) for x in json.loads(raw)]
+        except json.JSONDecodeError:
+            pass
+    parts = re.split(r"[\n,;]+", raw)
+    return [p.strip() for p in parts if p.strip()]
+
+
 # ───────────────────────── 1. the freeze, before any request ─────────────────────────
 
 def cmd_freeze(frozen_sets: str, split3: str, docs: str, skill: str, config: str, out_dir: str) -> dict:
@@ -196,16 +218,13 @@ def cmd_freeze(frozen_sets: str, split3: str, docs: str, skill: str, config: str
     per_question = []
     for r in sorted(rows, key=lambda r: str(r.get("uid") or r.get("id"))):
         qid = str(r.get("uid") or r.get("id"))
-        raw_files = str(r.get("source_files") or "")
-        try:
-            want = json.loads(raw_files) if raw_files.strip().startswith("[") else (
-                [p.strip() for p in raw_files.split(",") if p.strip()])
-        except json.JSONDecodeError:
-            want = [raw_files]
+        want = _source_files(str(r.get("source_files") or ""))
         resolved = resolve_candidate_files(want, docs_roots)
         per_question.append({
             "id": qid,
-            "task_type": r.get("task_type") or r.get("difficulty") or "",
+            # the split's own column is `category`; `task_type` and `difficulty` are the ROW's names in
+            # a results file, which is a different record
+            "task_type": r.get("category") or r.get("task_type") or r.get("difficulty") or "",
             "question_sha256_12": sha_text(str(r.get("question") or ""))[:12],
             "question_chars": len(str(r.get("question") or "")),
             "source_files": want,

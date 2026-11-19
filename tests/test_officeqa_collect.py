@@ -341,3 +341,24 @@ def test_the_withdrawn_and_overstated_claims_are_both_named(tmp_path):
     gate = next(c for c in doc["claims"] if "gate" in c["claim"])
     assert "does NOT follow" in gate["status"]
     assert doc["logs_found"] == 0
+
+
+# ───────────────────────── the source-file list, however the split spells it ─────────────────────────
+
+def test_newline_separated_source_files_are_parsed():
+    """The defect found after freeze 2083b4587253 was in force: this split uses newlines, not commas."""
+    assert COL._source_files("treasury_bulletin_1942_07.txt\ntreasury_bulletin_2001_12.txt") == [
+        "treasury_bulletin_1942_07.txt", "treasury_bulletin_2001_12.txt"]
+
+
+def test_comma_semicolon_and_json_source_file_lists_are_all_parsed():
+    assert COL._source_files("a.txt, b.txt") == ["a.txt", "b.txt"]
+    assert COL._source_files("a.txt; b.txt") == ["a.txt", "b.txt"]
+    assert COL._source_files('["x.txt", "y.txt"]') == ["x.txt", "y.txt"]
+    assert COL._source_files("solo.txt") == ["solo.txt"]
+
+
+def test_an_empty_or_malformed_source_file_list_yields_no_documents_rather_than_a_junk_entry():
+    assert COL._source_files("") == []
+    assert COL._source_files("   ") == []
+    assert COL._source_files("[not json") == ["[not json"]
