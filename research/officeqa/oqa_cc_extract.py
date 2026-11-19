@@ -211,6 +211,36 @@ def flat_references(steps: list, supplied: list) -> list:
     return out
 
 
+# ───────────────── B-4. the column LEAF, where the split header's child row supports it ─────────────────
+
+LEAF_ONLY = "LEAF_ONLY"
+_BARE_ORDINAL = re.compile(r"^\(\s*\d+\s*\)$")
+
+
+def leaf_of(table: dict, col_index: int) -> str | None:
+    """The column's own sub-label from a SPLIT header's child row, or None when it is not supported.
+
+    B-4. The child row is index-aligned with the data cells - both come from the same pipe rendering and
+    have the same width - and on the one record where an independently observed flat rendering of the
+    same table exists its leaves agree at 10 of 10 indices. The PARENT path does not agree (9 of 10),
+    because a spanning parent is rendered as a single cell and shifts the remaining parent labels left.
+    So the leaf is recorded and the path is not.
+
+    Returns None - and the caller must keep UNKNOWN - when the header form carries no child row, when the
+    child row is empty at this index, or when the label is a bare ordinal marker such as "(3)", which
+    names a column position rather than a measure.
+    """
+    if not table or table.get("header_form") not in ("split", "single"):
+        return None
+    child = table.get("child_row") or []
+    if col_index < 0 or col_index >= len(child):
+        return None
+    label = str(child[col_index] or "").strip()
+    if not label or _BARE_ORDINAL.match(label):
+        return None
+    return label
+
+
 def data_cells(steps: list, supplied: list, assumptions) -> tuple:
     """Data cells of the prefix, with the row-label column removed, plus what was dropped and why.
 
@@ -224,6 +254,9 @@ def data_cells(steps: list, supplied: list, assumptions) -> tuple:
     kept, dropped = [], []
     refs = flat_references(steps, supplied)
     def _collect(text, src):
+        # B-4. The tables of THIS text, indexed exactly as `cells_of` indexes them, so a cell's leaf is
+        # read from its OWN table and never from another table that merely shares a width.
+        own_tables = CELLS.tables(str(text or ""))
         for c in CELLS.cells_of(str(text or ""), assumptions, references=refs, source=src):
             c = dict(c, table_key=_key(src, c.get("table_index")))
             period = CELLS.read_period(str(c.get("row_label") or ""))
@@ -232,6 +265,18 @@ def data_cells(steps: list, supplied: list, assumptions) -> tuple:
                                 "row_label_is_a_period": bool(period)})
                 continue
             c["header_known"] = bool(c.get("column")) and c.get("column_basis") != CELLS.COL_UNKNOWN
+            # B-4. A LEAF is column/series identity, NOT unit scope. `column`, `column_basis` and
+            # `header_known` are deliberately left as they were, so no binding and no unit question
+            # changes state; the leaf is additional evidence beside them, under its own field.
+            c["column_leaf"] = None
+            c["column_leaf_basis"] = None
+            if not c["header_known"]:
+                ti = c.get("table_index")
+                tab = own_tables[ti] if isinstance(ti, int) and 0 <= ti < len(own_tables) else None
+                leaf = leaf_of(tab, int(c.get("col_index") or 0))
+                if leaf:
+                    c["column_leaf"] = leaf
+                    c["column_leaf_basis"] = LEAF_ONLY
             kept.append(c)
     for page in supplied:
         _collect(page.get("text"), {"kind": "supplied_page", "ref": page.get("ref")})

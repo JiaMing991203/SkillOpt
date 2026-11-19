@@ -322,3 +322,73 @@ for the user to accept or refuse.
 of an unbound duplicate as a disagreeing candidate is left in place because B-3.2 removes the case that
 mattered; `nearer_scale`'s refusal to infer an absence from an unobserved column stays as it is, and the
 measured cost of that refusal is reported rather than legislated away.
+
+---
+
+## B-4 — 2026-11-19. The column LEAF is recoverable from a split header; the column PATH is not
+
+**Recorded BEFORE the code change, rule OQA-BIND-1.** Baseline preserved: the 24 collected episodes,
+their freeze `2083b4587253`, bundle v5 `162b580923e2e0b9`, the learned hypothesis `96c3d1bd9aad6f4d`, the
+checker, stage and learner semantics, and every existing analysis file. All new output goes to a
+versioned directory `collect_20261118/v2_bind/`; nothing is overwritten.
+
+**Reason, measured on the 24 corrected-client training records before any code was written.** The
+2026-11-18 collection reported `header_observed_structure_lost` for 166 of 166 bindings. Inspecting the
+code and the raw observations shows that cause is made of three different situations, and only one of
+them is a defect:
+
+| situation | measured |
+|---|---|
+| a flat rendering of the same table exists and pairs by a shared data row | `pair_tables` already finds **9 pairs** over 306 split/single tables, and 4,117 of 26,437 data cells (15.6%) already have a bound header. "166 of 166" was true of the bindings that reached a cell, not of the corpus |
+| a flat rendering exists, widths match, but no data row is shared | 227 width-equal combinations; **2** have full leaf agreement at every index (both UID0026), 1 partial, the rest are different tables that merely share a width. A `grep` that matched the header line returns the header ALONE, with `rows = 0`, so the shared-data-row identity test can never fire |
+| no flat rendering of the table exists anywhere in the permitted view | the common case: UID0019, UID0063, UID0163 have **zero** flat tables in the whole permitted prefix |
+
+**And the span reading is testable, and where it was testable it was WRONG.** Reading the split header
+with the parent spanning forward over empty cells agrees with an independently observed flat header at
+**9 of 10** indices on UID0026 and disagrees at index 9 (`Paper money 2/ > National bank notes` against
+the flat form's top-level `National bank notes`). Admitting it as `index_alignment` would raise bound-header
+coverage from 15.6% to **76.8%** on an assumption the model does not hold and that the one available test
+refutes. That is forcing a binding to increase coverage, and it is not done.
+
+**The one thing that IS recoverable.** The split header's CHILD row is index-aligned with the data cells
+— both come from the same pipe rendering and have the same width — and its labels agree with the
+independently observed flat header's leaves at **10 of 10** indices on UID0026. The PARENT path does not
+(9 of 10). The decisive witness is UID0019, whose supplied page renders
+
+```
+| Report date | Spot, forward and future contracts | Net options positions | Exchange rate (Japanese yen per U.S. dollar) |  |
+|  | Purchased (1) | Sold (2) | (3) | (4) |
+```
+
+over the observed data row `| 03/16/2016 | 528979 | 533325 | -74 | 114.0 |`. The parent row's labels are
+positionally shifted because a two-column span was rendered as one cell, so the parent path at index 2 is
+wrong; the child row's labels are aligned, so the leaf at index 1 is `Purchased (1)` and at index 2 is
+`Sold (2)` — which is how one can see that the actor's operands are the spot/forward columns and not the
+asked `Net options positions`.
+
+**Changed — `research/officeqa/oqa_cc_extract.py` only, in the layer ABOVE the frozen modules.**
+`oqa_lc_cells` and `oqa_lc_chain` are NOT modified; the frozen campaign's behaviour stays byte-identical,
+exactly as in B-2 and B-3.
+
+* A new basis **`LEAF_ONLY`** and a new field `column_leaf`. When a cell's `column_basis` is `UNKNOWN`,
+  its table's header form is `split` or `single`, and the table's child row has a non-empty label at the
+  cell's own column index that is not a bare ordinal marker (`(3)`), the leaf is recorded.
+* **`column` and `header_known` are left untouched.** This is the distinction the repair turns on: a leaf
+  gives **column/series identity**, not **unit scope**. `nearer_scale_between` asks whether a nearer
+  scope states another money scale, which needs the path and the parent; a leaf cannot settle it. So no
+  binding changes state, and `_well_bound` still requires a bound header.
+* Table identity is required, not assumed: the leaf is read from the cell's OWN table, re-bound by its
+  own `(source, table index)` key, never from another table of the same width.
+* Uncertainty is preserved: where the child row is empty at that index, or the label is a bare ordinal,
+  or the header form is `flat`/`none`, the cell keeps `UNKNOWN` and nothing is recorded.
+
+**Not changed, deliberately.** The learned model and its assumption set; `nearer_scale_between`'s
+evaluator; the stage link; the prefix/later window; the vocabulary; the report renderer; the gate; the
+scorer. The two standing proposals — same-message postcondition checking and supported table-unit scope
+inference — are NOT implemented here, so the comparison isolates extraction.
+
+**What this amendment does NOT claim.** It does not claim the repair lets the frozen contract produce
+findings. The frozen hypothesis `scale_binds` is about the unit, and the leaf does not bear on the unit;
+the expected effect on bindings is therefore **zero**, and section 6 of the packet reports the measured
+outcome rather than this expectation. The finding the leaf WOULD support — an operand whose column is not
+the asked measure — needs a predicate the vocabulary does not have, and that extension stays unimplemented.
