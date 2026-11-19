@@ -145,6 +145,28 @@ def test_one_final_message_carrying_everything_is_detected(tmp_path):
     assert vis["final_message_chars"] == len(body)
 
 
+def test_the_harness_separators_between_messages_are_not_counted_as_actor_text(tmp_path):
+    """The size of the trace is the SUM of the actor's messages, not the length of a joined string.
+
+    This is the measurement that decides the published "20-36 characters with thinking on" figure. Under a
+    joined-string reading, every empty entry the harness wrote between two turns contributes a separator,
+    which inflated A1/UID0017 from 36 characters to 47. The two readings differ only when there is more
+    than one entry, so the fixture has several.
+    """
+    pred = tmp_path / "predictions" / "UID0063"
+    pred.mkdir(parents=True)
+    (pred / "conversation.json").write_text(json.dumps([
+        {"role": "user", "content": "q"},
+        {"type": "message", "content": ""},
+        {"type": "message", "content": "abc"},
+        {"type": "message", "content": ""},
+        {"type": "message", "content": "de"},
+    ]), encoding="utf-8")
+    vis = ST.actor_written(str(tmp_path / "predictions"), "UID0063")
+    assert vis["actor_written_chars"] == 5            # "abc" + "de", and nothing for the separators
+    assert vis["actor_messages_with_text"] == 2
+
+
 def test_a_stated_conversion_factor_is_distinguished_from_bare_arithmetic(tmp_path):
     pred = tmp_path / "predictions" / "UID0014"
     pred.mkdir(parents=True)

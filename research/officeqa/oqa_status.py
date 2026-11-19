@@ -172,6 +172,9 @@ def actor_written(prediction_dir: str, item: str) -> dict:
         text = str(m.get("content") or "")
         if text:
             msgs.append({"index": i, "chars": len(text)})
+    # The size of the actor's own text is the SUM of its message contents, not the length of a joined
+    # string: the loop's separators are the harness's, and counting them would credit the actor with
+    # characters it never wrote. The joined text exists only so a pattern can run across messages.
     joined = "\n".join(
         str(m.get("content") or "") for i, m in enumerate(conv)
         if isinstance(m, dict) and i > 0 and (m.get("type") or m.get("role")) != "tool_call")
@@ -179,7 +182,7 @@ def actor_written(prediction_dir: str, item: str) -> dict:
         "n_entries": len(conv),
         "n_tool_calls": tools,
         "actor_messages_with_text": len(msgs),
-        "actor_written_chars": len(joined),
+        "actor_written_chars": sum(m["chars"] for m in msgs),
         "largest_message": (max(msgs, key=lambda x: x["chars"]) if msgs else None),
         "last_entry_index": len(conv) - 1,
         "arithmetic_written_in_the_trace": bool(_ARITH.search(joined)),
