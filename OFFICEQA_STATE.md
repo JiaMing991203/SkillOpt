@@ -1,11 +1,81 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-18, after the status-and-evidence packet. Branch `officeqa-contracts`, revision
-`855612c`, worktree `SkillOpt-officeqa`. NOT pushed; pushing is still not authorized. Tracked tree clean.
-NO OfficeQA job running, queued or held — the six `e3m-*` jobs are Experiment 3 and `lc-lean` belongs to
-the learned-contract session; neither is mine to touch.**
+**Last update: 2026-11-18, after the corrected-client training collection. Branch `officeqa-contracts`,
+revision at or after `455e267`, worktree `SkillOpt-officeqa`. NOT pushed. Tracked tree clean. NO OfficeQA
+job running.**
 
-## START HERE -> `docs/research/OFFICEQA_STATUS_PACKET.md` (rule OQA-ST-1)
+## START HERE -> `docs/research/OFFICEQA_COLLECT_PACKET.md` (rule OQA-COL-1)
+
+**THE EVIDENCE GAP IS CLOSED, AND IT REVEALED A DIFFERENT OBSTACLE THAN EITHER PENDING PROPOSAL.**
+24 frozen TRAINING questions, one attempt each, S0 unchanged, `enable_thinking: false`, narrow
+`committed_answer` policy. Freeze `2083b4587253` written BEFORE the first request; prototype semantics
+frozen as bundle v5 `162b580923e2e0b9` before any new record existed. Jobs 66407516 / 66407607 /
+66410230 / 66412182 / 66412183. **286 attempts, $0.180, 1.418 of 1.5 CPU job-hours, 0 optimizer calls.**
+
+**12 correct, 12 failures** — three equal kinds: 4 committed a wrong answer (UID0019, 0030, 0034, 0228),
+4 truncated at the completion cap (UID0014, 0044, 0063, 0079), 4 exhausted the tool-turn budget
+(UID0028, 0031, 0150, 0165). **11 of 12 failures carry written arithmetic.** Settings verification:
+all 9 checks pass, and `enable_thinking: false` was **effective**, not just transmitted — 0 alternate-field
+characters in all 285 calls, so 0 recoveries were needed.
+
+**THE FROZEN PROTOTYPE FINDS NOTHING ON ANY OF THE 24.** 50 predictions, **every resolution UNKNOWN**;
+the wider audit reaches 166 bindings, **all UNKNOWN**. Records with a holding binding: **0 of 24**,
+controls included. The single blocking cause is **`header_observed_structure_lost`, 166 of 166**: these
+richer traces `read` their tables, which returns a split header whose column spans are gone, so the
+column binding is correctly refused.
+
+**NEITHER PENDING REPAIR HELPS.** Same-message postcondition checking changes **0 of 166** (it only
+matters once a binding reaches HOLDS, and none does). Supported table-unit scope inference cannot help
+either: the scope here is not unobserved, it is observed and unparseable.
+
+**THE HISTORICAL 1,000x ERROR DID NOT RECUR.** On a fresh UID0014 attempt the actor wrote "convert
+thousands to billions by dividing by 1,000,000" and `2,331,274 / 1,000,000 = 2.331274 billion` - the
+CORRECT factor. It failed by truncating at the 8,000-token cap while recomputing regression sums. The
+error the connected contract was built for is not a standing property of this actor on this question.
+
+**AND ONE CORRECT EPISODE SHOWS WHY A NEW REPRESENTATION IS NEEDED FOR PRECISION, NOT YIELD.** UID0026
+is scored correct and its one final message holds BOTH `30,442 - 29,726 = 716` (superseded, wrong) and
+`31,336 - 30,442 = 894` (committed, right). The frozen vocabulary cannot tell them apart, so a finding
+bound to `716` would be a false alarm on a correct episode.
+
+**NEXT STEP (free): fix column binding from split headers, then re-run the same analysis over the same
+24 records.** `BIND_AUDIT.json` before and after is the comparison. ~0.2 CPU job-hours, $0.00. Every
+vocabulary proposal in the packet's section 6 is gated behind it, and the packet says so rather than
+proposing machinery its evidence cannot reach.
+
+## PROVENANCE: TWO OF MY OWN CLAIMS ARE WITHDRAWN -> packet section 7
+
+**The campaign DID record every optimizer request.** `oqa_campaign_body.sh` writes
+`OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG` into the JOB's output directory inside the deployment bundle, not
+the campaign run tree, so my search of the run tree found nothing and I wrongly concluded nothing was
+written. **13 logs, 102 calls, complete prompt text and response.** The minibatch composition is
+DERIVABLE from the recorded prompt (which items it names, cross-checked against the saved patch record's
+reasoning prefix), so "missing" is withdrawn there too.
+
+For UID0014: job 66323202 arm C epoch 3 **analyst call 1**, user prompt 388,789 chars, digest
+`2328fd810d37`, 8 report headings, **its delivered report present VERBATIM**, matching
+`minibatch_fail_001.json`. And the control is recorded: arm A had **0 report headings in every call at
+every epoch**, yet at job 66273856 call 1 returned "conflated units/columns (net vs gross income taxes,
+thousands vs billions)" unaided.
+
+**"The gate, not the contract layer, is where it died" is OVERSTATED and withdrawn.** Recorded: the
+instruction was proposed, ranked, applied, and the candidate was rejected at 0.0833 against 0.1667, and
+no retained skill contains it. That the gate CAUSED the absence of improvement does not follow - a
+candidate carrying one correct instruction can be worse overall. **Unavailable: any per-instruction
+attribution of a candidate's gate score.**
+
+The launch doc's "12 of 12 reports verbatim in an analyst prompt" is true **of the pre-launch dry run**,
+whose per-call records hold only the stage, char count and prompt DIGEST - the dry run's prompt text was
+never persisted either.
+
+## CPU ACCOUNTING NEEDS YOUR DECISION -> packet section 8
+
+The running total mixes conventions: core-hours for the campaign phase, requested walltime since.
+Uniformly over all 122 OfficeQA jobs: **requested walltime 79.65 h, elapsed 19.90 h, core-hours
+43.92 h**. The reported mixed figure is **41.69 of 44 (95%), 2.31 left**. Under uniform requested
+walltime the ceiling is already exceeded; under uniform core-hours it is at 99.8%.
+
+## THE STATUS PACKET -> `docs/research/OFFICEQA_STATUS_PACKET.md` (rule OQA-ST-1) — read section 7 of the COLLECT packet first; two of its claims are withdrawn
 
 **One self-contained read of where OfficeQA stands, what is implemented versus opt-in versus proposed,
 every usable trace, three worked examples and one complete feedback path.** Jobs 66395263 / 66395275 /

@@ -443,27 +443,6 @@ def permitted_trace(pred_root: str, item: str) -> dict:
 
 # ───────────────────────── 4. the 24-row inventory ─────────────────────────
 
-def _cc_index(cc_check: dict) -> dict:
-    """item -> what the frozen prototype said about that attempt."""
-    index = {}
-    for r in (cc_check or {}).get("results") or []:
-        preds = r.get("predictions") or r.get("prediction_dir") or ""
-        states, truths, convs = {}, {}, {}
-        for p in r.get("predictions_list") or r.get("predictions_detail") or []:
-            pass
-        for p in r.get("preds") or r.get("predictions_made") or []:
-            pass
-        index[str(r.get("item"))] = {
-            "trace_sha256_12": str(r.get("trace_sha256") or "")[:12],
-            "problems": r.get("problems") or [],
-            "n_predictions": len(r.get("predictions") or []) if isinstance(r.get("predictions"), list) else None,
-            "raw": {k: v for k, v in r.items() if k in ("item", "trace_key", "asked_scale")},
-            "_dir": preds if isinstance(preds, str) else "",
-            "_states": states, "_truths": truths, "_conversions": convs,
-        }
-    return index
-
-
 def _bind_index(bind_audit: dict) -> dict:
     """item -> the per-operand causes the existing bind audit computed, including its P-1 column."""
     index = {}

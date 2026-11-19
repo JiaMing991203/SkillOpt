@@ -1620,3 +1620,72 @@ each, S0 unchanged, `enable_thinking: false` — ~248 attempts, $0.16, ~0.4 job-
 14 failures — to find out whether a corrected-client failure carries a bindable operand at all. The
 held-out re-measurement (~$0.79, ~1.5 of the 3.73 job-hours left) answers the campaign's question rather
 than the contract layer's, and stays the user's call.
+
+## 2026-11-18 (late) — the corrected-client training collection (rule OQA-COL-1)
+
+The status packet's recommendation, executed: collect the missing corrected-client training failures and
+use them to decide the next representation change. `docs/research/OFFICEQA_COLLECT_PACKET.md`. 286 actor
+attempts, $0.180 of the authorized 800/$0.75; 1.418 of 1.5 requested CPU job-hours; 0 optimizer calls;
+2,390 tests pass.
+
+**The gap closed, and it immediately pointed somewhere other than where I expected.** 12 of 24 episodes
+fail, in three equally sized kinds, and 11 of 12 failures carry written arithmetic — a genuinely usable
+diagnostic corpus where there had been none. Then the frozen prototype produced **nothing** on any of
+them: 50 predictions all UNKNOWN, 166 bindings all UNKNOWN, 0 of 24 records with a holding binding,
+controls included.
+
+**The cause is one named thing, and it is neither pending proposal.**
+`header_observed_structure_lost`, 166 of 166. These traces `read` their tables, and `read` returns a
+header as a parent row plus a separate sub-label row, so the column spans are gone and the binding is
+correctly refused. Same-message postcondition checking moves 0 of 166 — it only matters once a binding
+reaches HOLDS, and none does. Supported table-unit scope inference cannot help either, because the scope
+is not unobserved but observed and unparseable. The earlier B2/UID0163 episode that did bind worked
+because a single supplied oracle page gave a flat-pairable header; richer traces do not.
+
+So I wrote the packet's section 6 as a **gated** proposal: the smallest justified change is not a
+vocabulary change at all but split-header column binding, and adding the predicates today would produce
+more UNKNOWNs rather than more findings. Saying that was more useful than proposing the representation I
+had witnesses for.
+
+**Two findings I did not expect and would have got wrong by assuming.**
+
+* **The historical 1,000x error did not recur.** On a fresh UID0014 attempt the actor wrote "convert
+  thousands to billions by dividing by 1,000,000" — correct — and failed instead by truncating at the
+  8,000-token cap while recomputing regression sums three times. The error the connected contract was
+  built for is not a standing property of this actor on this question. I had been treating it as the
+  canonical target.
+* **A correct episode carries a wrong calculation.** UID0026 scores 1 and its one final message holds
+  both `30,442 - 29,726 = 716` (superseded) and `31,336 - 30,442 = 894` (committed). The frozen
+  vocabulary has nothing to distinguish them, so the extension's first justification is **avoiding false
+  alarms on correct episodes**, not catching more faults. That reframed section 6 entirely.
+
+**Verification went one step past what was asked.** The instruction said verify the intended settings are
+transmitted; the call log also shows they were **effective** — 0 alternate-field characters across all
+285 calls, so the provider returned no reasoning channel and 0 recoveries were needed. A consequence
+worth recording: in this collection the permitted trace and the audit record hold the same actor text, so
+the information boundary is declared and enforced but is not doing any work.
+
+**And the provenance reconciliation overturned two of my own claims from this morning.** The campaign DID
+record every optimizer request — `oqa_campaign_body.sh` writes the log into the JOB's output directory
+inside the deployment bundle, not the campaign run tree, so my earlier search of the run tree found
+nothing and I concluded nothing existed. 13 logs, 102 calls, full prompt text. The minibatch composition
+is derivable from the prompt. For UID0014: arm C epoch 3 analyst call 1, 388,789 characters, digest
+`2328fd810d37`, its delivered report present verbatim, matching `minibatch_fail_001.json` — confirming by
+record the attribution I had reached by scanning traces. And arm A, with 0 report headings in every call
+at every epoch, reached the same units diagnosis unaided.
+
+I also withdrew "the gate, not the contract layer, is where it died" as overstated: a candidate carrying
+one correct instruction can be worse overall, and no per-instruction attribution of a gate score exists.
+
+**Operational notes.** The first collect job hit its 0:30 wall at 16 of 24; because `results.jsonl` is
+written incrementally the resume reused those 16 and finished the rest in 15:49, which is the reuse
+requirement working rather than being hoped for. One defect in my own freeze, found by reading its output
+against the split: `source_files` is newline-separated and I split on commas, so the nine multi-document
+questions recorded no document digests. The collection is unaffected (the dataloader reads the CSV), so I
+fixed the parser with regressions and recorded the gap rather than re-freezing, which would have changed
+the digest the collect job logged.
+
+**A discrepancy I am not resolving myself:** the CPU running total mixes core-hours (campaign phase) with
+requested walltime (every grant since). Uniformly over 122 OfficeQA jobs: requested walltime 79.65 h,
+elapsed 19.90 h, core-hours 43.92 h, against a 44-hour ceiling. The reported mixed figure is 41.69 of 44.
+Which convention governs is the user's call.

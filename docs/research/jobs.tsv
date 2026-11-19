@@ -112,3 +112,8 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66395275	oqa-st-tests	d777d2d	COMPLETED	2366 passed, 9 skipped, 368 subtests
 66395597	oqa-st-status	855612c	COMPLETED	authoritative; all 6 statements HOLD; trace size 20-36/575-8864
 66395598	oqa-st-tests	855612c	COMPLETED	2367 passed, 9 skipped, 368 subtests
+66407516	oqa-col-freeze	6a3d01b	COMPLETED	freeze 2083b4587253, 24 train ids, bundle v5 162b580923e2e0b9
+66407607	oqa-col-collect	6a3d01b	TIMEOUT	PAID; 16 of 24 episodes at the 0:30 wall; results written incrementally
+66410230	oqa-col-collect	455e267	COMPLETED	PAID; resumed 16, collected 8 more; 24 of 24; verify all_ok
+66412182	oqa-col-analyze	455e267	COMPLETED	50 predictions all UNKNOWN; 166 bindings all UNKNOWN; 13 optimizer logs found
+66412183	oqa-col-tests	455e267	COMPLETED	2390 passed, 9 skipped, 368 subtests

@@ -184,6 +184,43 @@ DeepSeek **106 of 266** and **$3.5100 of $10.00**; CPU **40.27 of 44** requested
 still the binding constraint on everything that remains**; GPUs 0. The held-out re-measurement that is
 still on the table needs about 1.5 of the **3.73** job-hours left.
 
+### Grant 7 — 2026-11-18, the corrected-client training collection (user-authorized)
+
+Within the existing cumulative ceilings: **1.5 requested CPU job-hours**, **800 actor attempts and
+$0.75 whichever is reached first**, **zero GPUs**, **zero DeepSeek/optimizer calls**. The caps include
+preflight, retries, failures, collection and offline analysis. Own submissions and bounded recovery
+permitted without routine approval; completed episodes to be reused after an interruption rather than
+recollected.
+
+**Used: 286 actor attempts, $0.180329 (ledger) / $0.104993 (provider-reported), 0 optimizer calls,
+1.418 requested CPU job-hours over 5 jobs, 0 GPUs.** 36% of the attempt cap, 24% of the dollar cap, 95%
+of the CPU cap. Zero refusals and zero non-ok provider calls in 285.
+
+The absolute caps were computed ONCE from the live ledger's claims net of releases (target 11,795
+attempts / $7.897264): target **12,595 attempts / $8.6473**, optimizer pinned AT its current level
+(105 / $3.768882) so no optimizer call could be reserved at all, and the DeepSeek key was never loaded
+in any phase.
+
+| job | phase | requested | elapsed | commit | result |
+|---|---|---|---|---|---|
+| 66407516 | freeze | 0:10 | 0:05 | `6a3d01b` | freeze `2083b4587253`, bundle v5 `162b580923e2e0b9` |
+| 66407607 | collect | 0:30 | 0:30 | `6a3d01b` | **TIMEOUT** at 16 of 24; rows written incrementally |
+| 66410230 | collect | 0:25 | 0:15:49 | `455e267` | resumed the 16, collected 8 more, 24 of 24 |
+| 66412182 | analyze | 0:10 | 0:08 | `455e267` | 50 predictions all UNKNOWN; 13 optimizer logs found |
+| 66412183 | tests | 0:10 | 0:56 | `455e267` | **2,390 passed**, 9 skipped, 368 subtests |
+
+**Cumulative after Grant 7:** EmpirioLabs **12,042 of 30,024 attempts** and **$8.0147 of $17.00**;
+DeepSeek **105 of 266** and **$3.4689 of $10.00**; CPU **41.69 of 44** requested job-hours — **95%**;
+GPUs 0. **2.31 requested CPU job-hours remain.**
+
+**A CPU ACCOUNTING DISCREPANCY, raised for the user's decision rather than resolved silently.** The
+running total above mixes two conventions: the campaign phase was counted in CPU-core-hours (27.61,
+section 3b) and every grant since in requested walltime (4.00 + 6.88 + 0.87 + 0.90 + 1.42). Computed
+uniformly over all 122 OfficeQA jobs, `sacct` gives **requested walltime 79.65 h**, **elapsed 19.90 h**,
+**core-hours 43.92 h**. Under a uniform requested-walltime reading the 44-hour ceiling is already
+exceeded; under a uniform core-hour reading it stands at 99.8%. Which convention governs is the user's
+call; the mixed figure is what has been reported since Grant 3.
+
 ## 2. What the ledger enforces, and why it is slightly *below* the grant
 
 `research/cluster/oqa_campaign_body.sh` sets the caps the spend ledger enforces. They are not the grant's

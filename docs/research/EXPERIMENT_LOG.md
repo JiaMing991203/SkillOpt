@@ -1805,3 +1805,98 @@ are joined, not recomputed.
 **What was NOT done.** No checker semantics changed (P-1 and P-2 measured only). No historical artifact
 written. No sealed score opened. No validation or held-out trajectory used for development. Nothing
 launched.
+
+## OQA-COL-1 — the corrected-client training collection, 2026-11-18
+
+**Purpose.** Collect the corrected-client training failures the status packet identified as missing, then
+use them to decide the next representation change. Report: `docs/research/OFFICEQA_COLLECT_PACKET.md`.
+Selection rule recorded in advance: `docs/research/OFFICEQA_COLLECT_SELECTION_RULE.md`. Artifacts:
+`<campaign>/collect_20261118/`.
+
+**Authorization (Grant 7).** 1.5 requested CPU job-hours; 800 actor attempts and $0.75 whichever first;
+zero GPUs; zero optimizer calls. **Used: 286 attempts, $0.180329 ledger / $0.104993 provider, 0
+optimizer calls, 1.418 job-hours over 5 jobs, 0 GPUs.** Zero refusals, zero non-ok calls in 285, ledger
+verdict PASS.
+
+**Frozen before the first request.** `COLLECT_FREEZE.json` digest `2083b4587253`: 24 training-only ids
+(membership checked, 0 problems), S0 `9d377d1c2906` unchanged, config `9ff823b2043a`, four code digests,
+`qwen3-5-4b` / temp 0.7 / `max_tokens` 8000 / tools on / `extra_body {"enable_thinking": false}`, tools
+`glob,read,grep` schema `7e4fe0e714eb`, limits unchanged, settings fingerprint `d58cf3b59bbc2928`, policy
+`committed_answer`, and the permitted/audit-only/evaluator-only boundary. Prototype semantics frozen as
+`CC_BUNDLE_v5` `162b580923e2e0b9` in the same job.
+
+| job | phase | requested | elapsed | commit | outcome |
+|---|---|---|---|---|---|
+| 66407516 | freeze | 0:10 | 0:05 | `6a3d01b` | freeze + bundle v5 written |
+| 66407607 | collect | 0:30 | 0:30 | `6a3d01b` | TIMEOUT at 16 of 24 |
+| 66410230 | collect | 0:25 | 0:15:49 | `455e267` | resumed 16, collected 8, 24 of 24, verify all_ok |
+| 66412182 | analyze | 0:10 | 0:08 | `455e267` | prototype, bind audit, provenance, inventory |
+| 66412183 | tests | 0:10 | 0:56 | `455e267` | 2,390 passed, 9 skipped, 368 subtests |
+
+**Results — recorded.**
+
+| | |
+|---|---|
+| Episodes | 24 of 24 complete, 0 missing |
+| Correct / failures / answers emitted | **12 / 12 / 16** |
+| Failure kinds | 4 `answer_emitted` but wrong; 4 `completion_truncated_at_cap`; 4 `tool_turn_budget_exhausted` |
+| Failures with written arithmetic | **11 of 12** |
+| Failures with a monetary operand | 8 of 12 |
+| **Failures with a holding binding** | **0** |
+| **Records with a holding binding** | **0 of 24**, controls included |
+| Settings verification | **9 of 9 checks pass** |
+| Thinking control | **effective**, not just transmitted: 0 alternate-field chars in all 285 calls |
+| Recoveries | **0** (190 `ordinary_content_present`, 95 `tool_call_present_no_recovery`) |
+| Prototype | 113 monetary operands, 50 predictions, **all resolutions UNKNOWN** |
+| Bind audit | 2,087 candidates, 566 monetary, **166 bindings all UNKNOWN** |
+| **Primary causes** | **`header_observed_structure_lost` 166**, `operand_is_in_no_cell` 290, `several_plausible_bindings` 110 |
+| Same-message postcondition checking (diagnostic column) | **UNKNOWN 166 → UNKNOWN 166, no change** |
+| Actor-written trace size | 158 (UID0031) to 30,436 (UID0150) characters |
+
+**Three findings that changed the conclusion.**
+
+1. **The blocking obstacle is split-header column binding, not either pending repair.** 166 of 166
+   bindings die on `header_observed_structure_lost`. Same-message checking moves 0; supported
+   table-unit scope inference cannot apply because the scope is observed and unparseable rather than
+   unobserved. The packet's vocabulary proposal is therefore explicitly **gated** behind an extraction
+   fix, and says that adding it today would produce more UNKNOWNs, not more findings.
+2. **The historical 1,000× unit error did not recur.** Fresh UID0014 attempt: "convert thousands to
+   billions by dividing by 1,000,000", `2,331,274 / 1,000,000 = 2.331274 billion` — correct. It failed by
+   truncating at the completion cap. The prototype's record of it notes `used 10^-6`.
+3. **A correct episode carries a superseded wrong calculation.** UID0026 (`hard = 1`) holds both
+   `30,442 - 29,726 = 716` and `31,336 - 30,442 = 894` in one message, with `894` committed. The frozen
+   vocabulary cannot distinguish them, so the extension's primary justification is avoiding false alarms
+   on correct episodes.
+
+**Provenance reconciliation — two earlier claims of mine withdrawn.** 13 optimizer call logs exist with
+the complete prompt text of 102 calls; `oqa_campaign_body.sh` writes them to the job's output directory
+inside the deployment bundle, not the campaign run tree. Minibatch composition is DERIVED from the
+recorded prompt. UID0014: job 66323202, arm C epoch 3, analyst call 1, 388,789 chars, digest
+`2328fd810d37`, delivered report **verbatim**, matched to `minibatch_fail_001.json`. Arm A: **0 report
+headings in every call at every epoch**, and at job 66273856 call 1 it returned the same units diagnosis
+unaided. "The gate, not the contract layer, is where it died" withdrawn as OVERSTATED; no per-instruction
+attribution of a gate score exists. The launch doc's verbatim claim is true of the **pre-launch dry run**,
+whose records hold only stage, char count and prompt digest.
+
+**Deviations and defects.**
+
+1. The first collect job hit its 0:30 wall at 16 of 24. `results.jsonl` is written incrementally, so the
+   resume reused those 16 and never recollected. Both jobs' requested time is counted.
+2. The freeze's `resolved_documents` is empty for the 9 multi-document questions: this split separates
+   source files with a newline and the parser split on commas; `task_type` was empty because the column
+   is `category`. **The collection is unaffected** — the dataloader reads the CSV. The manifest was NOT
+   re-written (that would change the digest the collect job logged); the parser is fixed with three
+   regressions.
+3. My `diagnostic_opportunity` field emits both `incorrect_answer` and `no_answer_emitted` for an episode
+   that scored 0 without answering — the same fact twice. The termination cause is the reliable
+   classifier.
+4. The exchange rate `114.0` (UID0019) and the line number `2255` are classified MONETARY — two
+   extractor mis-classifications visible in the new records.
+5. CPU accounting mixes core-hours (campaign) with requested walltime (grants since). Uniform figures
+   over 122 jobs: requested 79.65 h, elapsed 19.90 h, core-hours 43.92 h, ceiling 44. Reported mixed
+   figure 41.69. **Raised for the user's decision, not resolved.**
+
+**What was NOT done.** No skill update, no optimizer call, no learning run, no performance campaign, no
+checker semantics changed, neither pending repair deployed, no rescoring of the frozen prototype under
+changed semantics, no validation or held-out record used or re-run, no sealed score opened, and the new
+vocabulary not implemented.
