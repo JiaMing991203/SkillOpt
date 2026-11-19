@@ -214,27 +214,34 @@ analyze)
     [ -f "$CC/CC_BUNDLE_v5.json" ] || log "WARNING: no v5 bundle; the prototype semantics are unverified here"
     mkdir -p "$CC" || exit 3
 
-    log "0/4 verifying the frozen bundle still describes the deployed prototype"
+    log "0/5 verifying the frozen bundle still describes the deployed prototype"
     "$OQA_PY" -I research/officeqa/oqa_cc_bundle.py verify --bundle "$CC/CC_BUNDLE_v5.json" 2>&1 \
         | tee "$OUTDIR/verify_bundle_v5.txt" || log "NOTE: the bundle reports changed components"
 
-    log "1/4 the descriptive records file over the NEW traces"
+    log "1/5 the descriptive records file over the NEW traces"
     "$OQA_PY" -I research/officeqa/oqa_episodes.py records \
         --run "collect24=$RUN" --out "$CC/CC_RECORDS_collect24.json" 2>&1 \
         | tee "$OUTDIR/records.txt" || status=$?
 
-    log "2/4 the FROZEN prototype over them - descriptive, testing nothing"
+    log "2/5 the FROZEN prototype over them - descriptive, testing nothing"
     "$OQA_PY" -I research/officeqa/oqa_cc_run.py check \
         --model "$CC18/CC_MODEL_v1.json" --records "$CC/CC_RECORDS_collect24.json" \
         --which descriptive --out "$CC" 2>&1 | tee "$OUTDIR/cc_check.txt" || status=$?
 
-    log "3/4 the per-operand causes, with the existing separate P-1 diagnostic column"
+    log "3/5 the per-operand causes, with the existing separate P-1 diagnostic column"
     "$OQA_PY" -I research/officeqa/oqa_audit_bind.py audit \
         --model "$CC18/CC_MODEL_v1.json" \
         --records "descriptive=$CC/CC_RECORDS_collect24.json" --out "$COL" 2>&1 \
         | tee "$OUTDIR/bind_audit.txt" || status=$?
 
-    log "4/4 the 24-row inventory"
+    log "4/5 the provenance audit: which optimizer requests were RECORDED, not reconstructed"
+    PROJ="$(dirname "$(dirname "$CAMP")")"
+    "$OQA_PY" -I research/officeqa/oqa_provenance.py audit \
+        --campaign "$CAMP" \
+        --bundles "$PROJ/oqa_campaign_*/run_*/optimizer_calls.jsonl" \
+        --item UID0014 --out "$COL" 2>&1 | tee "$OUTDIR/provenance.txt" || status=$?
+
+    log "5/5 the 24-row inventory"
     "$OQA_PY" -I research/officeqa/oqa_collect.py summarize \
         --freeze "$FREEZE" --run "$RUN" \
         --cc-check "$CC/CC_CHECK_descriptive.json" --bind-audit "$COL/BIND_AUDIT.json" \

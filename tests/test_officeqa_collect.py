@@ -246,3 +246,98 @@ def test_the_information_boundary_keeps_the_alternate_field_out_of_the_checker_i
 def test_the_condition_sets_exactly_one_serving_control():
     assert COL.CONDITION["extra_body"] == {"enable_thinking": False}
     assert COL.RECOVERY_POLICY == "committed_answer"
+
+
+# ───────────────────────── provenance: recorded vs derived vs reconstructed ─────────────────────────
+
+PROV = _mod("oqa_provenance")
+
+
+def _opt_call(stage, user, response="", model="deepseek-flash", system="sys"):
+    return {"stage": stage, "outcome": "ok", "started_utc": "2026-11-17T20:00:00+00:00",
+            "request": {"model": model, "messages": [{"role": "system", "content": system},
+                                                     {"role": "user", "content": user}]},
+            "response": {"content": response, "finish_reason": "stop"}}
+
+
+def test_the_minibatch_composition_is_derived_from_the_recorded_prompt(tmp_path):
+    """The composition is not a stored field; it is derivable from the prompt, by a stated rule."""
+    camp = tmp_path / "camp"
+    (camp / "collect_20261118").mkdir(parents=True)
+    (camp / "collect_20261118" / "COLLECT_FREEZE.json").write_text(
+        json.dumps({"ids": ["UID0014", "UID0017", "UID0099"]}), encoding="utf-8")
+    patches = camp / "arm_C" / "steps" / "step_0003" / "patches"
+    patches.mkdir(parents=True)
+    (patches / "minibatch_fail_001.json").write_text(json.dumps(
+        {"batch_size": 2, "source_type": "failure",
+         "patch": {"reasoning": "The dominant batch failure is stalling and one scale slip" + "x" * 60,
+                   "edits": []}}), encoding="utf-8")
+    log = tmp_path / "bundle" / "run_66323202_arm_C_e3" / "optimizer_calls.jsonl"
+    log.parent.mkdir(parents=True)
+    reason = "The dominant batch failure is stalling and one scale slip" + "x" * 60
+    _write_jsonl(str(log), [
+        _opt_call("analyst", "trace of UID0014 and UID0017 here", reason),
+        _opt_call("merge", "no items named", "merged"),
+    ])
+    doc = PROV.cmd_audit(str(camp), [str(log)], "UID0014", str(tmp_path / "out"))
+    assert doc["logs_found"] == 1
+    a = doc["logs"][0]
+    assert (a["job"], a["arm"], a["epoch"]) == ("66323202", "C", 3)
+    assert a["calls"][0]["minibatch_items_DERIVED"] == ["UID0014", "UID0017"]
+    assert a["calls"][0]["matches_saved_patch_record_DERIVED"][0]["patch_record"] == "minibatch_fail_001.json"
+    assert a["calls"][1]["minibatch_items_DERIVED"] == []
+
+
+def test_a_verbatim_report_in_the_prompt_is_reported_only_when_it_is_there(tmp_path):
+    camp = tmp_path / "camp"
+    (camp / "collect_20261118").mkdir(parents=True)
+    (camp / "collect_20261118" / "COLLECT_FREEZE.json").write_text(
+        json.dumps({"ids": ["UID0014"]}), encoding="utf-8")
+    reports = camp / "arm_C" / "stage_reports"
+    reports.mkdir(parents=True)
+    body = "# Action contract report - item UID0014\n**VIOLATED** [unit_match] wrong by 1,000x\n"
+    (reports / "UID0014.abc123.md").write_text(body, encoding="utf-8")
+    import hashlib
+    digest = hashlib.sha256(body.encode()).hexdigest()
+    _write_jsonl(str(reports / "GENERATED.jsonl"), [
+        {"id": "UID0014", "report_sha256": digest,
+         "prediction_dir": "/x/arm_C/steps/step_0003/rollout/predictions"}])
+    log = tmp_path / "b" / "run_1_arm_C_e3" / "optimizer_calls.jsonl"
+    log.parent.mkdir(parents=True)
+    _write_jsonl(str(log), [_opt_call("analyst", "prefix\n" + body + "\nsuffix UID0014"),
+                            _opt_call("analyst", "UID0014 but no report text here")])
+    doc = PROV.cmd_audit(str(camp), [str(log)], "UID0014", str(tmp_path / "out"))
+    calls = doc["logs"][0]["calls"]
+    assert calls[0]["named_item_report_verbatim"] is True
+    assert calls[1]["named_item_report_verbatim"] is False
+    assert doc["named_item_report"]["sha256_12"] == digest[:12]
+
+
+def test_report_headings_are_counted_so_a_no_report_arm_is_visible(tmp_path):
+    camp = tmp_path / "camp"
+    (camp / "collect_20261118").mkdir(parents=True)
+    (camp / "collect_20261118" / "COLLECT_FREEZE.json").write_text(
+        json.dumps({"ids": ["UID0014"]}), encoding="utf-8")
+    log = tmp_path / "b" / "run_2_arm_A_e2" / "optimizer_calls.jsonl"
+    log.parent.mkdir(parents=True)
+    _write_jsonl(str(log), [_opt_call("analyst", "UID0014 trace, no report at all")])
+    doc = PROV.cmd_audit(str(camp), [str(log)], "UID0014", str(tmp_path / "out"))
+    c = doc["logs"][0]["calls"][0]
+    assert c["n_report_headings"] == 0
+    assert c["report_headings"] == {}
+    assert doc["logs"][0]["arm"] == "A"
+
+
+def test_the_withdrawn_and_overstated_claims_are_both_named(tmp_path):
+    camp = tmp_path / "camp"
+    (camp / "collect_20261118").mkdir(parents=True)
+    (camp / "collect_20261118" / "COLLECT_FREEZE.json").write_text(
+        json.dumps({"ids": []}), encoding="utf-8")
+    doc = PROV.cmd_audit(str(camp), [str(tmp_path / "nothing.jsonl")], "UID0014", str(tmp_path / "o"))
+    statuses = " ".join(c["status"] for c in doc["claims"])
+    assert "WITHDRAWN" in statuses
+    assert "OVERSTATED" in statuses
+    # the gate claim must say explicitly that causation does not follow
+    gate = next(c for c in doc["claims"] if "gate" in c["claim"])
+    assert "does NOT follow" in gate["status"]
+    assert doc["logs_found"] == 0
