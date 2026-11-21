@@ -464,3 +464,59 @@ will **fall**; some obligations currently DISCHARGED or VIOLATED will become **U
 of *supported* bindings will not rise above the 64 the occurrence measurement found. If the replay shows
 *more* selections, the implementation is wrong rather than the prediction. An increase in coverage would
 be a defect here, not a result.
+
+### C-1, measured: the replay, and two defects it found in C-1 itself
+
+**Job 66552721 (free, 1:20).** The post-C-1 semantic state is frozen as label **v8**, bundle
+`cfd8318c752db11e`, in `runs/20261121-officeqa-contract/v4_c1/`; v7 and `v3_occ/` are untouched.
+
+**The committed prediction HELD in direction.** Over the same 24 training records, 659 operands:
+
+| | old tie-break | under C-1 |
+|---|---:|---:|
+| operands with a selected source cell | **566** | **102** |
+| of which sole candidate | — | 67 |
+| of which occurrence-corroborated | — | 35 |
+| selections withdrawn | — | **464** |
+| ledger DISCHARGED | 254 | 81 |
+| ledger VIOLATED | **186** | **30** |
+| ledger OUTSTANDING | 19 | 30 |
+| ledger UNKNOWN | 1,380 | 770 |
+
+**The headline result.** The old tie-break was selecting a source cell on numeric equality alone in
+**464 of its 566 selections (82%)**, and those selections supported **156 of its 186 VIOLATED
+obligations** — accusations against the actor resting on a cell it may never have read. C-1 removes
+them. Fewer findings, and the ones that remain rest on something.
+
+**Defect A in C-1, found by the replay and not by reading it.** The amendment predicted that withdrawn
+bindings would make obligations **UNKNOWN**. They do not: the ledger shrinks from **1,839 obligations to
+911**, because the obligations *downstream* of a cell — the unit question, the period question — are
+not generated at all when no cell was selected. On UID0044 the ledger goes from 406 records (132
+DISCHARGED) to 142 (0 DISCHARGED, 141 UNKNOWN): 264 requirements simply vanish. That is "an unknown
+action effect silently meaning nothing changed", which this project's own chain docstring exists to
+prevent. **The direction of the prediction held; this sub-claim failed, and the failure is a defect in
+the implementation.** The repair is for `obligations()` to emit the downstream requirements as UNKNOWN
+with a `why` naming the refusal, rather than omit them.
+
+**Defect B in C-1, measured separately.** `_match_cells` treats the same underlying cell observed
+through different routes as distinct candidates. Of 499 operands with several value-matched candidates,
+**199 (39.9%) collapse to a single cell** once candidates are keyed by (row label, column, value, scale
+factor); the mean candidate count falls from 8.61 to 3.54 distinct cells. The UID0044 witness is
+typical: three "rivals" for `-3044.0` are the supplied page, the grep at step 2 and the grep at step 12
+**of the same document**. So a share of the 464 withdrawals are refusals of a tie that does not exist.
+The repair is to deduplicate candidates by cell identity *before* deciding a tie needs corroboration.
+(Measured with a stand-in model locally, so the exact share is indicative; the cell-identity collapse
+itself is not model-dependent.)
+
+**A historical report moved, and that is recorded rather than re-pinned silently.** A-1 promised
+metadata-only changes and a test guarded it by regenerating two real campaign reports byte-for-byte.
+C-1 supersedes that promise for the source-binding section: **UID0014's report changes, UID0019's does
+not.** The test now pins that blast radius per case and still asserts that the model digest, the trace
+digest and the action forecasts are unchanged — a change in any of those would mean C-1 reached further
+than this amendment claims. 2,479 of 2,480 tests passed; that one failure was this.
+
+**And one false alarm of my own, corrected.** The job reported "v2_bind CHANGED". It had not: all four
+digests are byte-identical to the previous job's record. The before-snapshot had been moved inside the
+`bundle7` branch while the after-check stayed outside it, so the replay phase compared an empty
+before against a populated after. The snapshot now runs in every phase. A preservation check that
+cries wolf is worse than none.

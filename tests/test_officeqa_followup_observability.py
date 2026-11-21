@@ -393,16 +393,26 @@ def test_the_in_sample_note_tests_the_attempt_when_the_model_records_them():
 
 @pytest.mark.skipif(not CAMPAIGN or not os.path.isdir(CAMPAIGN),
                     reason="needs the frozen campaign directory in OQA_CAMPAIGN_ROOT")
-@pytest.mark.parametrize("arm,item,epoch,condition", [
-    ("B", "UID0019", 3, "LC_ACTION"),
-    ("C", "UID0014", 3, "LC_STAGE"),
+@pytest.mark.parametrize("arm,item,epoch,condition,bytes_preserved", [
+    ("B", "UID0019", 3, "LC_ACTION", True),
+    # AMENDMENT C-1 DELIBERATELY MOVES THIS ONE. A-1 promised metadata-only changes and this test
+    # guarded that promise; C-1 supersedes it for the source-binding section, because it refuses to
+    # select a source cell on numeric equality alone. The report text therefore changes, and the
+    # expectation is recorded here per case rather than erased, so the BLAST RADIUS of C-1 is pinned:
+    # UID0019's report is untouched, UID0014's is not. If that pattern ever changes, this test says so.
+    ("C", "UID0014", 3, "LC_STAGE", False),
 ])
-def test_regenerating_a_real_historical_report_reproduces_its_bytes(arm, item, epoch, condition):
+def test_regenerating_a_real_historical_report_reproduces_its_bytes(
+        arm, item, epoch, condition, bytes_preserved):
     """The two worked examples of OQA-FOR-1, regenerated with the amended code.
 
-    Amendment A-1 promises that the changes are metadata-only: the report TEXT the optimizer read must
-    be byte-identical. These are the campaign's only violated action forecast and its only report with
-    violated stage obligations, so if anything moved it would move here.
+    Amendment A-1 promised the changes were metadata-only: the report TEXT the optimizer read had to be
+    byte-identical. These are the campaign's only violated action forecast and its only report with
+    violated stage obligations, so if anything moved it would move here - and under C-1 one of them does.
+
+    WHAT IS STILL ASSERTED FOR BOTH. The model digest, the trace digest and the action forecasts are
+    unchanged, because C-1 touches only which SOURCE CELL a value is bound to. A change in any of those
+    would mean C-1 had reached further than its amendment claims.
     """
     R = _research("oqa_reports")
     gen = os.path.join(CAMPAIGN, f"arm_{arm}", "stage_reports", "GENERATED.jsonl")
@@ -417,8 +427,16 @@ def test_regenerating_a_real_historical_report_reproduces_its_bytes(arm, item, e
     question = next(json.loads(l)["question"] for l in open(results, encoding="utf-8")
                     if l.strip() and json.loads(l)["id"] == item)
     text, new_rec = R.build_one_lc(pred, item, question, results, model, condition=condition)
-    assert hashlib.sha256(text.encode()).hexdigest() == rec["report_sha256"], (
-        "the rendered report text moved, which amendment A-1 forbids")
+    now = hashlib.sha256(text.encode()).hexdigest()
+    if bytes_preserved:
+        assert now == rec["report_sha256"], (
+            f"the rendered report text moved and this case is pinned as UNCHANGED: "
+            f"historical {rec['report_sha256'][:16]}, now {now[:16]}. Either a change reached further "
+            f"than its amendment claims, or this expectation needs re-pinning deliberately.")
+    else:
+        assert now != rec["report_sha256"], (
+            "this case is pinned as CHANGED by amendment C-1, but the bytes are identical, so the "
+            "C-1 selection gate is not reaching the report at all")
     assert new_rec["model_sha256"] == rec["model_sha256"]
     assert new_rec["trace_sha256"] == rec["trace_sha256"]
     assert new_rec["action_forecasts"] == rec["action_forecasts"]

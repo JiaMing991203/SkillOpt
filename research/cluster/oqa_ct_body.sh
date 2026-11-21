@@ -74,8 +74,11 @@ CC18="$CAMP/followup_20261118/connected_contract"
 OUT="$OQA_CT_ROOT/v3_occ"              # everything this phase writes
 mkdir -p "$OUT" || exit 3
 
-if [ "$PHASE" = "bundle7" ]; then
-log "1/4 recording the PRESERVED baseline and the mixed-version evidence"
+# THE BEFORE-SNAPSHOT RUNS IN EVERY PHASE. It used to be inside the bundle7 block while the
+# after-check sat outside it, so PHASE=replay compared an EMPTY before against a populated after and
+# reported "v2_bind CHANGED" when nothing had changed (job 66552721). A preservation check that cries
+# wolf is worse than none, because the next real alarm is discounted.
+log "0/4 recording the PRESERVED baseline, in every phase"
 {
   echo "# the directory that must not change, with its digests BEFORE this job"
   for f in "$V2"/*.json; do [ -f "$f" ] && sha256sum "$f"; done
@@ -92,6 +95,7 @@ except Exception as exc:
 } > "$OUTDIR/PRESERVED_BEFORE.txt" 2>&1
 cat "$OUTDIR/PRESERVED_BEFORE.txt" >> "$OUTDIR/job.log"
 
+if [ "$PHASE" = "bundle7" ]; then
 log "2/4 freezing the CURRENT semantic state as v7, in a NEW directory"
 "$OQA_PY" -I research/officeqa/oqa_cc_bundle.py freeze \
     --model "$CC18/CC_MODEL_v1.json" --records "$CC18/CC_RECORDS_v2.json" \
