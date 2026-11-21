@@ -392,6 +392,7 @@ t2s)
     "$OQA_PY" -I research/officeqa/oqa_t2s.py run \
         --config "$CFG" --s0-dir "$OQA_S0_DIR" --skill "$SKILL_INIT" \
         --split-dir "$OQA_SPLIT4_DIR" --out "$OQA_T2S_OUT/_dryrun" --dry-run \
+        --optimizer-max-tokens "${OQA_T2S_OPT_MAX_TOKENS:-32768}" \
         >> "$OUTDIR/t2s_dryrun.log" 2>&1
     DRY=$?
     log "dry run exit $DRY (it makes no request; a non-zero exit here is a plumbing or boundary problem)"
@@ -405,6 +406,7 @@ t2s)
         --config "$CFG" --s0-dir "$OQA_S0_DIR" --skill "$SKILL_INIT" \
         --split-dir "$OQA_SPLIT4_DIR" \
         --optimizer-model "${OPTIMIZER_MODEL:-deepseek-flash}" \
+        --optimizer-max-tokens "${OQA_T2S_OPT_MAX_TOKENS:-32768}" \
         --out "$OQA_T2S_OUT" >> "$OUTDIR/job.log" 2>&1 || status=$?
     log "Trace2Skill exit $status"
     [ -f "$OUTDIR/optimizer_calls.jsonl" ] \

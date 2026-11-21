@@ -288,7 +288,8 @@ class Caller:
     That keeps the fail-closed property for a genuine leak while not refusing a correct episode.
     """
 
-    def __init__(self, out_dir: str, keys: list, permitted_corpus: str = "", dry_run: bool = False):
+    def __init__(self, out_dir: str, keys: list, permitted_corpus: str = "", dry_run: bool = False,
+                 default_max_tokens: int = 16384):
         self.cache_dir = os.path.join(out_dir, "cache")
         self.calls: list = []
         self.keys = keys
@@ -298,6 +299,7 @@ class Caller:
         self.leaks: list = []
         self.explained: list = []
         self.truncated: list = []
+        self.default_max_tokens = int(default_max_tokens)
         os.makedirs(self.cache_dir, exist_ok=True)
 
     def extend_permitted(self, text: str) -> None:
@@ -347,7 +349,8 @@ class Caller:
                 f"appear in an outbound prompt and the permitted corpus does NOT contain them, so they "
                 f"can only have come from the evaluator. Nothing further is sent.")
 
-    def __call__(self, phase: str, system: str, user: str, *, max_tokens: int = 16384) -> str:
+    def __call__(self, phase: str, system: str, user: str, *, max_tokens: int = 0) -> str:
+        max_tokens = int(max_tokens or self.default_max_tokens)
         self._guard(phase, system, user)
         # THE KEY MUST COVER EVERYTHING THAT AFFECTS THE REPLY, not just the prompt. `max_tokens` was
         # missing, so raising it to fix a TRUNCATED reply would have silently returned the truncated
@@ -409,7 +412,7 @@ class Caller:
         return text or ""
 
 
-def configure_models(config_path: str, optimizer_model: str) -> dict:
+def configure_models(config_path: str, optimizer_model: str, optimizer_max_tokens: int = 0) -> dict:
     """Point the model layer at DeepSeek before anything is sent, exactly as the trainer does.
 
     WHY THIS EXISTS, and it is the second time this project has paid for the lesson.
@@ -450,7 +453,13 @@ def configure_models(config_path: str, optimizer_model: str) -> dict:
     configure_openai_compatible(
         optimizer_base_url=_get("model.optimizer_openai_compatible_base_url") or None,
         optimizer_model=optimizer_model or _get("model.optimizer_openai_compatible_model") or None,
-        optimizer_max_tokens=_get("model.optimizer_openai_compatible_max_tokens"),
+        # RAISING THE CAP HAS TO GO THROUGH THE CONFIG. The backend sends
+        # `min(max_completion_tokens, config.max_tokens)`, so a larger per-call argument is silently
+        # CLAMPED by the configured value - the same silent-clamp pattern as the actor's output cap.
+        # Job 66553156's final merge truncated at 16,384 while emitting 47 consolidated items, and no
+        # amount of batching fixes that: the final patch has to fit in one reply.
+        optimizer_max_tokens=(optimizer_max_tokens
+                              or _get("model.optimizer_openai_compatible_max_tokens")),
         optimizer_timeout_seconds=_get("model.optimizer_openai_compatible_timeout_seconds"),
     )
     from skillopt.model import openai_compatible_backend as B  # type: ignore
@@ -701,7 +710,8 @@ def run(args) -> int:
 
     os.makedirs(args.out, exist_ok=True)
     # BEFORE anything is built or sent, and in dry run too: the router's default is Azure.
-    effective_optimizer = configure_models(args.config, args.optimizer_model)
+    effective_optimizer = configure_models(args.config, args.optimizer_model,
+                                           args.optimizer_max_tokens)
     trajectories, per_pass = collect_trajectories(args.s0_dir)
     with open(args.skill, encoding="utf-8") as f:
         skill = f.read()
@@ -709,7 +719,8 @@ def run(args) -> int:
     # THE PERMITTED CORPUS: everything the prompts are allowed to be made of. A ground-truth string
     # found in a prompt is explained if it occurs here, and a violation only if it does not.
     permitted_corpus = "\n".join([t["permitted_view"] for t in trajectories] + [skill])
-    call = Caller(args.out, keys, permitted_corpus=permitted_corpus, dry_run=args.dry_run)
+    call = Caller(args.out, keys, permitted_corpus=permitted_corpus, dry_run=args.dry_run,
+                  default_max_tokens=int(effective_optimizer.get("max_tokens") or 16384))
 
     problems: list = []
     if not trajectories:
@@ -729,6 +740,7 @@ def run(args) -> int:
         "inputs": {"s0_dir": args.s0_dir, "skill": args.skill, "split_dir": args.split_dir,
                    "optimizer_model": args.optimizer_model},
         "effective_optimizer": effective_optimizer,
+        "optimizer_output_cap": int(effective_optimizer.get("max_tokens") or 0),
         "boundary": {
             "permitted": "conversation.json (actor messages, tool calls, observations) and the saved "
                          "target prompts",
@@ -872,6 +884,9 @@ def main(argv=None) -> int:
     r.add_argument("--skill", required=True)
     r.add_argument("--split-dir", default=os.environ.get("OQA_SPLIT4_DIR", ""))
     r.add_argument("--optimizer-model", default="deepseek-flash")
+    r.add_argument("--optimizer-max-tokens", type=int, default=0,
+                   help="raise the optimizer's OUTPUT cap. 0 keeps the config's value. The backend "
+                        "clamps each call to the configured max, so this must go through the config.")
     r.add_argument("--merge-batch-size", type=int, default=MERGE_BATCH_SIZE)
     r.add_argument("--max-merge-levels", type=int, default=MAX_MERGE_LEVELS)
     r.add_argument("--dry-run", action="store_true")

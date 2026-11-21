@@ -607,3 +607,24 @@ def test_a_legacy_entry_truncated_at_the_OLD_cap_is_reusable_at_a_HIGHER_one(tmp
     call = T.Caller(str(tmp_path), keys=[], dry_run=True)
     # asked for MORE than the reply used, so it was not cut off at this cap
     assert call("merge", "sys", "usr", max_tokens=32768) == "a reply"
+
+
+def test_raising_the_optimizer_output_cap_goes_through_the_CONFIG():
+    """The backend sends min(max_completion_tokens, config.max_tokens), so a larger per-call argument
+    is silently CLAMPED. Job 66553156's final merge truncated at 16,384 emitting 47 items, and no
+    batching fixes that - the final consolidated patch must fit in ONE reply."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    fn = src[src.index("def configure_models("):src.index("def _parallel(")]
+    assert "optimizer_max_tokens=(optimizer_max_tokens" in fn
+    assert "CLAMPED" in fn
+    assert "--optimizer-max-tokens" in src
+
+
+def test_the_caller_default_follows_the_effective_cap(tmp_path):
+    """If the cap is raised, every call must use it - otherwise the cache key and the request disagree."""
+    call = T.Caller(str(tmp_path), keys=[], dry_run=True, default_max_tokens=32768)
+    call("merge", "sys", "usr")
+    a = call.calls[-1]["digest"]
+    other = T.Caller(str(tmp_path), keys=[], dry_run=True, default_max_tokens=16384)
+    other("merge", "sys", "usr")
+    assert a != other.calls[-1]["digest"], "a different effective cap must key differently"
