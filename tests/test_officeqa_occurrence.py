@@ -302,3 +302,137 @@ def test_normalize_drops_anything_that_is_not_a_known_step_shape():
                        "not a dict"])
     assert [i["kind"] for i in out] == ["tool", "message", "message"]
     assert all("SECRET" not in str(i) for i in out)
+
+
+# ───────────────────────── amendment C-2: the two repairs to C-1 ─────────────────────────
+
+def _cell(value, file, row, col_index, step, factor=1.0, basis=None):
+    return {"value": value, "available_from": step, "scale_factor": factor, "column_basis": basis,
+            "row_label": row, "column": None, "col_index": col_index,
+            "source": {"kind": "grep", "file": file, "step": step}, "table_key": f"{file}#{step}"}
+
+
+def test_cell_identity_excludes_the_observation_route_but_keeps_the_document():
+    """The route is exactly what differs when ONE cell is seen twice, so it cannot be part of identity."""
+    a = _cell(500.0, "b_1942.txt", "Receipts", 2, step=2)
+    b = _cell(500.0, "b_1942.txt", "Receipts", 2, step=12)      # same cell, later grep
+    c = _cell(500.0, "other.txt", "Receipts", 2, step=2)        # different document
+    d = _cell(500.0, "b_1942.txt", "Outlays", 2, step=2)        # different row
+    e = _cell(500.0, "b_1942.txt", "Receipts", 3, step=2)       # different column index
+    assert CHAIN.cell_identity(a) == CHAIN.cell_identity(b)
+    for other in (c, d, e):
+        assert CHAIN.cell_identity(a) != CHAIN.cell_identity(other)
+
+
+def test_dedupe_keeps_the_earliest_available_member_of_each_group():
+    hits = [_cell(500.0, "b.txt", "Receipts", 2, step=12),
+            _cell(500.0, "b.txt", "Receipts", 2, step=2),
+            _cell(500.0, "b.txt", "Receipts", 2, step=7)]
+    cells, n_raw = CHAIN.dedupe_candidates(hits)
+    assert n_raw == 3 and len(cells) == 1
+    assert cells[0]["available_from"] == 2, "available_from must still say when it could first be read"
+
+
+def test_a_tie_that_is_one_cell_seen_three_times_is_no_tie_at_all():
+    """THE defect C-2 repairs. The UID0044 witness: three 'rivals' for -3044.0 were the supplied page
+    and two greps of the SAME document."""
+    hits = [_cell(-3044.0, "b_1939.txt", "Net", 4, step=0),
+            _cell(-3044.0, "b_1939.txt", "Net", 4, step=2),
+            _cell(-3044.0, "b_1939.txt", "Net", 4, step=12)]
+    cell, basis = CHAIN.select_cell(hits, None)
+    assert cell is not None, "a collapsed tie needs no corroboration"
+    assert basis["basis"] == CHAIN.SOLE_CANDIDATE
+    assert basis["n_candidates"] == 1 and basis["n_raw_candidates"] == 3
+    assert "collapse to ONE cell" in basis["why"]
+
+
+def test_genuinely_distinct_cells_are_still_refused_without_corroboration():
+    """C-2 must not undo C-1: different rows holding the same number remain a real tie."""
+    hits = [_cell(500.0, "b.txt", "Receipts", 2, step=2),
+            _cell(500.0, "b.txt", "Outlays", 2, step=2)]
+    cell, basis = CHAIN.select_cell(hits, None)
+    assert cell is None
+    assert basis["basis"] == CHAIN.REFUSED_NO_CORROBORATION
+    assert basis["n_candidates"] == 2 and basis["n_raw_candidates"] == 2
+    assert {r["row_label"] for r in basis["rivals"]} == {"Receipts", "Outlays"}
+
+
+def test_the_raw_candidate_count_stays_reportable():
+    """A reader should be able to see that nine candidates were really three cells."""
+    hits = ([_cell(1.0, "b.txt", "A", 2, step=s) for s in (1, 2, 3)]
+            + [_cell(1.0, "b.txt", "B", 2, step=s) for s in (4, 5, 6)]
+            + [_cell(1.0, "b.txt", "C", 2, step=s) for s in (7, 8, 9)])
+    _, basis = CHAIN.select_cell(hits, None)
+    assert basis["n_raw_candidates"] == 9
+    assert basis["n_candidates"] == 3
+
+
+# ── defect A: a withdrawn binding leaves UNKNOWN requirements, not absent ones ──
+
+OB = _mod("oqa_obligations")
+
+
+def _chain_with_a_refused_operand(n_candidates=2, n_raw=5):
+    """A chain whose one operand was REFUSED by C-1. Built directly, because a synthetic packet does
+    not reach the operand classifier and a skipped test pins nothing."""
+    sel = {"basis": CHAIN.REFUSED_NO_CORROBORATION, "n_candidates": n_candidates,
+           "n_raw_candidates": n_raw,
+           "rivals": [{"where": "the grep at step 1", "row_label": "Receipts"},
+                      {"where": "the grep at step 1", "row_label": "Outlays"}]}
+    task = OB.derive("What were receipts in fiscal year 1961, in millions of dollars?")
+    return {"id": "T", "question": "q", "task": task, "cells": [],
+            "operands": [{"raw": "500", "value": 500.0, "step": 2, "cells": [{}, {}],
+                          "cell": None, "selection": sel, "role": "operand"}],
+            "computed": [], "conversions": [], "computations": [],
+            "answer": "300", "answer_value": 300.0,
+            "model": {"version": "t", "sha256": "x", "assumptions": []}}
+
+
+def test_a_refused_operand_still_carries_all_three_requirements():
+    """It used to `continue` after cell_bound, so period_match and unit_match were never generated:
+    464 refusals lost exactly two records each, which is the whole 1,839 -> 911 ledger gap."""
+    ledger = CHAIN.obligations(_chain_with_a_refused_operand())
+    mine = [r for r in ledger if r["subject"] == "operand 500 (step 2)"]
+    assert {r["kind"] for r in mine} == {"cell_bound", "period_match", "unit_match"}
+    assert len(mine) == 3
+    for r in mine:
+        assert r["state"] == CHAIN.UNKNOWN, r["kind"]
+        assert r.get("unresolvable_without_a_source") is True
+        assert r.get("refused_rivals"), "the rivals must travel with the requirement"
+
+
+def test_a_refusal_is_reported_as_undetermined_not_as_absent():
+    """The pre-existing branch says "no available numeric cell has this value" and marks it
+    OUTSTANDING. For a refusal that is FALSE - several cells hold it - and OUTSTANDING means nothing in
+    the record addresses the requirement, when several rival cells plainly do."""
+    ledger = CHAIN.obligations(_chain_with_a_refused_operand())
+    bound = next(r for r in ledger if r["kind"] == "cell_bound")
+    assert bound["state"] == CHAIN.UNKNOWN
+    assert bound["state"] != "OUTSTANDING"
+    assert "no available numeric cell has this value" not in bound["why"]
+    assert "undetermined rather than absent" in bound["why"]
+    # and both counts are reported, so a reader sees 5 observations collapsed to 2 distinct cells
+    assert "2 distinct cells" in bound["why"] and "5 candidate observations" in bound["why"]
+
+
+def test_the_recovered_requirements_are_never_accusations():
+    """C-2's committed prediction 2: withdrawing a binding may withdraw a discharge; it may never
+    manufacture an accusation."""
+    for n in (2, 3, 9):
+        ledger = CHAIN.obligations(_chain_with_a_refused_operand(n_candidates=n))
+        assert not [r for r in ledger if r.get("unresolvable_without_a_source")
+                    and r["state"] != CHAIN.UNKNOWN]
+        assert not [r for r in ledger
+                    if r["subject"] == "operand 500 (step 2)" and r["state"] == "VIOLATED"]
+
+
+def test_an_operand_with_no_candidate_at_all_also_keeps_its_requirements():
+    """The principle is the same whichever way the source is unavailable."""
+    chain = _chain_with_a_refused_operand()
+    chain["operands"][0]["selection"] = {"basis": None, "n_candidates": 0, "n_raw_candidates": 0}
+    chain["operands"][0]["cells"] = []
+    mine = [r for r in CHAIN.obligations(chain) if r["subject"] == "operand 500 (step 2)"]
+    assert {r["kind"] for r in mine} == {"cell_bound", "period_match", "unit_match"}
+    downstream = [r for r in mine if r["kind"] in ("period_match", "unit_match")]
+    assert all(r["state"] == CHAIN.UNKNOWN for r in downstream)
+    assert all(r.get("unresolvable_without_a_source") for r in downstream)

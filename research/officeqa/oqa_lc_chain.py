@@ -254,6 +254,40 @@ def build(packet: dict, model: dict) -> dict:
     return chain
 
 
+def cell_identity(cell: dict) -> tuple:
+    """A cell's identity, independent of the OBSERVATION ROUTE that reached it. Amendment C-2.
+
+    `_match_cells` collects candidates per observation, so one cell reached by the supplied page and by
+    two different greps becomes three candidates and C-1 then refuses a tie that does not exist. Of 499
+    operands with several candidates, 199 (39.9%) collapse to one cell under this key.
+
+    The route - which step returned it - is deliberately EXCLUDED, because the route is exactly what
+    differs when one cell is seen twice. Two candidates agreeing on all five fields are the same
+    measurement in the same document, so selecting "one of them" asserts nothing extra.
+    """
+    return (str((cell.get("source") or {}).get("file") or ""),
+            str(cell.get("row_label") or ""),
+            cell.get("col_index"),
+            cell.get("value"),
+            cell.get("scale_factor"))
+
+
+def dedupe_candidates(hits: list) -> tuple:
+    """Collapse candidates that are one cell seen through several observations. Amendment C-2.
+
+    The EARLIEST-available member of each group is kept, so `available_from` still reflects when the
+    actor could first have read it. Returns (deduped, n_raw) so the raw count stays reportable: a
+    reader should be able to see that nine candidates were really three cells.
+    """
+    groups: dict = {}
+    for hit in hits:
+        key = cell_identity(hit)
+        current = groups.get(key)
+        if current is None or hit.get("available_from", 0) < current.get("available_from", 0):
+            groups[key] = hit
+    return list(groups.values()), len(hits)
+
+
 SOLE_CANDIDATE = "SOLE_CANDIDATE"
 OCCURRENCE_CORROBORATED = "OCCURRENCE_CORROBORATED"
 REFUSED_NO_CORROBORATION = "REFUSED_NO_CORROBORATION"
@@ -277,28 +311,34 @@ def select_cell(hits: list, support: dict | None) -> tuple:
     reader can tell "no candidate" from "several candidates and no way to choose".
     """
     if not hits:
-        return None, {"basis": None, "n_candidates": 0,
+        return None, {"basis": None, "n_candidates": 0, "n_raw_candidates": 0,
                       "why": "no cell in the permitted view holds this value"}
-    ranked = sorted(hits, key=lambda c: (c["scale_factor"] != 1.0,
-                                         c.get("column_basis") != CELLS.COL_FLAT,
-                                         c["available_from"]))
-    if len(hits) == 1:
-        return ranked[0], {"basis": SOLE_CANDIDATE, "n_candidates": 1,
-                           "why": "exactly one cell in the permitted view holds this value"}
+    # AMENDMENT C-2: collapse one cell seen through several observations BEFORE declaring a tie.
+    cells, n_raw = dedupe_candidates(hits)
+    ranked = sorted(cells, key=lambda c: (c["scale_factor"] != 1.0,
+                                          c.get("column_basis") != CELLS.COL_FLAT,
+                                          c["available_from"]))
+    if len(cells) == 1:
+        return ranked[0], {
+            "basis": SOLE_CANDIDATE, "n_candidates": 1, "n_raw_candidates": n_raw,
+            "why": ("exactly one cell in the permitted view holds this value" if n_raw == 1 else
+                    f"{n_raw} candidates collapse to ONE cell once the observation route is excluded "
+                    f"from the identity, so there is no tie to break")}
     supported = bool(support and support.get("binding") == OCC.SUPPORTED)
     if supported:
         return ranked[0], {
-            "basis": OCCURRENCE_CORROBORATED, "n_candidates": len(hits),
+            "basis": OCCURRENCE_CORROBORATED, "n_candidates": len(cells), "n_raw_candidates": n_raw,
             "occurrence": support.get("position"), "corroborated_by": support.get("supporting"),
-            "why": "several cells hold this value, and the actor's own observation corroborates one "
-                   "position independently of the number"}
+            "why": "several distinct cells hold this value, and the actor's own observation "
+                   "corroborates one position independently of the number"}
     return None, {
-        "basis": REFUSED_NO_CORROBORATION, "n_candidates": len(hits),
+        "basis": REFUSED_NO_CORROBORATION, "n_candidates": len(cells), "n_raw_candidates": n_raw,
         "occurrence_match": (support or {}).get("match"),
         "rivals": [{"where": _where(c), "column_basis": c.get("column_basis"),
+                    "row_label": c.get("row_label"), "col_index": c.get("col_index"),
                     "scale_factor": c.get("scale_factor")} for c in ranked[:6]],
-        "why": "several cells hold this value and no occurrence corroborates one of them; a unique "
-               "numeric match is not an established source binding, so no cell is selected"}
+        "why": "several DISTINCT cells hold this value and no occurrence corroborates one of them; a "
+               "unique numeric match is not an established source binding, so no cell is selected"}
 
 
 # ── obligations ─────────────────────────────────────────────────────────────────
@@ -322,6 +362,31 @@ def obligations(chain: dict) -> list:
 
         # 1. cell_bound
         cell = o["cell"]
+        sel = o.get("selection") or {}
+        if cell is None and sel.get("basis") == REFUSED_NO_CORROBORATION:
+            # AMENDMENT C-2. A REFUSAL IS NOT AN ABSENCE, and the branch below says it is: it reports
+            # "no available numeric cell has this value", which is FALSE here - several cells hold it
+            # and the record cannot say which the actor read. OUTSTANDING means "nothing in the record
+            # addresses this requirement"; several rival cells plainly do. So the honest state is
+            # UNKNOWN, with the rivals named.
+            out.append(_ob("cell_bound", sub, "the operand must come from a cell of a supplied page or a "
+                                              "returned observation", UNKNOWN,
+                           f"the value occurs at {sel.get('n_candidates')} distinct cells "
+                           f"({sel.get('n_raw_candidates')} candidate observations) and no observation "
+                           f"corroborates one of them; a unique numeric match is not an established "
+                           f"source binding, so the source is undetermined rather than absent",
+                           ["OBS"], None, refused_rivals=sel.get("rivals"),
+                           unresolvable_without_a_source=True))
+            for kind, requires in (
+                    ("period_match", "the cell's period must be one the question asks about"),
+                    ("unit_match", "the operand's unit must be the one the question asks for")):
+                out.append(_ob(kind, sub, requires, UNKNOWN,
+                               f"the value occurs at {sel.get('n_candidates')} distinct cells and no "
+                               f"observation corroborates one of them, so no source cell is "
+                               f"established and this requirement cannot be resolved",
+                               ["OBS"], None, refused_rivals=sel.get("rivals"),
+                               unresolvable_without_a_source=True))
+            continue
         if cell is None:
             # A value written in a message that also does arithmetic may be an intermediate the record does not
             # spell out - a regression residual, a partial sum - and calling that "provenance missing" is the
@@ -339,6 +404,19 @@ def obligations(chain: dict) -> list:
                                                   "returned observation", OUTSTANDING,
                                "no available numeric cell has this value, and the message it appears in states no "
                                "arithmetic it could be a result of", ["OBS"]))
+            # AMENDMENT C-2, DEFECT A. This used to `continue`, so the two obligations BELOW were never
+            # generated for an operand without a selected cell: 464 refusals lost exactly two records
+            # each, which is the whole 1,839 -> 911 ledger gap C-1's replay showed. A requirement that
+            # DISAPPEARS when its source becomes unidentifiable is indistinguishable from one nobody
+            # ever had, and this module exists because `oqa_check` had no object for an open
+            # requirement. So both are emitted as UNKNOWN, naming WHY the source is unavailable.
+            for kind, requires in (
+                    ("period_match", "the cell's period must be one the question asks about"),
+                    ("unit_match", "the operand's unit must be the one the question asks for")):
+                out.append(_ob(kind, sub, requires, UNKNOWN,
+                               "no source cell is established for this operand, so this requirement "
+                               "cannot be resolved", ["OBS"], None,
+                               unresolvable_without_a_source=True))
             continue
         if cell.get("column") is None:
             out.append(_ob("cell_bound", sub, "the operand's cell must be bound to a column", UNKNOWN,

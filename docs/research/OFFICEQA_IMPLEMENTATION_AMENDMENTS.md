@@ -520,3 +520,69 @@ digests are byte-identical to the previous job's record. The before-snapshot had
 `bundle7` branch while the after-check stayed outside it, so the replay phase compared an empty
 before against a populated after. The snapshot now runs in every phase. A preservation check that
 cries wolf is worse than none.
+
+## C-2 — 2026-11-21. Two repairs to C-1, from the counterexamples its own replay produced
+
+**Recorded BEFORE the code change, rule OQA-OCC-1.** Baseline preserved: `v2_bind/`, `v3_occ/` (v7) and
+`v4_c1/` (v8) are all left alone; new output goes to `runs/20261121-officeqa-contract/v5_c2/`, and the
+post-C-2 semantic state will be frozen as **v9**. The learned hypothesis `96c3d1bd9aad6f4d` stays fixed,
+so the comparison isolates the selection and obligation logic.
+
+### Defect A — a withdrawn binding made requirements VANISH, not UNKNOWN
+
+**The mechanism, now exact.** In `obligations()` the operand loop emits `cell_bound` and then
+`continue`s when `cell is None`, skipping obligation 2 (`period_match`) and obligation 3
+(`unit_match`). So each refused operand loses exactly two records: **464 refusals × 2 = 928**, which is
+precisely the observed ledger gap of 1,839 → 911. Nothing else contributes.
+
+**Why it matters more than its size.** The chain module exists because `oqa_check` "has no object for a
+requirement that is still open". A requirement that disappears when its source becomes unidentifiable
+is the same failure in a new place: the reader cannot tell a requirement nobody addressed from one the
+representation quietly dropped. "An unknown action effect must not silently mean nothing changed."
+
+**The change.** When no cell was selected, `period_match` and `unit_match` are emitted as **UNKNOWN**
+with a `why` that names the reason — no candidate at all, or a refusal for want of corroboration — and
+the refusal's rival list is carried on the record. This applies to **both** reasons, not only to C-1's
+new one, because the principle is the same; the replay passes both arms through the same
+`obligations()`, so the comparison stays like-for-like.
+
+**PREDICTION, committed before the replay.**
+1. **The two arms will have the SAME ledger size.** Every operand now yields exactly three obligations
+   whatever happens to its cell, so the gate changes obligation *states* and never their existence.
+   That is the property worth having, and it is falsifiable: if the sizes still differ, the repair is
+   incomplete.
+2. **DISCHARGED and VIOLATED will not rise** above C-1's 81 and 30. UNKNOWN absorbs every recovered
+   record. If an accusation appears where a requirement had vanished, the repair has manufactured a
+   finding and is wrong.
+
+### Defect B — a "tie" is often one cell seen through several observations
+
+**The evidence.** `_match_cells` collects candidates per observation, so the same underlying cell
+reached by the supplied page and by two different greps becomes three candidates. Measured over the 24
+training records: of **499** operands with several value-matched candidates, **199 (39.9%) collapse to a
+single cell** once keyed by content rather than route; mean candidates **8.61 → 3.54**. The UID0044
+witness is typical — three "rivals" for `-3044.0` are the supplied page, the grep at step 2 and the grep
+at step 12 **of the same document**. (Measured locally with a stand-in model, so the exact share is
+indicative; the collapse itself is not model-dependent.)
+
+**The change.** Candidates are deduplicated by a **route-independent cell identity** before a tie is
+declared: `(source file, row label, column index, value, scale factor)`. Two candidates agreeing on all
+five are the same measurement in the same document, so selecting "one of them" asserts nothing extra.
+The observation route — which step returned it — is deliberately excluded from the key, because the
+route is exactly what differs when one cell is seen twice. The earliest-available candidate is kept, so
+`available_from` still reflects when the actor could first have read it.
+
+**PREDICTION, committed before the replay.**
+3. **Selections will RISE above C-1's 102 and stay far below the old tie-break's 566.** A rise here is
+   the intended effect, unlike in C-1 where any rise would have been a defect: C-1 removed selections
+   that rested on numeric equality, and C-2 restores only those where the "rivals" were never rivals.
+4. **The rise will be in `SOLE_CANDIDATE`**, not in `OCCURRENCE_CORROBORATED`, because a collapsed tie
+   has one candidate and needs no corroboration. If `OCCURRENCE_CORROBORATED` rises instead, the dedupe
+   is changing which cell is corroborated rather than how many candidates there are, and is wrong.
+5. **`VIOLATED` may rise above 30**, and that is the honest risk of this repair: a restored binding can
+   support an accusation. Any increase must be inspected witness by witness before it is believed, and
+   an increase without an inspectable witness is a reason to withdraw the repair, not to report it.
+
+**What is still NOT claimed by either repair.** The column's meaning; that an unbound number is wrong;
+that a record without numbered observations failed. And neither repair touches the learned hypothesis,
+the stage vocabulary, the `reopen` semantics or `oqa_lc_cells`, which stays byte-identical.
