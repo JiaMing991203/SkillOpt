@@ -1,8 +1,9 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 05:05 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`,
-commit `43e7d46`. NOT pushed (168 commits ahead of origin). Tracked tree clean.
-NO OfficeQA JOB RUNNING OR QUEUED — the campaign finished.**
+**Last update: 2026-11-21 18:30 EST, after the campaign completed and its artifacts were pulled. Branch
+`officeqa-contracts`, worktree `SkillOpt-officeqa`, commit `7e53217`. NOT pushed (171 commits
+ahead of origin). Tracked tree clean. NO OfficeQA JOB RUNNING OR QUEUED — verified against
+`squeue` at 18:30; the 6 live jobs are the held `e3m-*` Experiment 3 GPU jobs, not this track.**
 
 ## CLUSTER ACCESS: fine now, but know the failure mode
 
