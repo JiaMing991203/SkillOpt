@@ -1,5 +1,5 @@
 # OfficeQA two-baseline campaign — launched, plus contract-arm progress
-**2026-11-21 03:27 EST · branch `officeqa-contracts` · worktree `SkillOpt-officeqa` · commit `88acd75` · not pushed**
+**2026-11-21 05:00 EST · branch `officeqa-contracts` · worktree `SkillOpt-officeqa` · commit `HEAD` · not pushed**
 Rules **OQA-SEL-4** (splits) · **OQA-BASE-1** (campaign) · **OQA-T2S-1** (Trace2Skill) · **OQA-OCC-1** / amendment **C-1** (contract arm)
 
 Abbreviations on first use: **S0** = the unchanged starting skill document. **Actor** = the frozen
@@ -10,7 +10,8 @@ question attempt. **Attempt** = one HTTP request to the actor (an episode makes 
 
 ## 1. What ran, and what came out
 
-**Both baselines completed end to end.** Three held-out evaluations are running or done.
+**THE CAMPAIGN IS COMPLETE.** Both baselines ran end to end and all three held-out evaluations
+finished — 180 held-out episodes, 30/30 in both passes for every endpoint. **Scores remain sealed.**
 
 | Job | Stage | State |
 |---|---|---|
@@ -68,9 +69,13 @@ preserved as `trace2skill_degraded_66553058/` and `trace2skill_partial_66553156/
 
 | endpoint | digest | bytes | job |
 |---|---|---:|---|
-| S0 | `9d377d1c2906` | 887 | 66553250 — **COMPLETE, 30/30 × 2** |
-| Original SkillOpt | `e35673d87cb7` | 4,518 | 66553251 |
-| Trace2Skill | `03d6564f1d10` | 24,121 | 66553363 |
+| S0 | `9d377d1c2906` | 887 | 66553250 — **COMPLETE**, 30/30 × 2, 29:39 |
+| Original SkillOpt | `e35673d87cb7` | 4,518 | 66553251 — **COMPLETE**, 30/30 × 2, 32:45 |
+| Trace2Skill | `03d6564f1d10` | 24,121 | 66553363 — **COMPLETE**, 30/30 × 2, 22:57 |
+
+All three wrote a `PROVENANCE.json` under one config digest `671eb1d42293` and one commit
+`c35df7ef6ba6`, rule OQA-SEL-4, split `valid_unseen`, n=30, passes=2. **180 held-out episodes, every
+one of 30/30 in both passes for all three endpoints — no partial pass, no dropped question.**
 
 Each writes a `PROVENANCE.json` carrying the skill digest, config digest, commit, frozen-set rule,
 split, question count and pass count — the complete effective inputs the reuse rule needs.
@@ -203,35 +208,38 @@ trajectories: **0 violations, 7 explained hits.**
 
 | group | jobs | **requested h** | elapsed h |
 |---|---:|---:|---:|
-| **Trace2Skill (7 submissions)** | 7 | **17.50** | 0.73 |
+| **Trace2Skill (7 submissions)** | 7 | **17.50** | 0.94 |
 | Original SkillOpt epochs | 4 | 6.25 | 1.02 |
-| held-out | 3 | 4.50 | — |
+| held-out | 3 | 4.50 | 1.42 |
 | contract arm | 7 | 3.00 | 0.14 |
 | S0 reference / prep | 3 | 2.17 | 0.44 |
-| **total** | **24** | **≈33.4 of 50** | — |
+| **total** | **24** | **33.42 of 50** | **3.96** |
 
-**Requested is ~14× elapsed, and 17.5 of it is one stage's retries** (§6j). About **16.6 requested
-hours remain**.
+**Requested is 8.4x elapsed, and 17.5 of it is one stage's retries** (§6j). **16.58 requested hours
+remain** of the 50 authorized.
 
-### API spend — the authoritative figure is the call-log reconstruction
+### API spend — assembled from two incomplete sources, which is itself a finding
 
-Because the ledger was inert for most of the campaign (§6f), the ledger's own totals are a **partial
-view**: they begin only at the fix and miss the first 1,801 actor attempts. Reconstructed from the
-per-job call logs, which do exist for every stage:
+Because the ledger was inert for most of the campaign (§6f) **and** the held-out stage did not set an
+actor call log, neither source covers everything. Stated as what each one actually knows:
 
-| | calls | of cap | USD | of cap |
-|---|---:|---:|---:|---:|
-| Actor (EmpirioLabs, qwen3-5-4b) | ~2,400 | 20,000 (12%) | ~$1.21 | $15.00 (8%) |
-| Optimizer (DeepSeek Flash) | ~185 | 400 (46%) | ~$1.59 | $20.00 (8%) |
+| source | covers | actor | optimizer |
+|---|---|---|---|
+| per-job **call logs** | prep, s0, Original SkillOpt epochs, Trace2Skill | 2,059 calls, $1.0569 | 206 calls, $2.0632 |
+| **live ledger** (post-fix) | Trace2Skill run 3, the three held-out jobs | 1,403 attempts, $0.8081 | 35 attempts, $0.3121 |
 
-Nothing overran. The optimizer's *call* count is the tightest of the four, at a little under half,
-and the held-out stage makes no optimizer calls. **GPUs: 0 of 0, as authorized.**
+**Actor total ≈ 3,462 attempts of 20,000 (17%) and ≈$1.87 of $15.00 (12%)** — the two sources are
+disjoint for the actor, because the stages that logged are exactly the stages the ledger missed.
+**Optimizer: 206 calls of 400 (52%) and $2.06 of $20.00 (10%)** from the call logs, which do cover every
+optimizer-calling stage; the ledger's 35 is a subset of those, not an addition.
 
-**A consequence worth stating:** the caps are now enforced against an undercount of roughly 1,800
-attempts and $0.89, so the effective actor ceiling for the remainder of this phase is that much higher
-than intended. With a true total near 12% of the cap this creates no risk, but it means the ledger
-cannot be cited as this phase's spend record — the call logs are. A phase started with a live ledger
-will not have the discrepancy.
+The optimizer's **call count is the tightest figure in the campaign at 52%**, driven by five Trace2Skill
+attempts; its dollar cost is only 10%. The held-out stage makes no optimizer calls. **GPUs: 0 of 0.**
+
+**Both gaps are now closed** — the ledger is wired and every paid stage refuses to start without it, and
+the held-out stage logs its actor calls. One stage logging and another not is how an accounting becomes
+a reconstruction, and this phase's spend record will remain a reconstruction however carefully it is
+assembled.
 
 **Concurrency** held to the instruction throughout: at most 4 CPU jobs (the peak was 3), 4 actor
 requests, 2 DeepSeek requests. **Resume** worked as designed — the Trace2Skill cache carried 94 to 97

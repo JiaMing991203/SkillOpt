@@ -426,6 +426,11 @@ heldout)
     mkdir -p "$OUT" "$OUTDIR/skill_under_test"
     cp "$OQA_SKILL" "$OUTDIR/skill_under_test/$LABEL.md"
     sha256sum "$OQA_SKILL" > "$OUTDIR/skill_under_test/$LABEL.sha256"
+    # THE ACTOR CALL LOG WAS MISSING HERE, and it is why this phase's spend had to be assembled from
+    # two incomplete sources: the s0 and arm stages log their actor calls, this one did not, so the
+    # held-out attempts existed only in the ledger - which was itself inert until late. One stage
+    # logging and another not is how an accounting becomes a reconstruction.
+    export TARGET_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/actor_calls.jsonl"
     log "held-out evaluation of $LABEL ($(wc -c < "$OQA_SKILL") bytes), TWO passes of 30 questions"
     for p in 1 2; do
         "$OQA_PY" -I scripts/eval_only.py --config "$CFG" --skill "$OQA_SKILL" \
