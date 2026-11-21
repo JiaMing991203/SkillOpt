@@ -2012,3 +2012,41 @@ attempts and $15, 400 DeepSeek calls and $20. Reserved 10.58 CPU hours; projecti
 attempts, $3.49, 117 optimizer calls.
 
 **Status.** Running. Held-out scores sealed pending contract-arm development.
+
+### OQA-BASE-1, Original SkillOpt — gate decisions through epoch 3 (epoch 4 still running)
+
+**S0's own scores, measured by the s0 stage (job 66552421):**
+
+| | score |
+|---|---|
+| S0 on the 12 **validation** questions (the gate's baseline) | **4/12** |
+| S0 on the 12 **training** questions, four independent passes | **5, 4, 4, 5 = 18/48** |
+
+**Arm A's gate record** (`original_skillopt/summary.json`, `history.json`, `slow_update/*/slow_result.json`):
+
+| epoch | ordinary step | gated slow update |
+|---|---|---|
+| 1 | **reject** | `inject_placeholder` — by design, no optimizer call at epoch 1 |
+| 2 | **reject** | **`accept_new_best`** |
+| 3 | **reject** | **reject** |
+| 4 | running | running |
+
+`total_accepts: 0, total_rejects: 3` for ordinary steps. `best_step: 2`,
+`best_origin: slow_update_epoch_02`, `best_selection_hard: 0.4167`.
+
+**Skill lineage, by digest:** S0 `9d377d1c2906` (887 B) → v1 `5bd17ea109bc` (940 B) → v2
+`e35673d87cb7` (4,518 B); **v3 is byte-identical to v2**, so epoch 3 changed nothing. `best_skill.md`
+is v2.
+
+**The result so far, stated carefully.** Every *ordinary* bounded-edit step was rejected by the
+validation gate. The only change that survived came from the **gated slow update at epoch 2**, and it
+moved validation from **4/12 to 5/12 — one question**. Against that, S0's own spread across four
+independent passes of the training set is 4 to 5 of 12, i.e. **±1 question from sampling alone**. So the
+accepted improvement is inside the band that the actor's own sampling produces, and the acceptance rests
+on a one-question margin. This repeats the pattern recorded for campaign AC-1 ("1-task gate margins")
+and is a property of the setup's size, not a defect in the framework: 12 validation questions cannot
+resolve differences finer than 1/12.
+
+Upstream's strict-improvement rule was preserved, so this is the framework's own behaviour and not an
+artefact of a weakened gate. The held-out measurement will be the test of whether that one-question
+validation gain transfers.
