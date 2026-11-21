@@ -254,6 +254,15 @@ def test_the_workload_arithmetic_is_computed_and_compared_with_the_ceilings():
     assert e["heldout_3_endpoints_2_passes"] == 180
     assert w["total_episodes"] == sum(e.values())
     assert all(r["verdict"] == "PASS" for r in results), [r for r in results if r["verdict"] != "PASS"]
+    # The optimizer-call projection must count Trace2Skill's MAP phase, which the first version omitted:
+    # one analysis call AND one map call per trajectory, 6 batch merges, 1 final merge, apply and verify.
+    oc = w["optimizer_calls"]
+    assert oc["trace2skill_analysis"] == 48
+    assert oc["trace2skill_map"] == 48
+    assert oc["trace2skill_reduce"] == 7
+    assert oc["trace2skill_apply_and_verify"] == 2
+    assert oc["original_skillopt"] == 12
+    assert w["projected_optimizer_calls"] == 117
 
 
 def test_a_workload_that_cannot_fit_is_refused():

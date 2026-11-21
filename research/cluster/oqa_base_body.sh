@@ -357,6 +357,7 @@ t2s)
     OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl" \
     "$OQA_PY" -I research/officeqa/oqa_t2s.py run \
         --config "$CFG" --s0-dir "$OQA_S0_DIR" --skill "$SKILL_INIT" \
+        --split-dir "$OQA_SPLIT4_DIR" \
         --optimizer-model "${OPTIMIZER_MODEL:-deepseek-flash}" \
         --out "$OQA_T2S_OUT" >> "$OUTDIR/job.log" 2>&1 || status=$?
     log "Trace2Skill exit $status"

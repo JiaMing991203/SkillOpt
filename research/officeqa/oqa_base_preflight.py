@@ -352,7 +352,21 @@ def check_workload(results: list, caps: dict) -> dict:
     per_episode = 14
     attempts = total_episodes * per_episode
     usd = attempts * (0.180 / 286)          # measured cost per attempt, same collection
-    opt_calls = {"original_skillopt": d["epochs"] * 3, "trace2skill": d["s0_passes"] * d["train"] + 8}
+    # OPTIMIZER CALLS, counted from what each method actually does rather than estimated.
+    #   Original SkillOpt: per epoch an analyst call, a merge call and - from epoch 2 - the slow update
+    #                      and the meta-skill. Budgeted at 3 per epoch, which is the campaign's measured
+    #                      rate (13 logs / 102 calls over 12 arm-epochs in the three-arm run).
+    #   Trace2Skill:       one analysis call per trajectory, one MAP call per analysis record, the
+    #                      hierarchical REDUCE (ceil(48/8) = 6 batch merges, then 1 final merge), then
+    #                      apply and verify. 48 + 48 + 7 + 2 = 105. The earlier figure here was 56 and
+    #                      understated the method by its whole MAP phase.
+    n_traj = d["s0_passes"] * d["train"]
+    reduce_calls = -(-n_traj // 8) + 1
+    opt_calls = {"original_skillopt": d["epochs"] * 3,
+                 "trace2skill_analysis": n_traj,
+                 "trace2skill_map": n_traj,
+                 "trace2skill_reduce": reduce_calls,
+                 "trace2skill_apply_and_verify": 2}
     total_opt = sum(opt_calls.values())
     out = {"episodes": episodes, "total_episodes": total_episodes,
            "attempts_per_episode_assumed": per_episode, "projected_actor_attempts": attempts,

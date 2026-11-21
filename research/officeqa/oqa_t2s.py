@@ -1,0 +1,638 @@
+#!/usr/bin/env python3
+"""Trace2Skill on OfficeQA: analysis, parallel patch proposal, hierarchical consolidation. Rule OQA-T2S-1.
+
+UPSTREAM: github.com/Qwen-Applications/Trace2Skill at 3d0b52a140f002a512930252b613c49048f7d5ac
+(2026-05-02), Apache 2.0, arXiv:2603.25158. The prompts and the declared adaptations are in
+research/officeqa/oqa_t2s_prompts.py; the structure reproduced here is upstream's
+`ParallelSkillEvolver`:
+
+    ANALYSIS   one call per trajectory. Error analyst for a failed trajectory, success analyst for a
+               correct one, which is upstream's own triage from the official evaluation.
+    MAP        one call per analysis record -> a semantic patch, in parallel.
+    REDUCE     HIERARCHICAL. Repeatedly split the patches into balanced batches of `merge_batch_size`
+               and merge each batch in parallel, until one patch remains or `max_merge_levels` is hit;
+               then one final coalescing merge. `chunk_list` reproduces upstream's balancing exactly,
+               including the round-robin distribution of a remainder smaller than half a batch.
+    APPLY      the merged patch becomes the new skill document.
+    VERIFY     every item of the merged patch is checked against the edited document.
+
+THIS IS NOT SkillOpt AND MUST NOT BORROW FROM IT. Trace2Skill has no epochs, no minibatches, no
+validation-selection loop and no slow update. Its consolidated skill IS its endpoint. Validation may
+MEASURE that endpoint, but a loop that validated candidates and kept the best would be a different
+method wearing this one's name, so nothing here reads the validation split at all.
+
+THE INFORMATION BOUNDARY, enforced rather than described.
+  permitted   predictions/<uid>/conversation.json - the actor's own messages, the executed tool calls
+              and their observations (which for OfficeQA contain the document text the actor read), and
+              target_{system,user}_prompt.txt.
+  triage only results.jsonl `hard`, the binary 0/1 verdict, used ONLY to choose which analyst runs.
+  forbidden   `ground_truth` and `soft`, and the provider's alternate reasoning field. Every outbound
+              prompt is scanned for the answer key of every question in the campaign before it is sent,
+              and the run aborts if one appears. That is a mechanical check, not a convention.
+
+RESUME. Every call is cached on disk under out/cache/<phase>/<sha256 of the exact prompt>.json. A
+resubmission after a TIMEOUT reuses every paid reply whose prompt is unchanged, so recovery costs only
+the calls that had not yet happened.
+
+usage:
+  python3 -I research/officeqa/oqa_t2s.py run --config <cfg> --s0-dir <dir> --skill <md> \
+      --optimizer-model deepseek-flash --out <dir>
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import glob
+import hashlib
+import json
+import os
+import re
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+RULE = "OQA-T2S-1"
+SCHEMA = "lso.officeqa_trace2skill.v1"
+
+# Upstream defaults for the markdown path: merge batches of 8, at most 4 hierarchy levels.
+MERGE_BATCH_SIZE = 8
+MAX_MERGE_LEVELS = 4
+# Two DeepSeek requests in flight, by instruction.
+MAX_WORKERS = 2
+PASSES = (1, 2, 3, 4)
+
+
+def _utc() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def _tree() -> str:
+    return os.environ.get("OQA_TREE") or os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+# ── the permitted view ──────────────────────────────────────────────────────────────────────────────────
+
+def render_permitted(conv: list) -> str:
+    """The chat log as the analyst may see it.
+
+    Entry shapes, as the saved trajectories actually use them:
+        {"role": ..., "content": ...}        the task prompt
+        {"type": "message", "content": ...}  an actor message
+        {"type": "tool_call", "cmd", "obs"}  an executed tool call and what it returned
+    Nothing else is emitted, so a field added to the trace later cannot leak into the prompt silently.
+    """
+    out: list[str] = []
+    for entry in conv:
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get("type")
+        if kind == "message":
+            out.append(f"[AGENT]\n{entry.get('content') or ''}")
+        elif kind == "tool_call":
+            out.append(f"[TOOL CALL]\n{entry.get('cmd') or ''}\n[OBSERVATION]\n{entry.get('obs') or ''}")
+        elif entry.get("role") is not None:
+            out.append(f"[{str(entry.get('role')).upper()}]\n{entry.get('content') or ''}")
+    return "\n\n".join(out)
+
+
+def collect_trajectories(s0_dir: str) -> tuple[list, dict]:
+    """The 48 fixed-S0 trajectories: four passes over the 12 training questions."""
+    trajectories: list = []
+    per_pass: dict = {}
+    for p in PASSES:
+        run = os.path.join(s0_dir, f"train_p{p}")
+        rows: dict = {}
+        results = os.path.join(run, "results.jsonl")
+        if os.path.isfile(results):
+            with open(results, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        row = json.loads(line)
+                        rows[str(row.get("id"))] = row
+        found = 0
+        for conv_path in sorted(glob.glob(os.path.join(run, "predictions", "*", "conversation.json"))):
+            uid = os.path.basename(os.path.dirname(conv_path))
+            with open(conv_path, encoding="utf-8") as f:
+                conv = json.load(f)
+            row = rows.get(uid) or {}
+            # TRIAGE ONLY. `hard` is the binary verdict; `ground_truth` is never read here.
+            hard = row.get("hard")
+            trajectories.append({
+                "uid": uid, "pass": p, "trajectory_id": f"{uid}@p{p}",
+                "conversation_path": conv_path,
+                "permitted_view": render_permitted(conv),
+                "n_entries": len(conv),
+                "n_tool_calls": sum(1 for e in conv if isinstance(e, dict) and e.get("type") == "tool_call"),
+                "verdict": ("correct" if hard in (1, 1.0, True) else
+                            ("incorrect" if hard in (0, 0.0, False) else "unknown")),
+                "termination_cause": row.get("termination_cause"),
+            })
+            found += 1
+        per_pass[f"p{p}"] = found
+    return trajectories, per_pass
+
+
+def answer_keys(split_dir: str) -> list[str]:
+    """Every ground-truth string in the campaign, so an outbound prompt can be checked against them."""
+    keys: list[str] = []
+    import csv as _csv
+    for sub in ("train", "val", "test"):
+        for path in glob.glob(os.path.join(split_dir, sub, "*.csv")):
+            with open(path, newline="", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    gold = str(row.get("ground_truth") or "").strip()
+                    # Short numeric keys would match by coincidence; only distinctive strings are usable
+                    # as a leak test, and the threshold is recorded rather than tuned.
+                    if len(gold) >= 6:
+                        keys.append(gold)
+    return sorted(set(keys))
+
+
+# ── parsing: the upstream output formats ────────────────────────────────────────────────────────────────
+
+_ITEM_HEADS = ("Failure Cause Item", "Failure Memory Item", "Success Cause Item", "Success Memory Item")
+
+
+def parse_analysis(text: str) -> dict:
+    """The analyst's two sections, as Title / Description / Content triples."""
+    items: list = []
+    pattern = re.compile(r"^#\s*(" + "|".join(re.escape(h) for h in _ITEM_HEADS) + r")\s*(\d*)\s*$",
+                         re.MULTILINE)
+    marks = list(pattern.finditer(text or ""))
+    for i, m in enumerate(marks):
+        body = (text[m.end():marks[i + 1].start()] if i + 1 < len(marks) else text[m.end():])
+        fields = {}
+        for name in ("Title", "Description", "Content"):
+            fm = re.search(rf"^##\s*{name}\s*$\n(.*?)(?=^##\s|\Z)", body,
+                           re.MULTILINE | re.DOTALL)
+            fields[name.lower()] = (fm.group(1).strip() if fm else "")
+        kind = m.group(1)
+        items.append({"kind": kind, "index": m.group(2),
+                      "section": "memory" if "Memory" in kind else "cause", **fields})
+    return {"items": items,
+            "n_cause": sum(1 for i in items if i["section"] == "cause"),
+            "n_memory": sum(1 for i in items if i["section"] == "memory"),
+            "parsed": bool(items)}
+
+
+_PATCH_RE = re.compile(r"=====\s*PATCH START\s*=====(.*?)=====\s*PATCH END\s*=====", re.DOTALL)
+_ITEM_RE = re.compile(r"\[ITEM_(\d+)_START\](.*?)(?=\[ITEM_\d+_START\]|\Z)", re.DOTALL)
+_FIELDS = ("Target File", "Edit Intent", "Location Hint", "Change Instruction")
+
+
+def parse_patches(text: str) -> list:
+    """Upstream's semantic patch blocks. A block whose items do not parse is DROPPED, and the caller
+    records that it was dropped: a half-parsed patch applied as if whole is worse than no patch."""
+    patches: list = []
+    for block in _PATCH_RE.findall(text or ""):
+        reasoning = ""
+        rm = re.search(r"Reasoning:\s*(.*?)(?=\n\s*Changelog:|\n\s*Items:|\Z)", block, re.DOTALL)
+        if rm:
+            reasoning = rm.group(1).strip()
+        changelog = ""
+        cm = re.search(r"Changelog:\s*(.*?)(?=\n\s*Items:|\Z)", block, re.DOTALL)
+        if cm:
+            changelog = cm.group(1).strip()
+        items: list = []
+        items_part = block[block.index("Items:") + len("Items:"):] if "Items:" in block else block
+        for idx, body in _ITEM_RE.findall(items_part):
+            got = {}
+            for fi, name in enumerate(_FIELDS):
+                nxt = "|".join(re.escape(n) + r"\s*:" for n in _FIELDS[fi + 1:]) or r"\Z"
+                fm = re.search(rf"{re.escape(name)}\s*:\s*(.*?)(?=\n\s*(?:{nxt})|\Z)", body, re.DOTALL)
+                got[name] = (fm.group(1).strip() if fm else "")
+            if got["Edit Intent"] and got["Change Instruction"]:
+                items.append({"index": int(idx), "target_file": got["Target File"] or "SKILL.md",
+                              "edit_intent": got["Edit Intent"], "location_hint": got["Location Hint"],
+                              "change_instruction": got["Change Instruction"]})
+        if items:
+            patches.append({"reasoning": reasoning, "changelog": changelog, "items": items})
+    return patches
+
+
+def render_patch(patch: dict) -> str:
+    """A patch back in upstream's schema, which is what the merge and apply phases consume."""
+    lines = ["===== PATCH START =====", "Reasoning:", patch.get("reasoning") or "", "",
+             "Changelog:", patch.get("changelog") or "", "", "Items:", ""]
+    for n, item in enumerate(patch.get("items") or [], start=1):
+        lines += [f"[ITEM_{n}_START]",
+                  f"Target File: {item.get('target_file') or 'SKILL.md'}",
+                  f"Edit Intent: {item.get('edit_intent') or ''}",
+                  f"Location Hint: {item.get('location_hint') or ''}",
+                  "Change Instruction:", item.get("change_instruction") or "", ""]
+    lines.append("===== PATCH END =====")
+    return "\n".join(lines)
+
+
+def chunk_list(items: list, batch_size: int) -> list:
+    """Upstream's balanced batching, reproduced exactly.
+
+    If the remainder is smaller than half the batch size, distribute its items round-robin into earlier
+    batches. Otherwise keep it as its own batch.
+    """
+    total = len(items)
+    if total == 0:
+        return []
+    if total <= batch_size:
+        return [list(items)]
+    n_full = total // batch_size
+    remainder = total % batch_size
+    if remainder == 0:
+        return [list(items[i:i + batch_size]) for i in range(0, total, batch_size)]
+    batches = [list(items[i:i + batch_size]) for i in range(0, n_full * batch_size, batch_size)]
+    if remainder < batch_size / 2:
+        for i, item in enumerate(items[n_full * batch_size:]):
+            batches[i % len(batches)].append(item)
+    else:
+        batches.append(list(items[n_full * batch_size:]))
+    return batches
+
+
+# ── the optimizer, through SkillOpt's own route-pinned, ledger-enforced path ─────────────────────────────
+
+class Caller:
+    """Every optimizer call, cached by prompt digest and checked against the answer keys first."""
+
+    def __init__(self, out_dir: str, keys: list, dry_run: bool = False):
+        self.cache_dir = os.path.join(out_dir, "cache")
+        self.calls: list = []
+        self.keys = keys
+        self.dry_run = dry_run
+        self.lock = threading.Lock()
+        self.leaks: list = []
+        os.makedirs(self.cache_dir, exist_ok=True)
+
+    def _guard(self, phase: str, system: str, user: str) -> None:
+        """No answer key may appear in an outbound prompt. Mechanical, not a convention."""
+        blob = system + "\n" + user
+        hit = [k for k in self.keys if k in blob]
+        if hit:
+            with self.lock:
+                self.leaks.append({"phase": phase, "n_keys": len(hit), "example_len": len(hit[0])})
+            raise SystemExit(
+                f"BOUNDARY VIOLATION in phase {phase}: {len(hit)} ground-truth string(s) appear in an "
+                f"outbound prompt. Nothing further is sent.")
+
+    def __call__(self, phase: str, system: str, user: str, *, max_tokens: int = 16384) -> str:
+        self._guard(phase, system, user)
+        digest = hashlib.sha256(
+            json.dumps({"p": phase, "s": system, "u": user}, sort_keys=True).encode()).hexdigest()
+        path = os.path.join(self.cache_dir, phase, f"{digest}.json")
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                rec = json.load(f)
+            with self.lock:
+                self.calls.append({"phase": phase, "digest": digest[:12], "cached": True,
+                                   "usage": rec.get("usage")})
+            return rec.get("text") or ""
+        if self.dry_run:
+            with self.lock:
+                self.calls.append({"phase": phase, "digest": digest[:12], "cached": False,
+                                   "dry_run": True})
+            return ""
+        sys.path.insert(0, _tree())
+        from skillopt.model import chat_optimizer  # type: ignore
+        text, usage = chat_optimizer(system=system, user=user,
+                                     max_completion_tokens=max_tokens, stage=f"t2s_{phase}")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"phase": phase, "system": system, "user": user, "text": text,
+                       "usage": usage, "utc": _utc()}, f, indent=1, sort_keys=True, default=str)
+        with self.lock:
+            self.calls.append({"phase": phase, "digest": digest[:12], "cached": False,
+                               "usage": usage, "chars": len(text or "")})
+        return text or ""
+
+
+def _parallel(fn, items: list, workers: int = MAX_WORKERS) -> list:
+    """Run fn over items, preserving input order, never losing an exception silently."""
+    out: dict = {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {ex.submit(fn, item): i for i, item in enumerate(items)}
+        for fut in as_completed(futures):
+            i = futures[fut]
+            try:
+                out[i] = {"ok": True, "value": fut.result()}
+            except SystemExit:
+                raise
+            except Exception as exc:  # noqa: BLE001 - recorded, not hidden
+                out[i] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return [out[i] for i in sorted(out)]
+
+
+# ── the phases ──────────────────────────────────────────────────────────────────────────────────────────
+
+def phase_analysis(call: Caller, trajectories: list, P) -> list:
+    """One call per trajectory. The verdict chooses the analyst; it never enters the prompt as text."""
+    def one(traj: dict) -> dict:
+        correct = traj["verdict"] == "correct"
+        system = P.SUCCESS_ANALYSIS_SYSTEM if correct else P.ERROR_ANALYSIS_SYSTEM
+        user = ("# Agent chat log\n\n" + traj["permitted_view"] +
+                "\n\n# Task\nAnalyse the log above and produce the two sections in the required format.")
+        text = call("analysis", system, user)
+        parsed = parse_analysis(text)
+        return {"trajectory_id": traj["trajectory_id"], "uid": traj["uid"], "pass": traj["pass"],
+                "analyst": "success" if correct else "error",
+                "verdict_used_for_triage_only": traj["verdict"],
+                "termination_cause": traj["termination_cause"],
+                "raw_chars": len(text or ""), **parsed}
+    results = _parallel(one, trajectories)
+    records: list = []
+    for traj, res in zip(trajectories, results):
+        if res["ok"]:
+            records.append(res["value"])
+        else:
+            records.append({"trajectory_id": traj["trajectory_id"], "uid": traj["uid"],
+                            "pass": traj["pass"], "parsed": False, "items": [],
+                            "n_cause": 0, "n_memory": 0, "error": res["error"]})
+    return records
+
+
+def phase_map(call: Caller, records: list, skill: str, P) -> tuple[list, list]:
+    """One semantic patch per analysis record, in parallel. Upstream's MAP."""
+    usable = [r for r in records if r.get("parsed") and r.get("items")]
+
+    def render_record(rec: dict) -> str:
+        lines = [f"## Analysis record ({rec['analyst']} analysis)"]
+        for item in rec["items"]:
+            lines += [f"### {item['kind']} {item['index']}".rstrip(),
+                      f"Title: {item.get('title')}",
+                      f"Description: {item.get('description')}",
+                      f"Content: {item.get('content')}", ""]
+        return "\n".join(lines)
+
+    def one(rec: dict):
+        user = ("# Current skill document (SKILL.md)\n\n" + skill +
+                "\n\n# Analysis record\n\n" + render_record(rec) +
+                "\n\n# Task\nPropose a minimal semantic patch in the required format.")
+        text = call("map", P.MAP_SYSTEM, user)
+        return {"record": rec["trajectory_id"], "patches": parse_patches(text),
+                "raw_chars": len(text or "")}
+
+    results = _parallel(one, usable)
+    patches: list = []
+    problems: list = []
+    for rec, res in zip(usable, results):
+        if not res["ok"]:
+            problems.append({"record": rec["trajectory_id"], "phase": "map", "error": res["error"]})
+            continue
+        got = res["value"]["patches"]
+        if not got:
+            problems.append({"record": rec["trajectory_id"], "phase": "map",
+                             "error": "no parseable patch block in the response"})
+            continue
+        for patch in got:
+            patch["origin"] = rec["trajectory_id"]
+            patches.append(patch)
+    return patches, problems
+
+
+def phase_reduce(call: Caller, patches: list, skill: str, P,
+                 batch_size: int = MERGE_BATCH_SIZE, max_levels: int = MAX_MERGE_LEVELS) -> tuple:
+    """HIERARCHICAL consolidation, upstream's REDUCE. A failed batch merge keeps its inputs rather
+    than dropping them, so a provider error loses no proposal."""
+    levels: list = []
+    if not patches:
+        return None, levels
+    if len(patches) == 1:
+        return patches[0], levels
+    current = list(patches)
+    level = 0
+    while len(current) > 1 and level < max_levels:
+        level += 1
+        batches = chunk_list(current, batch_size)
+
+        def one(batch: list):
+            user = ("# Current skill document (SKILL.md)\n\n" + skill +
+                    "\n\n# Patches to merge\n\n" +
+                    "\n\n".join(render_patch(p) for p in batch) +
+                    "\n\n# Task\nMerge the patches above into one coherent, non-redundant set.")
+            return parse_patches(call("merge", P.MERGE_SYSTEM, user))
+
+        results = _parallel(one, batches)
+        nxt: list = []
+        ok = fail = 0
+        for batch, res in zip(batches, results):
+            merged = res["value"] if res["ok"] else None
+            if merged:
+                nxt.extend(merged)
+                ok += 1
+            else:
+                nxt.extend(batch)      # keep the inputs; a failed merge must not lose a proposal
+                fail += 1
+        levels.append({"level": level, "patches_in": len(current), "batches": len(batches),
+                       "merged_ok": ok, "merge_failed": fail, "patches_out": len(nxt)})
+        if len(nxt) >= len(current):
+            # No progress. Another identical level would only spend money, so stop and coalesce.
+            levels[-1]["stopped"] = "the level did not reduce the patch count"
+            current = nxt
+            break
+        current = nxt
+    if len(current) > 1:
+        user = ("# Current skill document (SKILL.md)\n\n" + skill +
+                "\n\n# Patches to merge\n\n" + "\n\n".join(render_patch(p) for p in current) +
+                "\n\n# Task\nMerge the patches above into exactly ONE coherent, non-redundant set.")
+        # The batch merges above are shielded by `_parallel`; this one was NOT, so a provider error here
+        # propagated and destroyed every proposal the run had paid for. It now degrades to the local
+        # coalesce below, which loses no item - only the model's conflict resolution.
+        try:
+            final = parse_patches(call("merge", P.MERGE_SYSTEM, user))
+            final_error = None
+        except SystemExit:
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded, not hidden
+            final, final_error = [], f"{type(exc).__name__}: {exc}"
+        levels.append({"level": "final", "patches_in": len(current),
+                       "patches_out": len(final) if final else 0,
+                       **({"error": final_error} if final_error else {})})
+        if final:
+            if len(final) == 1:
+                return final[0], levels
+            # Still several: concatenate their items rather than discard any, and say so.
+            items: list = []
+            for p in final:
+                items.extend(p["items"])
+            return {"reasoning": "coalesced from several merged patches that the final merge did not "
+                                 "reduce to one; every item is preserved",
+                    "changelog": "coalesced", "items": items, "coalesced": True}, levels
+        # The final merge produced nothing usable. Coalesce locally rather than return one patch and
+        # silently discard the rest: no model resolved the conflicts, and the report says so.
+        items = []
+        for patch in current:
+            items.extend(patch["items"])
+        return {"reasoning": "the final merge returned no usable patch, so every item of every "
+                            "surviving patch is preserved WITHOUT model conflict resolution",
+                "changelog": "coalesced without a successful final merge",
+                "items": items, "coalesced": True,
+                "conflicts_unresolved": True}, levels
+    return current[0], levels
+
+
+def phase_apply(call: Caller, skill: str, merged: dict, P) -> str:
+    user = ("# Original skill document (SKILL.md)\n\n" + skill +
+            "\n\n# Merged patch to apply\n\n" + render_patch(merged) +
+            "\n\n# Task\nOutput the complete edited document and nothing else.")
+    text = call("apply", P.APPLY_SYSTEM, user)
+    out = (text or "").strip()
+    # A model asked for a bare document sometimes fences it anyway; unwrap one outer fence.
+    fence = re.match(r"^```[a-zA-Z]*\n(.*)\n```$", out, re.DOTALL)
+    if fence:
+        out = fence.group(1).strip()
+    return out
+
+
+def phase_verify(call: Caller, original: str, merged: dict, edited: str, P) -> dict:
+    user = ("# Original document\n\n" + original + "\n\n# Merged patch\n\n" + render_patch(merged) +
+            "\n\n# Edited document\n\n" + edited + "\n\n# Task\nReport the JSON described above.")
+    text = call("verify", P.VERIFY_SYSTEM, user)
+    raw = (text or "").strip()
+    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
+    if fence:
+        raw = fence.group(1)
+    try:
+        return {"parsed": True, **json.loads(raw)}
+    except ValueError as exc:
+        return {"parsed": False, "error": f"the verifier did not return JSON: {exc}",
+                "raw_chars": len(text or "")}
+
+
+# ── the run ─────────────────────────────────────────────────────────────────────────────────────────────
+
+def run(args) -> int:
+    sys.path.insert(0, _tree())
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import oqa_t2s_prompts as P  # type: ignore
+
+    os.makedirs(args.out, exist_ok=True)
+    trajectories, per_pass = collect_trajectories(args.s0_dir)
+    with open(args.skill, encoding="utf-8") as f:
+        skill = f.read()
+    keys = answer_keys(args.split_dir) if args.split_dir else []
+    call = Caller(args.out, keys, dry_run=args.dry_run)
+
+    problems: list = []
+    if not trajectories:
+        problems.append("no trajectories found under --s0-dir; nothing to analyse")
+    expected = len(PASSES) * 12
+    if len(trajectories) != expected:
+        problems.append(f"{len(trajectories)} trajectories, expected {expected} ({per_pass})")
+    if not keys:
+        problems.append("no answer keys were loaded, so the boundary check could not run")
+
+    report: dict = {
+        "schema": SCHEMA, "rule": RULE, "utc": _utc(), "commit": os.environ.get("OQA_COMMIT"),
+        "upstream": P.UPSTREAM,
+        "method_note": "Trace2Skill: analysis -> parallel patch proposal -> hierarchical consolidation. "
+                       "No epochs, no minibatches, no slow update and no validation-selection loop: the "
+                       "consolidated skill is the endpoint.",
+        "inputs": {"s0_dir": args.s0_dir, "skill": args.skill, "split_dir": args.split_dir,
+                   "optimizer_model": args.optimizer_model},
+        "boundary": {
+            "permitted": "conversation.json (actor messages, tool calls, observations) and the saved "
+                         "target prompts",
+            "triage_only": "results.jsonl `hard`, the binary verdict, used only to choose the analyst",
+            "forbidden": "`ground_truth`, `soft`, and the provider's alternate reasoning field",
+            "answer_keys_checked_per_prompt": len(keys),
+        },
+        "trajectories": {"n": len(trajectories), "per_pass": per_pass,
+                         "correct": sum(1 for t in trajectories if t["verdict"] == "correct"),
+                         "incorrect": sum(1 for t in trajectories if t["verdict"] == "incorrect"),
+                         "unknown": sum(1 for t in trajectories if t["verdict"] == "unknown")},
+        "skill_before": {"path": args.skill, "bytes": len(skill.encode()),
+                         "sha256_12": hashlib.sha256(skill.encode()).hexdigest()[:12]},
+    }
+
+    if problems and not trajectories:
+        report["problems"] = problems
+        report["verdict"] = "BLOCKED"
+        _write(args.out, report, None)
+        print(json.dumps({"verdict": "BLOCKED", "problems": problems}, indent=1))
+        return 1
+
+    records = phase_analysis(call, trajectories, P)
+    report["analysis"] = {
+        "n_records": len(records),
+        "parsed": sum(1 for r in records if r.get("parsed")),
+        "failed": [r["trajectory_id"] for r in records if not r.get("parsed")],
+        "by_analyst": {k: sum(1 for r in records if r.get("analyst") == k) for k in ("error", "success")},
+        "cause_items": sum(r.get("n_cause", 0) for r in records),
+        "memory_items": sum(r.get("n_memory", 0) for r in records),
+        "records": records,
+    }
+
+    patches, map_problems = phase_map(call, records, skill, P)
+    problems += map_problems
+    report["map"] = {"patches_proposed": len(patches),
+                     "items_proposed": sum(len(p["items"]) for p in patches),
+                     "records_without_a_patch": len(map_problems),
+                     "patches": patches}
+
+    merged, levels = phase_reduce(call, patches, skill, P, args.merge_batch_size, args.max_merge_levels)
+    report["reduce"] = {"levels": levels, "merged_items": len(merged["items"]) if merged else 0,
+                        "merged": merged}
+
+    edited = phase_apply(call, skill, merged, P) if merged else ""
+    if not edited:
+        problems.append("the apply phase returned no document; the skill is UNCHANGED")
+        edited = skill
+    report["skill_after"] = {"bytes": len(edited.encode()),
+                             "sha256_12": hashlib.sha256(edited.encode()).hexdigest()[:12],
+                             "changed": edited.strip() != skill.strip()}
+    report["verify"] = phase_verify(call, skill, merged, edited, P) if merged else {"parsed": False}
+
+    usage = {"calls": len(call.calls), "cached": sum(1 for c in call.calls if c.get("cached")),
+             "paid": sum(1 for c in call.calls if not c.get("cached"))}
+    for field in ("prompt_tokens", "completion_tokens"):
+        usage[field] = sum(int((c.get("usage") or {}).get(field) or 0) for c in call.calls
+                           if not c.get("cached"))
+    report["optimizer_usage"] = usage
+    report["calls"] = call.calls
+    report["boundary_violations"] = call.leaks
+    report["problems"] = problems
+    report["verdict"] = "CONSOLIDATED" if report["skill_after"]["changed"] else "UNCHANGED"
+    _write(args.out, report, edited)
+    print(json.dumps({"verdict": report["verdict"], "trajectories": report["trajectories"],
+                      "analysis": {k: report["analysis"][k] for k in
+                                   ("n_records", "parsed", "by_analyst", "cause_items",
+                                    "memory_items")},
+                      "map": {k: report["map"][k] for k in
+                              ("patches_proposed", "items_proposed", "records_without_a_patch")},
+                      "reduce_levels": levels,
+                      "merged_items": report["reduce"]["merged_items"],
+                      "skill": {"before": report["skill_before"]["sha256_12"],
+                                "after": report["skill_after"]["sha256_12"],
+                                "changed": report["skill_after"]["changed"]},
+                      "optimizer_usage": usage, "problems": problems}, indent=1, default=str))
+    return 1 if (problems and not report["skill_after"]["changed"]) else 0
+
+
+def _write(out_dir: str, report: dict, edited: str | None) -> None:
+    with open(os.path.join(out_dir, "T2S_REPORT.json"), "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=1, sort_keys=True, default=str)
+    if edited:
+        with open(os.path.join(out_dir, "trace2skill_skill.md"), "w", encoding="utf-8") as f:
+            f.write(edited if edited.endswith("\n") else edited + "\n")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run")
+    r.add_argument("--config", default="")
+    r.add_argument("--s0-dir", required=True)
+    r.add_argument("--skill", required=True)
+    r.add_argument("--split-dir", default=os.environ.get("OQA_SPLIT4_DIR", ""))
+    r.add_argument("--optimizer-model", default="deepseek-flash")
+    r.add_argument("--merge-batch-size", type=int, default=MERGE_BATCH_SIZE)
+    r.add_argument("--max-merge-levels", type=int, default=MAX_MERGE_LEVELS)
+    r.add_argument("--dry-run", action="store_true")
+    r.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    return run(a)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
