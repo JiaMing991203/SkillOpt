@@ -118,6 +118,50 @@ diagnosis on a later record, a successful/recovered control, and Lean compiled a
 Lean is at `/nfs/turbo/umms-csriram/yaojm/lean/elan/bin/lean`; `OqaContracts.lean` ALREADY contains
 `unknownBindingNeverViolates`, which is exactly C-1's soundness condition.
 
+### ORIGINAL SkillOpt IS FINISHED — the result, and the caveat that matters as much
+Four epochs, jobs 66552422-425, all COMPLETED. **0 accepts and 4 rejects on ordinary bounded-edit
+steps.** The ONLY surviving change came from the **gated slow update at epoch 2**
+(`best_origin: slow_update_epoch_02`). Epochs 3 and 4 changed nothing: v3 and v4 are byte-identical
+to v2.
+
+| | |
+|---|---|
+| skill lineage | S0 `9d377d1c2906` (887 B) -> v1 `5bd17ea109bc` (940 B) -> v2 `e35673d87cb7` (4,518 B) = **the selected endpoint** |
+| validation | S0 **4/12** -> selected **5/12** (`best_selection_hard` 0.4167) |
+| S0's own spread over 4 independent training passes | **5, 4, 4, 5** of 12 |
+
+**So the accepted gain is ONE question, and S0's own sampling spread is +/-1 question.** The acceptance
+rests on a 1/12 margin; 12 validation questions cannot resolve finer. Upstream's strict-improvement
+rule was preserved, so this is the framework's behaviour and not a weakened gate. The held-out
+measurement is the test of whether it transfers.
+
+### HELD-OUT EVALUATIONS, submitted — SCORES STAY SEALED
+Three distinct endpoints, 30 questions x 2 passes each:
+`endpoint_S0.md` `9d377d1c2906` (job 66553250) · `endpoint_original_skillopt.md` `e35673d87cb7`
+(job 66553251) · Trace2Skill's, pending its job. Staged durably in the run root so a re-run uses the
+same bytes. **Do not use these scores to choose contract features, prompts or repairs.**
+
+### CPU: THE RETRIES WERE THE EXPENSE, AND THE CONVENTION IS WHY
+Counting started jobs at their FULL REQUESTED LIMIT (the established rule), after 23 jobs:
+
+| group | jobs | REQUESTED h | elapsed h |
+|---|---:|---:|---:|
+| **t2s** | 7 | **17.50** | 0.73 |
+| arm | 4 | 6.25 | 1.02 |
+| contract | 7 | 3.00 | 0.14 |
+| heldout | 2 | 3.00 | 0.00 |
+| s0 / prep | 3 | 2.17 | 0.44 |
+| **total** | **23** | **31.92 of 50** | **2.32** |
+
+**My seven Trace2Skill submissions requested 17.5 hours and used 44 minutes — 64% of the CPU
+allowance on retries of one stage**, because each asked for 2:30 and most failed in seconds. The t2s
+request is now sized to its measured 17:42 runtime (0:45). The retries were necessary; the walltime
+was not.
+
+### SPEND, measured from the call logs (the ledger was inert — see below)
+actor **1,801 calls of 20,000 (9.0%), $0.8896 of $15.00**; optimizer **148 of 400 (37.0%), $1.2783 of
+$20.00**. Nothing overran.
+
 ### LEAN IS COMPILED, AND WHAT IT COVERS IS NARROW
 Job 66553083: `OqaConnected.lean` over the delivered facts — **50 evidence examples, 0 skipped, lean
 returncode 0, "all statements accepted"** (Lean 4.20.0); `OqaContracts.lean` compiled clean.
