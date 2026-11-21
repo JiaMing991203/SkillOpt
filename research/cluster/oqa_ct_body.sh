@@ -7,6 +7,10 @@
 #   PHASE=bundle7   FREE. Correct the mixed-version bundle, then measure occurrence-level source
 #                   binding over the saved TRAINING records. No key is loaded, so this phase cannot
 #                   spend a cent and cannot reach the actor or the optimizer.
+#   PHASE=replay    FREE. Freeze the post-C-1 semantic state as v8, then replay the chain over the
+#                   same saved records and compare the C-1 selection gate against the tie-break it
+#                   replaced. The amendment's prediction is committed in writing BEFORE this runs, and
+#                   the tool reports whether it held. Writes to v4_c1/, leaving v3_occ/ untouched.
 #
 # WHY THIS IS A SEPARATE BODY AND A SEPARATE BUNDLE. The baseline jobs (66552421-425, 66552508) are
 # running from oqa_base_20261121b and oqa_base_20261121c. bash reads a script body lazily, so touching
@@ -29,7 +33,7 @@
 set -uo pipefail
 B="${OQA_BUNDLE:?OQA_BUNDLE must be set}"
 PHASE="${PHASE:-bundle7}"
-case "$PHASE" in bundle7) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
+case "$PHASE" in bundle7|replay) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
 
 if [ "${SLURM_RESTART_COUNT:-0}" != "0" ]; then
     echo "REFUSING: SLURM_RESTART_COUNT=${SLURM_RESTART_COUNT}" >&2; exit 6
@@ -70,6 +74,7 @@ CC18="$CAMP/followup_20261118/connected_contract"
 OUT="$OQA_CT_ROOT/v3_occ"              # everything this phase writes
 mkdir -p "$OUT" || exit 3
 
+if [ "$PHASE" = "bundle7" ]; then
 log "1/4 recording the PRESERVED baseline and the mixed-version evidence"
 {
   echo "# the directory that must not change, with its digests BEFORE this job"
@@ -108,6 +113,31 @@ for p in 1 2 3 4; do
             && log "measured s0 pass $p" || log "note: s0 pass $p not measurable yet"
     fi
 done
+
+fi   # end PHASE=bundle7
+
+if [ "$PHASE" = "replay" ]; then
+    V4="$OQA_CT_ROOT/v4_c1"
+    mkdir -p "$V4" || exit 3
+    log "1/3 freezing the POST-C-1 semantic state as v8; v7 and v3_occ are left alone"
+    "$OQA_PY" -I research/officeqa/oqa_cc_bundle.py freeze \
+        --model "$CC18/CC_MODEL_v1.json" --records "$CC18/CC_RECORDS_v2.json" \
+        --prompt "$CC18/CC_PROMPT.txt" --out "$V4" --label v8 2>&1 \
+        | tee "$OUTDIR/bundle_v8.txt" || status=$?
+    log "v8 freeze exit $status"
+
+    log "2/3 replaying the chain: the C-1 gate against the tie-break it replaced"
+    # The prediction is in amendment C-1 and was written BEFORE this ran. The tool reports whether it
+    # held and exits non-zero if MORE cells are selected under the gate, which would mean the
+    # implementation is wrong rather than the prediction.
+    "$OQA_PY" -I research/officeqa/oqa_occ_replay.py \
+        --predictions "$COL/collect/predictions" \
+        --model "$CC18/CC_MODEL_v1.json" \
+        --records "$COL/collect/results.jsonl" \
+        --out "$V4" 2>&1 | tee "$OUTDIR/occ_replay.txt" || status=$?
+    log "replay exit $status"
+    OUT="$V4"
+fi
 
 log "4/4 the test suite"
 "$OQA_PY" -m pytest -q tests/ 2>&1 | tee "$OUTDIR/pytest.txt" | tail -4
