@@ -293,6 +293,29 @@ class Caller:
         self.explained: list = []
         os.makedirs(self.cache_dir, exist_ok=True)
 
+    def extend_permitted(self, text: str) -> None:
+        """Admit text DERIVED from already-guarded material into the permitted corpus.
+
+        THE CHAIN-OF-CUSTODY ARGUMENT, and it is what makes the guard usable past the first phase.
+        Every phase's prompt is guarded before it is sent, so every phase's OUTPUT is derived only from
+        material that passed the guard. An analyst's diagnosis, a proposed patch and a merged patch are
+        therefore legitimate, even when they contain a number that matches an answer key - the analyst
+        only ever saw the permitted view, and it may reformat a value it read (writing "1,169.41" for a
+        trace's "1169.41") so that the string no longer occurs literally in the trajectory.
+
+        Job 66552979 failed on exactly that, in phase `map`, after the analysis phase had completed:
+        the corpus held the trajectories and the skill but not the analysts' own output.
+
+        BE CLEAR ABOUT WHAT THIS COSTS. Admitting derived text makes the string scan PERMISSIVE
+        downstream; after the analysis phase it will accept almost anything. The scan is therefore a
+        tripwire on the one phase where raw trajectories enter, not the main protection. THE MAIN
+        PROTECTION IS STRUCTURAL: `collect_trajectories` reads only `hard` and `termination_cause` from
+        results.jsonl, and nothing in this module reads `ground_truth` or `soft` at all. A test asserts
+        that, and it is the claim worth relying on.
+        """
+        with self.lock:
+            self.permitted = self.permitted + "\n" + (text or "")
+
     def _guard(self, phase: str, system: str, user: str) -> None:
         """A key in a prompt is a violation only if the permitted corpus cannot explain it."""
         blob = system + "\n" + user
@@ -638,9 +661,11 @@ def run(args) -> int:
             "triage_only": "results.jsonl `hard`, the binary verdict, used only to choose the analyst",
             "forbidden": "`ground_truth`, `soft`, and the provider's alternate reasoning field",
             "answer_keys_checked_per_prompt": len(keys),
-            "guard": "a ground-truth string in a prompt is a violation ONLY if the permitted corpus "
-                     "cannot explain it. On a CORRECT episode the actor's own answer is the key, so a "
-                     "plain string scan would refuse exactly the episodes the success analyst needs.",
+            "guard": "STRUCTURAL and primary: collect_trajectories reads only `hard` and "
+                     "`termination_cause`; nothing in this module reads `ground_truth` or `soft`. The "
+                     "string scan is a secondary tripwire on the ANALYSIS phase, where raw "
+                     "trajectories enter. It admits text derived from already-guarded prompts, so it "
+                     "is deliberately permissive downstream; it is not the main protection.",
             "permitted_corpus_chars": len(permitted_corpus),
         },
         "trajectories": {"n": len(trajectories), "per_pass": per_pass,
@@ -673,6 +698,12 @@ def run(args) -> int:
         "records": records,
     }
 
+    # The analysts' output is derived from guarded prompts, so it joins the permitted corpus before
+    # the MAP phase quotes it back. See Caller.extend_permitted.
+    call.extend_permitted("\n".join(
+        f"{i.get('title')}\n{i.get('description')}\n{i.get('content')}"
+        for r in records for i in (r.get("items") or [])))
+
     patches, map_problems = phase_map(call, records, skill, P)
     problems += map_problems
     report["map"] = {"patches_proposed": len(patches),
@@ -680,7 +711,11 @@ def run(args) -> int:
                      "records_without_a_patch": len(map_problems),
                      "patches": patches}
 
+    call.extend_permitted("\n".join(render_patch(p) for p in patches))
+
     merged, levels = phase_reduce(call, patches, skill, P, args.merge_batch_size, args.max_merge_levels)
+    if merged:
+        call.extend_permitted(render_patch(merged))
     report["reduce"] = {"levels": levels, "merged_items": len(merged["items"]) if merged else 0,
                         "merged": merged}
 

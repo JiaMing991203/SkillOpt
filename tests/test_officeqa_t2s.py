@@ -435,3 +435,78 @@ def test_every_stdlib_module_the_research_code_uses_is_actually_imported():
         assert not missing, f"{name} uses {missing} without importing them"
         checked += 1
     assert checked == 7
+
+
+def test_THE_STRUCTURAL_GUARANTEE_no_evaluator_field_is_ever_read():
+    """This is the protection worth relying on; the string scan is only a tripwire on top of it.
+
+    No CODE in the module may read `ground_truth` or `soft`. `hard` may be read, and only to triage
+    which analyst runs, which is how upstream triages from its official evaluation. The check walks the
+    AST rather than the text, so prose describing the boundary is not mistaken for code crossing it -
+    the module docstring names the forbidden fields precisely in order to forbid them.
+    """
+    import ast as _ast
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    tree = _ast.parse(src)
+
+    # every string literal that is NOT a docstring
+    docstrings = set()
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.Module, _ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+            body = getattr(node, "body", None) or []
+            if body and isinstance(body[0], _ast.Expr) and isinstance(body[0].value, _ast.Constant) \
+                    and isinstance(body[0].value.value, str):
+                docstrings.add(id(body[0].value))
+
+    # answer_keys is the ONE permitted reader: it builds the list the scan compares against
+    permitted_reader = next(n for n in _ast.walk(tree)
+                            if isinstance(n, _ast.FunctionDef) and n.name == "answer_keys")
+    inside_reader = {id(n) for n in _ast.walk(permitted_reader)}
+
+    offenders = []
+    for node in _ast.walk(tree):
+        if (isinstance(node, _ast.Constant) and isinstance(node.value, str)
+                and node.value in ("ground_truth", "soft")
+                and id(node) not in docstrings and id(node) not in inside_reader):
+            offenders.append((node.value, getattr(node, "lineno", "?")))
+    assert not offenders, f"evaluator-only fields read in code: {offenders}"
+
+    reads_key_in_reader = [n.value for n in _ast.walk(permitted_reader)
+                           if isinstance(n, _ast.Constant) and n.value == "ground_truth"]
+    assert reads_key_in_reader, "answer_keys must read the key to build the scan list"
+
+    hard_reads = [getattr(n, "lineno", "?") for n in _ast.walk(tree)
+                  if isinstance(n, _ast.Constant) and n.value == "hard" and id(n) not in docstrings]
+    assert len(hard_reads) == 1, f"`hard` must be read exactly once, for triage; found {hard_reads}"
+    collect = src[src.index("def collect_trajectories"):src.index("def answer_keys")]
+    assert "TRIAGE ONLY" in collect
+
+
+def test_derived_text_joins_the_permitted_corpus_so_the_scan_stays_usable(tmp_path):
+    """Job 66552979: the MAP phase quoted an analyst's own words back and the guard refused, because
+    the corpus held the trajectories and the skill but not the analysts' output."""
+    key = "1,169.41 million dollars"
+    call = T.Caller(str(tmp_path), keys=[key], permitted_corpus="a trajectory", dry_run=True)
+    # before: an analyst's reformatted value is not in the corpus, so it is refused
+    with pytest.raises(SystemExit):
+        call("map", "sys", f"the analyst wrote: the value should be {key}")
+    # after admitting the analyst's output, the same prompt is accepted
+    call.extend_permitted(f"Failure cause: the agent needed {key} and read something else")
+    call("map", "sys", f"the analyst wrote: the value should be {key}")
+    assert len(call.explained) == 1
+
+
+def test_each_phases_output_is_admitted_before_the_next_phase_quotes_it():
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    body = src[src.index("def run(args)"):src.index("def _write(")]
+    # the analysts' items before MAP, the patches before REDUCE, the merged patch before APPLY
+    assert body.index("extend_permitted") < body.index("phase_map(")
+    assert body.count("extend_permitted") >= 3
+
+
+def test_the_guard_admits_that_it_is_permissive_downstream():
+    """A guard that overstates itself is worse than one that states its limit."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    fn = src[src.index("def extend_permitted"):src.index("def _guard")]
+    assert "PERMISSIVE" in fn
+    assert "not the main protection" in fn or "MAIN PROTECTION IS STRUCTURAL" in fn
