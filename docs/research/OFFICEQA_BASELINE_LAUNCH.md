@@ -448,52 +448,64 @@ processes spent 24 against a cap of 23: [2, 18, 2, 2]"* — a real violation of 
 shared spend ledger. **Intermittent, not deterministic: ten repeats, ten passes.** Immaterial here
 (~$1.20 against $15) but it is the invariant the authorization rests on.
 
-## 7. Evaluation and reporting, as it will run
+## 7. Evaluation and reporting, as it ran
 
-- S0 and each **distinct** endpoint on the **same frozen 30** held-out questions, **twice** each.
-  Endpoints: S0, Original SkillOpt's validation-selected skill (**including S0 itself if no candidate
-  wins the gate** — a real outcome, not a missing result), and Trace2Skill's consolidated skill.
-- An evaluation is reused only when the **complete effective endpoint inputs** match — skill digest,
-  config digest, split, turn budget, passes — never because two documents look semantically equivalent.
-  Each held-out run writes a `PROVENANCE.json`.
-- **Held-out scores and trajectories stay sealed** while the contract arm is developed, and will not be
-  used to choose contract features, prompts or repairs.
+* S0 and each **distinct** endpoint on the **same frozen 30** held-out questions, **twice** each. All
+  three endpoints are distinct by digest (§1c), so all three are evaluated; Original SkillOpt's
+  endpoint is its validation-selected skill, which happens not to be S0 because the epoch-2 gated slow
+  update was accepted.
+* Each run writes a `PROVENANCE.json` carrying the skill digest, config digest, commit, frozen-set
+  rule, split, question count and pass count — the **complete effective inputs**, so a later reuse
+  decision rests on identity rather than on two documents looking equivalent.
+* **Held-out scores and trajectories stay sealed.** I have checked episode counts and provenance for
+  operational integrity and have not read the scores; nothing in the contract arm was chosen from them.
 
-**Records:** `OFFICEQA_STATE.md` (one current state note, opening with the live jobs, the bundles that
-must not be rebuilt, and the resume procedure), the frozen config and split manifests,
-`docs/research/jobs.tsv` and `OFFICEQA_AUTHORIZATION.md`, separate baseline and contract records, and
-resume instructions that survive compaction. **Bundles must never be rebuilt while their jobs are live**
-— bash reads a script body lazily; each change went to a new bundle directory.
+**Records:** `OFFICEQA_STATE.md` is the one current state note and opens with the live jobs, the
+bundles that must not be rebuilt and the resume procedure. Frozen config and split manifests,
+`docs/research/jobs.tsv`, `OFFICEQA_AUTHORIZATION.md`, `OFFICEQA_IMPLEMENTATION_AMENDMENTS.md`
+(A-1…B-4, C-1, C-2, C-3), separate baseline and contract records, and resume instructions that survive
+compaction. **A bundle is never rebuilt while its jobs are live** — each change went to a new bundle
+directory, and the submit scripts now refuse a stage the deployed body does not contain.
 
 ---
 
 ## 8. Limitations, stated rather than left to inference
 
-1. **Not a reproduction of the SkillOpt paper**, and the config header says so: 12 training questions,
-   a **hosted FP8** actor rather than a local bfloat16 server, and an **offline** setting (parsed text
-   through local document tools, no web search). The algorithm is upstream's; the scale and environment
-   are ours.
-2. **6 of 30 held-out questions are UNTESTED for document availability** — selected mechanically and
+1. **Not a reproduction of the SkillOpt paper**, and the config header says so: 12 training questions, a
+   **hosted FP8** actor rather than a local bfloat16 server, an **offline** setting with no web search.
+   The algorithm is upstream's; the scale and environment are ours.
+2. **The headline comparison may not be resolvable at this size.** Original SkillOpt's accepted gain is
+   **one validation question**, and S0's own spread across four independent passes is ±1 question. A
+   30-question held-out set at two passes gives 60 attempts per endpoint; differences of one or two
+   questions should not be read as method differences.
+3. **6 of 30 held-out questions are UNTESTED for document availability** — selected mechanically and
    reported as unverified rather than filtered, since filtering on retrievability would be a selection
    the benchmark did not make.
-3. **One shared document between training and held-out.** Small, real, recorded.
-4. **The three-arm campaign's numbers are not a usable baseline** — broken actor client.
-5. **12 of the 48 S0 trajectories could have been reused and were not**, deliberately: one job, one
-   settings fingerprint, for about $0.01.
-6. **The occurrence channel is thinner on the 12 campaign training questions than on the 24-question
-   superset** (9/27/22 unique positions per fresh pass against 201), because four high-yield records —
-   UID0044, UID0228, UID0150, UID0165 — are in the *other* 12. The per-pass supported rates look higher
-   (0.78/1.00/0.82) but rest on 9–27 observations each. **No rate is claimed from them.**
-7. **Trace2Skill's analyst cannot validate its diagnoses** by implementing a fix — a direct consequence
+4. **One shared document between training and held-out** (UID0014 trains on the July 1942 bulletin p. 76,
+   UID0013 is held out on it). Small, real, recorded.
+5. **Trace2Skill needed three attempts** and its first two produced degraded consolidations; both are
+   preserved. The faithful run required raising the optimizer's output cap to 32,768, which is a
+   **departure from the released configuration** and is declared as one.
+6. **Trace2Skill's endpoint is 24,121 bytes against S0's 887** — a 27× expansion read at the start of
+   every task. Upstream's released skills are also large, so this is not anomalous, but it is a
+   confound for any comparison that cares about prompt length.
+7. **Trace2Skill's analyst cannot validate its diagnoses** by implementing a fix, a direct consequence
    of keeping answer keys out of analysts. Its causal claims rest on the trajectory alone.
-8. **The historical 44-hour CPU convention is still unsettled** and is untouched by this phase.
+8. **The spend ledger was inert for most of the campaign**, so this phase's spend record is the call-log
+   reconstruction and the caps are now enforced against an undercount of ~1,800 attempts (§3, §6f).
+9. **The occurrence channel is thinner on the 12 campaign training questions** than on the 24-question
+   superset (9/27/22 unique positions per pass against 201), because four high-yield records are in the
+   other 12. No rate is claimed from the small per-pass samples.
+10. **An intermittent violation of `spent <= cap`** in the shared spend ledger remains open, in code I
+    did not write (§6).
+11. **The historical 44-hour CPU convention is still unsettled** and untouched by this phase.
 
 ### Next actions
-1. Monitor epochs 2–4 and Trace2Skill. On a TIMEOUT, resubmit the same stage with the same output
-   directory; completed episodes and cached replies are reused.
-2. Repair C-1 defects **A** and **B**, each with its own prediction committed before its own replay.
-3. Compile Lean against the C-1 facts — `unknownBindingNeverViolates` is already the right theorem —
-   and state precisely that it verifies the resolution algebra, not extraction correctness.
-4. Then the learner (a genuinely learned rule), a supported diagnosis on a later record, and the
-   recovered control on UID0026.
-5. On completion: export the validation-selected endpoint, then the three held-out evaluations.
+1. Collect the three held-out results and report completion and provenance; **keep the scores sealed**
+   until you say otherwise.
+2. The contract arm's real gap is the **learner** (§5e items 1–3): a genuinely learned rule over
+   column/series identity with its evidence, a supported diagnosis on a later record, and the
+   recovered-work control on UID0026. Deliberately not started tonight.
+3. Investigate the intermittent ledger overspend, or decide it is acceptable and record that.
+4. Decide whether the one-question validation margin makes a larger validation set worth the budget
+   before any further comparison is run on this setup.
