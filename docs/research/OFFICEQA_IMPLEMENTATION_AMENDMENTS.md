@@ -586,3 +586,63 @@ route is exactly what differs when one cell is seen twice. The earliest-availabl
 **What is still NOT claimed by either repair.** The column's meaning; that an unbound number is wrong;
 that a record without numbered observations failed. And neither repair touches the learned hypothesis,
 the stage vocabulary, the `reopen` semantics or `oqa_lc_cells`, which stays byte-identical.
+
+### C-2, measured: four predictions held, one was mis-stated, and one is still being discharged
+
+**Job 66552984 (free, 1:14).** Post-C-2 state frozen as label **v9**, bundle `3e82a6390357ccac`, in
+`v5_c2/`; v7, v8, `v3_occ/` and `v4_c1/` untouched, and `v2_bind` digest-verified unchanged (the
+preservation check, repaired after its false alarm, now reports VERIFIED in every phase).
+
+| over the same 24 records, 659 operands | old tie-break | under C-1 | under C-2 |
+|---|---:|---:|---:|
+| operands with a selected source cell | 566 | 102 | **257** |
+| …of which SOLE_CANDIDATE | — | 67 | **241** |
+| …of which OCCURRENCE_CORROBORATED | — | 35 | **16** |
+| refused for want of corroboration | — | 464 | **309** |
+| ledger obligations | 1,839 → **2,025** | 911 → **2,025** | **2,025** |
+| DISCHARGED | 254 | 81 | 192 |
+| **VIOLATED** | **186** | **30** | **69** |
+| OUTSTANDING | 19 | 30 | 19 |
+| UNKNOWN | 1,566 | 1,745 | 1,745 |
+
+**Prediction 1 HELD, and sharply.** Both arms now carry **exactly 2,025 obligations** — the state
+deltas sum to zero (−117 VIOLATED, −62 DISCHARGED, +179 UNKNOWN). The gate changes obligation *states*
+and never their existence, which is the property worth having and was the falsifiable part.
+
+**Prediction 3 HELD.** Selections rose from 102 to 257 and stayed far below the old 566.
+
+**Prediction 4 HELD for its claim and was INCOMPLETE.** The rise is in `SOLE_CANDIDATE` (67 → 241), as
+predicted. But `OCCURRENCE_CORROBORATED` **fell** (35 → 16), which I did not anticipate. The mechanism
+is benign and follows from the repair: 19 operands whose ties collapsed to one cell no longer need
+corroboration, so they moved from corroborated to sole-candidate. Explained, but not predicted.
+
+**Prediction 2 is VIOLATED AS WRITTEN, and the fault is in how I wrote it.** It said DISCHARGED and
+VIOLATED "will not rise above C-1's 81 and 30"; they rose to 192 and 69. The prediction was stated as
+though only defect A's repair were applied, when C-2 applies both: defect B restores 155 selections,
+and a restored binding legitimately produces discharges and accusations. The two sources ARE
+distinguishable — `test_the_recovered_requirements_are_never_accusations` pins that every record
+recovered by defect A is UNKNOWN — but the prediction conflated them and should have been split.
+
+**Prediction 5 is live and not yet discharged.** VIOLATED rose from 30 to 69. My own words: "any
+increase must be inspected witness by witness before it is believed, and an increase without an
+inspectable witness is a reason to withdraw the repair, not to report it." A count cannot be
+inspected, so the replay now carries **every accusation with its witness** and the inspection is the
+next step. **Until that inspection is done, C-2's accusations are NOT claimed as correct.** Note the
+direction: 69 is still well below the old tie-break's 186.
+
+**An independent validation of defect B, from a test that failed in the opposite direction.** The
+byte-reproduction guard on two real campaign reports expected UID0014's text to have CHANGED under C-1.
+Under C-2 it is **byte-identical to the historical report again**. So C-1's entire effect on that
+report was caused by SPURIOUS TIES rather than genuine ambiguity, and the blast radius of C-1+C-2 on
+historical report text is **zero**. The expectation is re-pinned to unchanged with that reason
+recorded, not quietly flipped.
+
+**An unrelated failure found by the same test run, reported not buried.**
+`test_four_concurrent_processes_cannot_spend_more_than_the_one_shared_cap` failed: *"four processes
+spent 24 against a cap of 23: [2, 18, 2, 2]"* — a real one-unit overspend in the shared spend ledger,
+which none of these amendments touch. It passed in three earlier jobs the same night, so it is either
+a race that sometimes loses or a load-dependent one. A ten-repeat diagnostic establishes which before
+anyone proposes a repair; it changes nothing. **Impact on the live campaign is immaterial** — one claim
+block against caps of 20,000 attempts and $15, with about $2 spent — but the invariant `spent <= cap`
+is the thing that protects the authorization, so it is recorded as an open defect rather than rounded
+away.

@@ -152,11 +152,44 @@ if [ "$PHASE" = "lean" ]; then
         --which descriptive --out "$V6" 2>&1 | tee "$OUTDIR/cc_check_c2.txt" || status=$?
     log "checker exit $status"
 
+    # PREDICTION 5 OF C-2 obliges me to inspect every accusation witness by witness. VIOLATED rose
+    # from C-1's 30 to C-2's 69, so the witnesses must be IN an artifact: a count cannot be inspected.
+    # This re-runs the replay with the witness-carrying version, into v6_lean so v5_c2 is preserved.
+    log "1b/3 re-replaying so every accusation is recorded WITH ITS WITNESS"
+    "$OQA_PY" -I research/officeqa/oqa_occ_replay.py \
+        --predictions "$COL/collect/predictions" \
+        --model "$CC18/CC_MODEL_v1.json" \
+        --records "$COL/collect/results.jsonl" \
+        --out "$V6" 2>&1 | tee "$OUTDIR/occ_replay_witnesses.txt" || status=$?
+    log "witness replay exit $status"
+
     log "2/3 generating and COMPILING the Lean file over those facts"
     "$OQA_PY" -I research/officeqa/oqa_cc_lean.py \
         --check "$V6/CC_CHECK_descriptive.json" --out "$V6" \
         --lean-bin "$OQA_LEAN_BIN" 2>&1 | tee "$OUTDIR/lean.txt" || status=$?
     log "lean export/compile exit $status"
+
+    # A DIAGNOSTIC, NOT A FIX. The campaign-guard test
+    # `test_four_concurrent_processes_cannot_spend_more_than_the_one_shared_cap` FAILED in job
+    # 66552984 with "four processes spent 24 against a cap of 23: [2, 18, 2, 2]" - a real one-unit
+    # overspend, in the spend ledger, which none of my changes touch. It had passed in three earlier
+    # jobs the same night, so the first question is whether it is deterministic or a race that
+    # sometimes loses. This runs it ten times and counts. It changes nothing; it only establishes
+    # which kind of problem it is before anyone proposes a repair.
+    log "2b/3 is the ledger concurrency failure deterministic? ten repeats"
+    : > "$OUTDIR/ledger_race.txt"
+    for i in $(seq 1 10); do
+        if "$OQA_PY" -m pytest -q -p no:randomly \
+            tests/test_officeqa_campaign_guards.py::test_four_concurrent_processes_cannot_spend_more_than_the_one_shared_cap \
+            >> "$OUTDIR/ledger_race.txt" 2>&1; then
+            echo "run $i PASS" >> "$OUTDIR/ledger_race.txt"
+        else
+            echo "run $i FAIL" >> "$OUTDIR/ledger_race.txt"
+        fi
+    done
+    log "  repeats: $(grep -c 'PASS$' "$OUTDIR/ledger_race.txt") pass, $(grep -c 'FAIL$' "$OUTDIR/ledger_race.txt") fail"
+    grep -hoE 'four processes spent [0-9]+ against a cap of [0-9]+: \[[0-9, ]+\]' "$OUTDIR/ledger_race.txt" \
+        | sort | uniq -c | head -6 >> "$OUTDIR/job.log" 2>/dev/null || true
 
     log "3/3 compiling the standing contract theorems too, from the tracked source"
     mkdir -p "$V6/standing" && cp research/officeqa/lean/OqaContracts.lean "$V6/standing/" 2>/dev/null

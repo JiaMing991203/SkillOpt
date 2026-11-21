@@ -62,14 +62,24 @@ def _old_tie_break(hits: list):
 
 
 def _ledger_states(chain: dict, operands: list) -> dict:
-    """Run the SAME obligations() over a given operand set, so only the selection differs."""
+    """Run the SAME obligations() over a given operand set, so only the selection differs.
+
+    The VIOLATED records are carried out with their witnesses. Amendment C-2's prediction 5 says a
+    restored binding can support an accusation and that "any increase must be inspected witness by
+    witness before it is believed", so the witnesses have to be IN the artifact; a count alone cannot
+    be inspected.
+    """
     variant = dict(chain)
     variant["operands"] = operands
     ledger = CHAIN.obligations(variant)
+    violated = [{"kind": o.get("kind"), "subject": o.get("subject"), "why": o.get("why"),
+                 "witness": o.get("witness"), "supports": o.get("supports")}
+                for o in ledger if str(o.get("state")) == "VIOLATED"]
     return {"states": collections.Counter(str(o.get("state")) for o in ledger),
             "n": len(ledger),
             "by_kind_state": collections.Counter(
-                f'{o.get("kind")}:{o.get("state")}' for o in ledger)}
+                f'{o.get("kind")}:{o.get("state")}' for o in ledger),
+            "violated": violated}
 
 
 def replay_one(prediction_dir: str, item: str, question: str, model: dict) -> dict:
@@ -109,8 +119,13 @@ def replay_one(prediction_dir: str, item: str, question: str, model: dict) -> di
              "occurrence": (o.get("selection") or {}).get("occurrence"),
              "corroborated_by": (o.get("selection") or {}).get("corroborated_by")}
             for o in corroborated[:4]],
-        "ledger_old": {"states": dict(before["states"]), "n": before["n"]},
-        "ledger_gated": {"states": dict(after["states"]), "n": after["n"]},
+        "ledger_old": {"states": dict(before["states"]), "n": before["n"],
+                       "n_violated": len(before["violated"])},
+        "ledger_gated": {"states": dict(after["states"]), "n": after["n"],
+                         "n_violated": len(after["violated"]),
+                         # every accusation the gated arm makes, with its witness, so prediction 5's
+                         # "inspect it witness by witness" is a thing a reader can actually do
+                         "violated": after["violated"]},
         "ledger_state_delta": {k: after["states"].get(k, 0) - before["states"].get(k, 0)
                                for k in set(before["states"]) | set(after["states"])
                                if after["states"].get(k, 0) != before["states"].get(k, 0)},
@@ -157,6 +172,11 @@ def main(argv=None) -> int:
 
     selected_old, selected_gated = tot("selected_old"), tot("selected_gated")
     prediction_held = (selected_gated <= selected_old)
+    # Prediction 1 of C-2: the two arms must have the SAME ledger size, because the gate changes
+    # obligation STATES and never their existence. Asserted here so the artifact answers it directly.
+    ledger_old_n = sum(r["ledger_old"]["n"] for r in per_item)
+    ledger_gated_n = sum(r["ledger_gated"]["n"] for r in per_item)
+    all_violated = [v for r in per_item for v in (r["ledger_gated"].get("violated") or [])]
     doc = {
         "schema": SCHEMA, "rule": RULE, "utc": _utc(), "commit": os.environ.get("OQA_COMMIT"),
         "label": "REUSED DEVELOPMENT EVIDENCE: training-split records, re-analysed offline. No "
@@ -174,7 +194,13 @@ def main(argv=None) -> int:
             "occurrence_corroborated": tot("n_occurrence_corroborated"),
             "selection_bases": dict(bases),
             "ledger_state_delta": dict(delta),
+            "ledger_obligations_old": ledger_old_n,
+            "ledger_obligations_gated": ledger_gated_n,
+            "ledger_size_identical": ledger_old_n == ledger_gated_n,
+            "accusations_under_the_gate": len(all_violated),
+            "accusation_kinds": dict(collections.Counter(v["kind"] for v in all_violated)),
         },
+        "every_accusation_with_its_witness": all_violated,
         "prediction_held": prediction_held,
         "verdict": ("the prediction HELD: the gate only withdrew selections"
                     if prediction_held else
@@ -189,7 +215,8 @@ def main(argv=None) -> int:
         json.dump(doc, f, indent=1, sort_keys=True, default=str)
     print(json.dumps({"written_to": path, "verdict": doc["verdict"],
                       "prediction_held": prediction_held,
-                      "totals": doc["totals"], "problems": problems[:4]}, indent=1, default=str))
+                      "totals": {k: v for k, v in doc["totals"].items()},
+                      "problems": problems[:4]}, indent=1, default=str))
     return 0 if prediction_held and not problems else 1
 
 
