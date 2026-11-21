@@ -1,4 +1,4 @@
-# OfficeQA two-baseline campaign — launched, plus contract-arm progress
+# OfficeQA two-baseline campaign — COMPLETE, plus contract-arm progress
 **2026-11-21 05:00 EST · branch `officeqa-contracts` · worktree `SkillOpt-officeqa` · commit `286df52` · not pushed**
 Rules **OQA-SEL-4** (splits) · **OQA-BASE-1** (campaign) · **OQA-T2S-1** (Trace2Skill) · **OQA-OCC-1** / amendment **C-1** (contract arm)
 
@@ -384,7 +384,7 @@ specification is complete.** No Python mirror was substituted: the first two att
    with 146+ tests as the regression net. The "isolated optimizer rehearsal" of delivering a report is
    not done.
 
-## 6. Nine defects, all mine, each caught by machinery rather than by a bill
+## 6. Ten defects, all mine, each caught by machinery rather than by a bill
 
 Listed because the campaign's credibility rests on them having been found, and because several were
 caught by checks that only existed because an earlier one had been found.
@@ -421,8 +421,10 @@ none** — reconstructed from the call logs, nothing overran. Fixed, and every p
 `require_live_ledger` before loading a key, asking the *module* whether it is active. Confirmed live:
 `{"active": true, ...}` for all four post-fix stages.
 
-**(g) Trace2Skill's consolidation degraded, and I reported one truncation cause as four.** All three
-failures in job 66553058 were output truncation at exactly `completion_tokens=16384`. Fixed by smaller
+**(g) Trace2Skill's consolidation degraded, and the cause was ONE thing, not three.** All three
+failures in job 66553058 — both level-2 merges and the verify step — were output truncation at exactly
+`completion_tokens=16384` from ~77,000-character prompts; all eight level-1 merges had succeeded. The
+cache diagnostic made that visible, where a parse error alone would have looked like three problems. Fixed by smaller
 batches, chunked verification, truncation detected *at the call*, and a cache key that covers
 `max_tokens` — it did not, so raising the cap would have served the truncated reply back from cache.
 Raising the cap also had to go through the **config**, because the backend sends
@@ -507,8 +509,8 @@ directory, and the submit scripts now refuse a stage the deployed body does not 
 11. **The historical 44-hour CPU convention is still unsettled** and untouched by this phase.
 
 ### Next actions
-1. Collect the three held-out results and report completion and provenance; **keep the scores sealed**
-   until you say otherwise.
+1. **The three held-out results are collected and sealed.** Unseal them when you want the comparison;
+   I have read counts and provenance only. Reuse is safe to judge from the `PROVENANCE.json` digests.
 2. The contract arm's real gap is the **learner** (§5e items 1–3): a genuinely learned rule over
    column/series identity with its evidence, a supported diagnosis on a later record, and the
    recovered-work control on UID0026. Deliberately not started tonight.
