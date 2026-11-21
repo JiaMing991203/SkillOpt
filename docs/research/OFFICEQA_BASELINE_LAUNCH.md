@@ -197,43 +197,51 @@ trajectories: **0 violations, 7 explained hits.**
 
 ---
 
-## 3. Reserved and remaining resources
+## 3. Resources — measured, not projected
 
-Fresh ledger at zero: `runs/20261121-officeqa-two-baselines/ledger`. The three-arm campaign's ledger is
-deliberately **not** reused, so this allowance and the historical spending are never summed into one
-cap. This does not retrospectively approve the old overrun or settle the accounting convention.
+### CPU, under the convention that charges a started job its FULL REQUESTED LIMIT
 
-| Resource | Authorized | Reserved by submitted jobs | Remaining |
+| group | jobs | **requested h** | elapsed h |
 |---|---:|---:|---:|
-| Requested CPU job-hours | 50 | **11.33** | 38.67 |
-| GPUs | 0 | 0 | 0 |
-| Actor attempts | 20,000 | ~3,360 projected | ~16,640 |
-| Actor USD | $15.00 | ~$2.12 projected | ~$12.88 |
-| DeepSeek calls | 400 | ~117 projected | ~283 |
-| DeepSeek USD | $20.00 | low units projected | — |
+| **Trace2Skill (7 submissions)** | 7 | **17.50** | 0.73 |
+| Original SkillOpt epochs | 4 | 6.25 | 1.02 |
+| held-out | 3 | 4.50 | — |
+| contract arm | 7 | 3.00 | 0.14 |
+| S0 reference / prep | 3 | 2.17 | 0.44 |
+| **total** | **24** | **≈33.4 of 50** | — |
 
-CPU reserved = prep 0:20 + S0 1:30 + epochs (1:00 + 3×1:45) + t2s 2:30 + contract 0:45 = **11:20**. The
-three held-out endpoints add 3 × 1:30 = 4:30 → **15:50 of 50**, leaving **34:10 of recovery headroom**.
+**Requested is ~14× elapsed, and 17.5 of it is one stage's retries** (§6j). About **16.6 requested
+hours remain**.
 
-**Whole-campaign projection, computed and checked against the ceilings by the preflight:** 396
-episodes, **5,544 actor attempts**, **$3.49**, **117 optimizer calls** — all inside the caps.
-Trace2Skill contributes **0 rollouts**: it reuses the S0 trajectories.
+### API spend — the authoritative figure is the call-log reconstruction
 
-> **A correction to my own first projection.** It said 56 Trace2Skill optimizer calls and omitted the
-> method's entire MAP phase. The real count is 105 (48 analysis + 48 map + 7 merges + apply/verify);
-> campaign-wide 68 → **117**, still well inside 400. The t2s walltime rose 1:00 → 2:30 for the same
-> reason: 105 calls at two requests in flight is ~53 sequential slots.
+Because the ledger was inert for most of the campaign (§6f), the ledger's own totals are a **partial
+view**: they begin only at the fix and miss the first 1,801 actor attempts. Reconstructed from the
+per-job call logs, which do exist for every stage:
 
-Concurrency as instructed: ≤4 CPU jobs (at most 2 ran at once), 4 actor requests, 2 DeepSeek requests.
-**Resume:** `eval_only.py` and `run_batch` resume by id; every Trace2Skill call is cached by prompt
-digest, so a TIMEOUT costs only the calls that had not happened. The body refuses to run under
-`SLURM_RESTART_COUNT != 0`, so a requeue can never re-spend — recovery is always deliberate.
+| | calls | of cap | USD | of cap |
+|---|---:|---:|---:|---:|
+| Actor (EmpirioLabs, qwen3-5-4b) | ~2,400 | 20,000 (12%) | ~$1.21 | $15.00 (8%) |
+| Optimizer (DeepSeek Flash) | ~185 | 400 (46%) | ~$1.59 | $20.00 (8%) |
 
-**Historical, separate and unchanged:** EmpirioLabs 12,042 of 30,024 attempts and $8.0147 of $17.00;
-DeepSeek 105 of 266 and $3.4689 of $10.00; CPU **disputed** — 35.649 of 44 core-hours or 66.483 of 44
-requested walltime. **Which convention governs that 44-hour ceiling is still your decision.**
+Nothing overran. The optimizer's *call* count is the tightest of the four, at a little under half,
+and the held-out stage makes no optimizer calls. **GPUs: 0 of 0, as authorized.**
 
----
+**A consequence worth stating:** the caps are now enforced against an undercount of roughly 1,800
+attempts and $0.89, so the effective actor ceiling for the remainder of this phase is that much higher
+than intended. With a true total near 12% of the cap this creates no risk, but it means the ledger
+cannot be cited as this phase's spend record — the call logs are. A phase started with a live ledger
+will not have the discrepancy.
+
+**Concurrency** held to the instruction throughout: at most 4 CPU jobs (the peak was 3), 4 actor
+requests, 2 DeepSeek requests. **Resume** worked as designed — the Trace2Skill cache carried 94 to 97
+paid replies across each resubmission, so five retries of a 48-trajectory analysis cost the analysis
+once.
+
+**Historical accounting, separate and untouched:** EmpirioLabs 12,042 of 30,024 attempts and $8.0147 of
+$17.00; DeepSeek 105 of 266 and $3.4689 of $10.00; CPU **disputed** — 35.649 of 44 core-hours or 66.483
+of 44 requested walltime. **Which convention governs that 44-hour ceiling remains your decision**, and
+nothing in this phase bears on it.
 
 ## 4. Evidence: what ran and what it showed
 
@@ -370,62 +378,75 @@ specification is complete.** No Python mirror was substituted: the first two att
    with 146+ tests as the regression net. The "isolated optimizer rehearsal" of delivering a report is
    not done.
 
-## 6. Five defects of mine, each caught by machinery, none of which spent anything
+## 6. Nine defects, all mine, each caught by machinery rather than by a bill
+
+Listed because the campaign's credibility rests on them having been found, and because several were
+caught by checks that only existed because an earlier one had been found.
 
 **(a) The preflight asserted the backend's defaults and called them the campaign's settings.** Job
-66552338 (free) failed with 36 of 38 checks passing and `outbound/model` = `gpt-4o-mini`,
-`outbound/base_url` = `api.openai.com`. The config was correct; my preflight read
-`_initial_config("target")`, which reads **only** role environment variables, in a process that had
-never applied the config. The config reaches the backend only via `configure_openai_compatible`
-(`trainer.py:843`), which the preflight now calls before asserting, reading the **live** config. Added
-`outbound/not_the_backend_fallback` in the opposite direction — an unset base URL silently becoming
-OpenAI's should be caught by a preflight, not by a bill. The five paid dependents were correctly held by
-`afterok` and cancelled.
+66552338 (free): `outbound/model` = `gpt-4o-mini`, `outbound/base_url` = `api.openai.com`. It read
+`_initial_config("target")`, which reads only role env vars, in a process that had never applied the
+config. The config reaches the backend only via `configure_openai_compatible`
+(`trainer.py:843`). Fixed, plus a new check that the fallbacks are **not** in force.
 
-**(b) Trace2Skill's boundary guard conflated a correct answer with a leaked key.** Job 66552508 aborted
-after 2 seconds with "1 ground-truth string(s) appear in an outbound prompt", before any paid call. The
-hits were real and were not leaks: UID0017's `[10102000000, 4.73]` and UID0033's `March 3, 1977`, both
-in an **actor message**, both the question's own key, both on episodes the actor **answered correctly**.
-On a correct episode the actor's own answer **is** the ground-truth string — so a string scan refuses
-exactly the episodes the success analyst needs, and the same conflation would fire on any value the
-actor legitimately *read*. The guard is now about **provenance**: a key in a prompt is EXPLAINED if the
-permitted corpus also contains it, and a VIOLATION only if it does not, since then it can only have come
-from the evaluator. An empty corpus explains nothing, so it still fails closed. Verified on the real 48:
-**0 violations, 7 explained hits.**
+**(b) Trace2Skill's boundary guard conflated a correct answer with a leaked key.** Job 66552508, 2
+seconds, no paid call. The hits were real and not leaks: UID0017's `[10102000000, 4.73]` and UID0033's
+`March 3, 1977`, both in an **actor message**, both on episodes the actor **answered correctly**. On a
+correct episode the actor's own answer **is** the ground-truth string. Now a provenance predicate.
 
-**(c) Trace2Skill never configured the optimizer route.** Job 66552741 made **zero** paid calls; all 48
-analysis calls raised `ValueError: Azure OpenAI endpoint is not configured for optimizer`.
-`chat_optimizer` is a **router whose default is Azure**, and a config file does not reach it without
-`set_optimizer_backend` + `configure_openai_compatible`. This was the **same lesson as (a), hours
-apart** — and the campaign body's own header already documents the hazard from job 66271190. I fixed the
-preflight for it and failed to carry it across. `configure_models` now runs before anything is built,
-reads the live config back, records it, and **refuses a route that is not DeepSeek**.
+**(c) Trace2Skill never configured the optimizer route.** Job 66552741: all 48 calls raised *"Azure
+OpenAI endpoint is not configured"*, zero paid. `chat_optimizer` is a router whose default is Azure.
+**This was the same lesson as (a), hours apart**, and a standing memory had already warned that it
+"applies to scripts that run outside SkillOpt's trainer too".
 
-**(d) The dry run reported healthy both times** because it short-circuited before configuring anything —
-a self-check that skipped the thing most likely to be wrong. It now configures too, and the stage
-refuses to proceed if the guard fires.
+**(d) The dry run reported healthy for both (b) and (c)** because it short-circuited before configuring
+anything — a self-check that skipped the thing most likely to be wrong. It now configures too.
 
-**(e) A missing `collections` import**, caught by that dry run (job 66552763). The real run reaches the
-line only after its analysis calls, so it spends then crashes — but every reply is cached by prompt
-digest on durable storage, so the resubmission reuses them and nothing is wasted. The local dry run that
-would have caught it can no longer run, because `configure_models` imports skillopt (Python 3.10+). Two
-guards replace it: pyflakes over these modules, and a test that walks the AST for `<stdlib>.<attr>` uses
-and asserts each module is imported.
+**(e) A missing `collections` import**, caught by that dry run. pyflakes and an AST test now cover the
+class.
 
-**And one false alarm of mine, corrected rather than dismissed.** A job reported "v2_bind CHANGED". It
-had not — all four digests are byte-identical to the previous job's record. I had moved the
-before-snapshot inside one phase's branch while the after-check stayed outside, so the replay phase
-compared an empty before against a populated after. The snapshot now runs in every phase. A preservation
-check that cries wolf is worse than none.
+**(f) THE SPEND LEDGER WAS INERT FOR THE WHOLE CAMPAIGN.** `spend_ledger.py` is *"INERT BY DEFAULT —
+with `SKILLOPT_SPEND_LEDGER_DIR` unset this module does nothing at all"*. My body set every cap and
+never set that variable: **0 claims, 0 spend records**, caps configured and unenforced throughout. The
+prep stage's own `LEDGER_BEFORE.json` said `{"active": false}` and I quoted it in a status check without
+following it up; the prep stage's ledger self-test passed, but it exercises the mechanism in its own
+temp directory and says nothing about whether this campaign is wired to it. **Measured consequence:
+none** — reconstructed from the call logs, nothing overran. Fixed, and every paid stage now calls
+`require_live_ledger` before loading a key, asking the *module* whether it is active. Confirmed live:
+`{"active": true, ...}` for all four post-fix stages.
 
-**A historical report moved, and that is recorded rather than re-pinned silently.** A-1 promised
-metadata-only changes and a test guarded it by regenerating two real campaign reports byte-for-byte. C-1
-supersedes that for the source-binding section: **UID0014's report changes, UID0019's does not.** The
-test now pins that blast radius *per case* and still asserts the model digest, trace digest and action
-forecasts are unchanged — a change in any of those would mean C-1 reached further than its amendment
-claims.
+**(g) Trace2Skill's consolidation degraded, and I reported one truncation cause as four.** All three
+failures in job 66553058 were output truncation at exactly `completion_tokens=16384`. Fixed by smaller
+batches, chunked verification, truncation detected *at the call*, and a cache key that covers
+`max_tokens` — it did not, so raising the cap would have served the truncated reply back from cache.
+Raising the cap also had to go through the **config**, because the backend sends
+`min(per_call, config.max_tokens)` — the same silent-clamp pattern as the actor's output cap.
 
----
+**(h) I inferred a fact from a test NAME without reading its assertion.** I reported that C-2 had
+restored a historical report byte-identically, and drew two further conclusions from it. The assertion
+that actually failed was a later one in the same test — *"the stage group count keeps its historical
+value", `assert 17 == 14`*. A determinism probe (16 regenerations) showed generation is deterministic and
+the digest had differed continuously since C-1. **All three claims withdrawn.**
+
+**(i) I submitted a phase against a stale bundle** (job 66553061, `unknown PHASE=lean`). Both submit
+scripts now check the deployed body first — and **the first version of that guard would have rejected
+every valid stage of the campaign script**, because it matched only `$PHASE` while that body uses
+`$STAGE`. Caught by self-testing the guard against both bodies before deploying it.
+
+**(j) The walltime, not the retries, was the CPU expense.** Seven Trace2Skill submissions at 2:30 each
+consumed **17.50 of the 50 authorized requested job-hours for 44 minutes of compute** — 64% of the
+allowance, under the convention that charges a started job its full request. The stage is now requested
+at 0:45, its measured runtime plus margin. The retries were necessary; the walltime was not.
+
+**And one false alarm, corrected rather than dismissed.** A job reported "v2_bind CHANGED". It had not —
+all four digests matched the previous job's record. I had moved the before-snapshot inside one phase's
+branch while the after-check stayed outside. A preservation check that cries wolf is worse than none.
+
+**One defect that is NOT mine and remains open.**
+`test_four_concurrent_processes_cannot_spend_more_than_the_one_shared_cap` failed once with *"four
+processes spent 24 against a cap of 23: [2, 18, 2, 2]"* — a real violation of `spent <= cap` in the
+shared spend ledger. **Intermittent, not deterministic: ten repeats, ten passes.** Immaterial here
+(~$1.20 against $15) but it is the invariant the authorization rests on.
 
 ## 7. Evaluation and reporting, as it will run
 
