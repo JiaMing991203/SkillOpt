@@ -1,5 +1,5 @@
 # OfficeQA two-baseline campaign — launched, plus contract-arm progress
-**2026-11-21 05:00 EST · branch `officeqa-contracts` · worktree `SkillOpt-officeqa` · commit `HEAD` · not pushed**
+**2026-11-21 05:00 EST · branch `officeqa-contracts` · worktree `SkillOpt-officeqa` · commit `286df52` · not pushed**
 Rules **OQA-SEL-4** (splits) · **OQA-BASE-1** (campaign) · **OQA-T2S-1** (Trace2Skill) · **OQA-OCC-1** / amendment **C-1** (contract arm)
 
 Abbreviations on first use: **S0** = the unchanged starting skill document. **Actor** = the frozen
@@ -19,7 +19,7 @@ finished — 180 held-out episodes, 30/30 in both passes for every endpoint. **S
 | 66552421 | S0 reference, 48 training + 12 validation | **COMPLETED** 23:16, all 12/12 |
 | 66552422–425 | **Original SkillOpt** epochs 1–4 | **ALL COMPLETED** |
 | 66553248 | **Trace2Skill**, third attempt | **COMPLETED** 13:33 — the faithful run |
-| 66553250 / 66553251 / 66553363 | held-out: S0 / Original SkillOpt / Trace2Skill | running or done, 2 passes × 30 each |
+| 66553250 / 66553251 / 66553363 | held-out: S0 / Original SkillOpt / Trace2Skill | **ALL COMPLETED** — 2 passes × 30 each, 30/30 throughout |
 | 66552633, 66552721, 66552984 | contract: v7, v8 + C-1 replay, v9 + C-2 replay | all did their work |
 | 66553083 | contract: **Lean compiled** | work COMPLETED |
 | 66553105 | contract: determinism probe | work COMPLETED |
@@ -76,10 +76,6 @@ preserved as `trace2skill_degraded_66553058/` and `trace2skill_partial_66553156/
 All three wrote a `PROVENANCE.json` under one config digest `671eb1d42293` and one commit
 `c35df7ef6ba6`, rule OQA-SEL-4, split `valid_unseen`, n=30, passes=2. **180 held-out episodes, every
 one of 30/30 in both passes for all three endpoints — no partial pass, no dropped question.**
-
-Each writes a `PROVENANCE.json` carrying the skill digest, config digest, commit, frozen-set rule,
-split, question count and pass count — the complete effective inputs the reuse rule needs.
-**Scores and trajectories stay sealed.**
 
 ## 2. The frozen setup
 
@@ -161,7 +157,8 @@ upstream's `ParallelSkillEvolver`, **not** a one-shot summary:
 ```
 ANALYSIS  one call per trajectory   error analyst if it failed, success analyst if it passed
 MAP       one call per record       -> a semantic patch, in parallel
-REDUCE    HIERARCHICAL              48 patches -> 6 batch merges (size 8) -> 1 final merge
+REDUCE    HIERARCHICAL              batches of 3, up to 6 levels; the run went 60 -> 22 -> 11 -> 6 -> 2 -> 1
+                                     (upstream's markdown default is 8/4, which TRUNCATED here - see §6g)
 APPLY     the merged patch becomes the new skill document
 VERIFY    every item checked: APPLIED / PARTIAL / MISSING, plus UNREQUESTED content
 ```
