@@ -7,23 +7,27 @@
 #     chain       -     paid     prep -> s0 -> Original SkillOpt epochs 1..4, as one dependency chain
 #     s0          1:30  paid     four passes of the 12 training questions + the validation baseline
 #     arm         -     paid     Original SkillOpt epochs 1..4 only (needs an existing s0)
-#     t2s         2:30  paid     Trace2Skill over the 48 saved trajectories
+#     t2s         0:45  paid     Trace2Skill over the 48 saved trajectories
 #     heldout     1:30  paid     one endpoint, two passes of the 30 held-out questions (needs OQA_SKILL)
 #
 # THE WALLTIME BUDGET, because requested walltime is what the strict accounting convention charges:
 #
 #     prep     0:20          s0       1:30          arm e1   1:00          arm e2-e4  1:45 each
-#     t2s      2:30          heldout  1:30 per endpoint, three endpoints
+#     t2s      0:45          heldout  1:30 per endpoint, three endpoints
 #
 #     chain = 0:20 + 1:30 + 1:00 + 3x1:45 = 8:05 requested
-#     t2s + three held-out endpoints      = 2:30 + 4:30 = 7:00 requested
-#     total                               = 15:05 of the 50 authorized, leaving 34:55 of recovery headroom
+#     t2s + three held-out endpoints      = 0:45 + 4:30 = 5:15 requested
 #
-# WHY t2s IS 2:30 AND NOT 1:00. Its call count is 105, not the 56 first projected: one analysis
-# call per trajectory AND one MAP call per analysis record, plus seven hierarchical merges and
-# apply/verify. At two DeepSeek requests in flight that is ~53 sequential slots, and the analysis
-# prompts each carry a whole trajectory. Every reply is cached by prompt digest, so a TIMEOUT is
-# resumed for the price of the calls that had not yet happened.
+# WHY t2s IS 0:45, DOWN FROM 2:30, AND WHAT THE FIRST GUESS COST. 2:30 was a projection; the stage's
+# measured runtime is 17:42 (job 66553156) with 42 paid calls, most replies served from cache. Under
+# the established convention of counting a started job at its FULL REQUESTED LIMIT, seven submissions
+# of this stage at 2:30 each consumed 17.50 of the 50 authorized requested job-hours - 64 per cent of
+# the campaign's CPU allowance - for 44 MINUTES of actual compute. The retries were necessary; asking
+# for 2:30 each time was not.
+#
+# THE LESSON, because it generalises: when a stage can fail in seconds, an over-generous walltime is
+# not free insurance. Size the request to the MEASURED runtime plus margin, and rely on resume - every
+# reply is cached by prompt digest - rather than on a long request.
 #
 # SIZING, from measurement rather than estimate. The 2026-11-18 collection ran 24 episodes in 15:49 with
 # workers=4, so one episode costs about 2.7 minutes of single-worker time and four workers clear roughly six
@@ -130,7 +134,7 @@ chain)
     done
     ;;
 t2s)
-    sub oqa-base-t2s 02:30:00 4 16G "${OQA_DEP:-}" \
+    sub oqa-base-t2s 00:45:00 4 16G "${OQA_DEP:-}" \
         "STAGE=t2s,OQA_S0_DIR=$S0_DIR,OQA_T2S_OUT=$T2S_OUT"
     ;;
 heldout)
