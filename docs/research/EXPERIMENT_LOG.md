@@ -1971,3 +1971,44 @@ replay; the amendment's own prediction of zero effect on bindings was correct.
 **What was NOT done.** No vocabulary expansion, no same-message postcondition change, no table-unit
 scope-rule change, no learned-model change, no skill edit, no learner call, no validation or held-out
 evaluation, no performance campaign. The baseline was digest-verified unchanged in both jobs.
+
+## OQA-BASE-1 — two-baseline OfficeQA campaign, 2026-11-21
+
+**Question.** How do Original SkillOpt and Trace2Skill compare on OfficeQA, measured with the corrected
+actor client against the unchanged starting skill S0?
+
+**Setup, frozen before submission.** Rule OQA-SEL-4, `OFFICEQA_FROZEN_SETS_V4.json`, digest
+`b0dbbd4be97fc245`: train 12, val 12 (reused for every selection gate), held-out 30 at two attempts per
+endpoint. Disjoint; strata from released metadata; 6 of 30 held-out UNTESTED for availability; one
+document shared between train and held-out.
+
+Config `configs/research/officeqa_base2.yaml` (`_base_: officeqa_api.yaml`). Resolved and asserted:
+num_epochs 4, batch_size 40 (one step per epoch over 12), use_slow_update true,
+slow_update_gate_with_selection true, use_meta_skill true, slow_update_samples **6**,
+longitudinal_pair_policy mixed, use_gate true, sel_env_num 0, eval_test false, analyst_workers 2.
+
+Effective outbound settings, read from the live backend config after `configure_openai_compatible` and
+cross-checked against 285 transmitted requests: `qwen3-5-4b` on `https://api.empiriolabs.ai/v1`,
+temperature 0.7, max_tokens **8,000**, `extra_body {"enable_thinking": false}` (effective — 0
+alternate-reasoning characters), narrow `committed_answer` recovery, 24 tool turns, 4 queries per turn,
+offline local tools, 4 workers. Starting skill S0 887 bytes `9d377d1c2906`. Tool schemas `7e4fe0e714eb`.
+
+**Arms.**
+* *Original SkillOpt framework baseline* — `scripts/train.py` with `OFFICEQA_STAGE_REPORT_DIR` unset,
+  so the analyst prompt is byte-identical to upstream's. Epoch 1 consumes the injected s0 pass-1
+  rollout and validation baseline.
+* *Trace2Skill* — upstream pinned at `3d0b52a140f002a512930252b613c49048f7d5ac`; analysis per
+  trajectory, MAP per record, hierarchical REDUCE, apply, verify, over 48 fixed-S0 trajectories. No
+  actor key is loaded in that stage, which proves it rolls out nothing.
+
+**Jobs.** 66552338 prep FAILED (free; its own preflight defect). 66552420 prep COMPLETED — 2,428 tests
+passed, split id-matched, ledger self-test held on NFS, preflight READY 39 pass / 0 warn / 0 fail.
+66552421 s0 RUNNING, gated first-3 checkpoint passed. 66552422-425 Original SkillOpt epochs 1-4.
+66552508 Trace2Skill. Bundles `oqa_base_20261121b` (a8f80fa) and `oqa_base_20261121c` (3765139).
+
+**Allowance.** Separate phase ledger starting at zero in
+`runs/20261121-officeqa-two-baselines/ledger`. 50 requested CPU job-hours, 0 GPUs, 20,000 actor
+attempts and $15, 400 DeepSeek calls and $20. Reserved 10.58 CPU hours; projection 396 episodes, 5,544
+attempts, $3.49, 117 optimizer calls.
+
+**Status.** Running. Held-out scores sealed pending contract-arm development.

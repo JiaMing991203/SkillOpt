@@ -1749,3 +1749,55 @@ against 40); under core-hours it stands at 81%. The reported 41.69 was a mixed t
 40.585. I have not chosen a convention. And job 66414832 exited 1 because the semantic-bundle guard
 refused to let the label v6 mean two things after I changed two semantic-function sources between runs —
 the guard working, and a real inconsistency in my own artifacts that the packet records rather than hides.
+
+## 2026-11-21 — the two-baseline OfficeQA campaign is launched (OQA-SEL-4, OQA-BASE-1, OQA-T2S-1)
+
+Both baselines submitted before any contract work, as instructed: nothing waited on contract readiness,
+a document-rendering overhaul, or the unresolved CPU accounting. There was no in-flight OfficeQA job to
+continue — the last one ended 2026-11-18 — so this is a fresh submission, not a duplicate.
+
+**Why a new campaign at all.** The three-arm campaign of 2026-11-17 ran through the BROKEN actor client,
+under which S0 scored 4/24 against 9.75/24 corrected. Its numbers measure a defect and sampling
+together and cannot serve as a baseline. This campaign re-measures with the corrected client.
+
+**Splits (OQA-SEL-4, digest b0dbbd4be97fc245).** 12/12/30, disjoint, 0 problems. Train and val are
+OQA-SEL-2's carried forward unchanged; held-out retains OQA-SEL-2's 24 and draws 6 more from
+OQA-SEL-3's 60 by sha256("OQA-SEL-4"+uid). Every set is a subset of the freeze it claims to subset and
+no item changed the role an earlier freeze gave it, which a test asserts. Prior research exposure and
+source-document overlap are recorded because they were asked for by name: the overlap is small and NOT
+empty — train and held-out share exactly one document (UID0014 trains on the July 1942 bulletin p. 76,
+UID0013 is held out on it).
+
+**A misleading record corrected.** `env.max_completion_tokens: 16384` reaches no prompt and no API
+call; its only consumer is `rollout_settings_fingerprint`. The transmitted cap is
+`model.target_openai_compatible_max_tokens` = 8,000, confirmed on all 285 requests of the 2026-11-18
+collection. The inert 16384 is deliberately left in place and documented: changing it would invalidate
+the fingerprint of every saved S0 trajectory and force Trace2Skill to re-pay for 12 rollouts.
+
+**Trace2Skill was pinned before being adapted**, at upstream commit 3d0b52a. Its structure is
+reproduced, not summarised: per-trajectory analysis, one MAP call per analysis record, HIERARCHICAL
+reduce (48 -> 6 batch merges at size 8 -> 1 final), apply, verify. Four adaptations are declared with
+reasons, the sharpest being the choice of upstream's single-call analyst over its agentic one, because
+the agentic analyst is handed the ground-truth file and our rule keeps answer keys in scoring. The
+consequence is stated rather than hidden: our analyst cannot validate a diagnosis by implementing a
+fix, so upstream's causality requirement is weakened to what the log supports.
+
+**Two defects found, both mine, both in safety machinery.** (a) The preflight read
+`_initial_config("target")` in a process that had never applied the config, so it reported the
+backend's own fallbacks — gpt-4o-mini on api.openai.com — and called them the campaign's settings. Job
+66552338 failed on exactly that and was right to; it cost nothing, and the five paid dependents were
+correctly held by afterok. The config reaches the backend only through `configure_openai_compatible`
+(trainer.py:843), which the preflight now calls before asserting. A new check in the opposite direction
+asserts the fallbacks are NOT in force, because an unset base URL silently becoming OpenAI's should be
+caught by a preflight rather than by a bill. (b) Trace2Skill's final consolidation merge was
+unprotected while the batch merges were shielded, so a provider error there would have discarded every
+proposal the run had paid for; it now degrades to a local coalesce that keeps every item and records
+that no model resolved the conflicts.
+
+**A projection corrected by re-deriving it.** My first optimizer-call estimate omitted Trace2Skill's
+entire MAP phase: 56 became 105 for that method and 68 became 117 campaign-wide, still well inside the
+400 authorized. The t2s walltime rose 1:00 -> 2:30 for the same reason.
+
+Report: `docs/research/OFFICEQA_BASELINE_LAUNCH.md`. Jobs 66552420 (prep, COMPLETED, preflight READY
+39/0/0, 2,428 tests), 66552421 (s0, RUNNING, gated checkpoint passed), 66552422-425 (Original SkillOpt
+epochs), 66552508 (Trace2Skill). 10.58 of 50 requested CPU job-hours reserved.

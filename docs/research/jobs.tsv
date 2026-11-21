@@ -119,3 +119,11 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66412183	oqa-col-tests	455e267	COMPLETED	2390 passed, 9 skipped, 368 subtests
 66414726	oqa-bind-all	13ca17c	COMPLETED	B-4 replay; 2404 tests; bundle v6 36c37a397eddaa65; 0 supported bindings
 66414832	oqa-bind-all	f80ec8d	FAILED	leaf carried (43 operands, 12 predictions); exit 1 = v6 bundle guard refusing to redefine a label
+66552338	2026-11-21T02:44	oqa-base-prep	FAILED	00:01:29	00:20:00	2	OQA-BASE-1 prep; preflight BLOCKED on its own defect (read the backend's defaults, not the applied config); free, no key loaded; 5 dependents held by afterok then cancelled
+66552420	2026-11-21T02:49	oqa-base-prep	COMPLETED	00:01:18	00:20:00	2	OQA-BASE-1 prep; 2428 tests pass, 12/12/30 split materialized and id-matched, ledger self-test held on NFS, preflight READY 39/0/0; bundle oqa_base_20261121b a8f80fa
+66552421	2026-11-21T02:51	oqa-base-s0	RUNNING	-	01:30:00	4	OQA-BASE-1 s0; 4 passes x 12 train + 12 val under S0 9d377d1c2906; gated first-3 checkpoint PASSED 02:54
+66552422	2026-11-21T02:49	oqa-base-A-e1	PENDING	-	01:00:00	4	Original SkillOpt epoch 1; injects s0 pass 1 + val baseline, pays only the candidate gate pass
+66552423	2026-11-21T02:49	oqa-base-A-e2	PENDING	-	01:45:00	4	Original SkillOpt epoch 2; first gated slow update, slow_update_samples 6
+66552424	2026-11-21T02:49	oqa-base-A-e3	PENDING	-	01:45:00	4	Original SkillOpt epoch 3
+66552425	2026-11-21T02:49	oqa-base-A-e4	PENDING	-	01:45:00	4	Original SkillOpt epoch 4
+66552508	2026-11-21T02:58	oqa-base-t2s	PENDING	-	02:30:00	4	Trace2Skill over s0's 48 trajectories; NO actor key loaded; bundle oqa_base_20261121c 3765139; upstream pinned 3d0b52a

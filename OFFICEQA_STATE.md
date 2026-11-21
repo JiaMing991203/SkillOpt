@@ -1,7 +1,107 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-19, after the source-binding investigation. Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. NOT pushed. Tracked tree clean. NO OfficeQA job running.**
+**Last update: 2026-11-21 03:05 EST, after launching the two-baseline campaign. Branch
+`officeqa-contracts`, worktree `SkillOpt-officeqa`, commit `1ad701c`. NOT pushed. Tracked tree clean.
+SIX OfficeQA JOBS LIVE — see below before doing anything.**
+
+## START HERE -> `docs/research/OFFICEQA_BASELINE_LAUNCH.md` (rules OQA-SEL-4, OQA-BASE-1, OQA-T2S-1)
+
+**BOTH BASELINES ARE SUBMITTED AND RUNNING. Do NOT resubmit them.** Check live state first:
+`squeue -u $USER | grep oqa-base` and `sacct -X -j 66552420,66552421,66552422,66552423,66552424,66552425,66552508`.
+
+| job | stage | walltime | depends on |
+|---|---|---:|---|
+| 66552420 | prep (free) — **COMPLETED**, preflight READY 39/0/0, 2,428 tests | 0:20 | — |
+| 66552421 | s0 reference: 4 passes x 12 train + 12 val — **RUNNING**, gated checkpoint passed | 1:30 | 66552420 |
+| 66552422 | Original SkillOpt epoch 1 | 1:00 | 66552421 |
+| 66552423/4/5 | Original SkillOpt epochs 2 / 3 / 4 | 1:45 each | the previous epoch |
+| 66552508 | **Trace2Skill** (no actor calls; reuses s0's 48 trajectories) | 2:30 | 66552421 |
+
+Both methods hang off s0 and run in PARALLEL after it. Every link is `afterok`.
+
+**Bundles — NEVER rebuild one while its jobs are queued or running (bash reads the body lazily):**
+* `oqa_base_20261121b` commit `a8f80fa` — the LIVE bundle for s0 and the four epochs.
+* `oqa_base_20261121c` commit `3765139` — the LIVE bundle for Trace2Skill.
+* `oqa_base_20261121` commit `ad65252` — the FAILED first prep. Kept as the record; do not reuse.
+Run root `runs/20261121-officeqa-two-baselines/`; FRESH ledger at its `ledger/`, starting at zero.
+
+**Resume after a TIMEOUT: resubmit the SAME stage with the SAME output directory.** `eval_only.py` and
+`run_batch` resume by id; every Trace2Skill call is cached by prompt digest. The body refuses to run
+under `SLURM_RESTART_COUNT != 0`, so a requeue can never re-spend — recovery is always deliberate.
+Submit with `OQA_BUNDLE=<bundle> bash <bundle>/oqa_base_submit.sh prep|s0|arm|t2s|heldout|chain`.
+
+### THE FROZEN SETUP, in one place
+Rule **OQA-SEL-4**, `docs/research/OFFICEQA_FROZEN_SETS_V4.json`, digest `b0dbbd4be97fc245`:
+**train 12 / val 12 / held-out 30**, disjoint, 0 problems, train and val 3/3/3/3 and held-out 8/8/7/7
+over released `category` x document count. Train and val are OQA-SEL-2's carried forward unchanged;
+held-out retains OQA-SEL-2's 24 and draws 6 more from OQA-SEL-3's 60. Every set is a SUBSET of the
+freeze it subsets and **no item changed the role an earlier freeze gave it**. 6 of 30 held-out are
+UNTESTED for availability. Train and held-out share **exactly one document** (UID0014 / UID0013).
+
+Config `configs/research/officeqa_base2.yaml`: four epochs, one ordinary update per epoch
+(batch_size 40 > 12), gated slow updates from epoch 2 with **slow_update_samples 6**, meta-skill on,
+upstream's strict-improvement rule, gate on the separate 12 val questions, `eval_test: false`.
+
+**EFFECTIVE actor settings, verified in outbound requests — not read off the config:** `qwen3-5-4b` on
+EmpirioLabs, temperature 0.7, **output cap 8,000**, `enable_thinking: false` transmitted AND effective
+(0 alternate-reasoning characters in 285 responses), narrow `committed_answer` recovery, 24 tool turns,
+S0 unchanged at `9d377d1c2906`. Document/tool rendering is FROZEN for this campaign.
+
+> **Do not mistake the two token fields again.** `env.max_completion_tokens: 16384` reaches NO prompt
+> and NO API call — its only consumer is `rollout_settings_fingerprint`. The transmitted cap is
+> `model.target_openai_compatible_max_tokens` = **8,000**. The inert 16384 is left in place on purpose:
+> changing it would invalidate the fingerprint of every saved S0 trajectory.
+
+### TRACE2SKILL IS PINNED, AND ITS ADAPTATIONS ARE DECLARED
+Upstream `Qwen-Applications/Trace2Skill` at **`3d0b52a140f002a512930252b613c49048f7d5ac`**, Apache 2.0,
+arXiv:2603.25158. Structure is upstream's `ParallelSkillEvolver`: analysis per trajectory -> MAP per
+record -> **hierarchical** REDUCE (48 -> 6 batch merges at size 8 -> 1 final) -> apply -> verify.
+Four declared adaptations in `research/officeqa/oqa_t2s_prompts.py`: OfficeQA domain; upstream's
+**single-call** analyst rather than its agentic one (the agentic analyst is handed the ground truth);
+a single markdown skill document rather than a skill directory; DeepSeek Flash as the analyst.
+It borrows NOTHING from SkillOpt — a test fails if `valid_seen`, `selection_eval`, `slow_update`,
+`use_gate` or `num_epochs` appears in the module.
+
+### RESOURCES — this phase has its OWN allowance and ledger
+Authorized 2026-11-21: **50 requested CPU job-hours, 0 GPUs, 20,000 actor attempts AND $15, 400
+DeepSeek calls AND $20.** Reserved by submitted jobs: **10.58 CPU hours**; three held-out endpoints will
+add 4:30 for **15:05 of 50**. Whole-campaign projection, computed and checked by the preflight: 396
+episodes, 5,544 attempts, $3.49, **117** optimizer calls.
+
+**This allowance is SEPARATE from the historical accounting and does not settle it.** Historical and
+unchanged: EmpirioLabs 12,042 of 30,024 attempts and $8.0147 of $17.00; DeepSeek 105 of 266 and $3.4689
+of $10.00; CPU **disputed** — 35.649 of 44 core-hours or 66.483 of 44 requested walltime. **Which
+convention governs the 44-hour ceiling is still the user's decision.**
+
+### SEALED
+**Held-out scores and trajectories stay sealed while the contract arm is developed.** Do not use them
+to choose contract features, prompts or repairs. Contract development uses the 48 new S0 training
+trajectories and the saved 24-question collection only.
+
+### NEXT ACTIONS
+1. Monitor the chains. On a TIMEOUT, resubmit the same stage (see resume note above).
+2. **Correct the mixed-version bundle before deploying contract code**:
+   `collect_20261118/v2_bind/CC_BUNDLE_v6.json` is run 1's bundle (`36c37a397eddaa65`) beside run 2's
+   artifacts; the honest label for run 2 is **v7**. Re-freeze into a NEW versioned directory and
+   PRESERVE `v2_bind`.
+3. Develop the contract arm in an ISOLATED snapshot: question requirement -> lookup stage -> source
+   column/value -> calculation -> final answer. Report readiness and gaps SEPARATELY.
+4. After the epochs: export the validation-selected endpoint (**S0 itself if no candidate wins the
+   gate** — that is a real outcome), then the three held-out evaluations, two passes of 30 each.
+
+### TWO DEFECTS FOUND 2026-11-21, both in my own safety machinery
+* **The preflight asserted the backend's DEFAULTS** (`gpt-4o-mini` on `api.openai.com`) because it read
+  `_initial_config("target")` in a process that had never applied the config. The config reaches the
+  backend only via `configure_openai_compatible` (`skillopt/engine/trainer.py:843`). Job 66552338
+  failed on this and was right to; it cost nothing. Fixed, plus a new check that the fallbacks are NOT
+  in force.
+* **Trace2Skill's FINAL consolidation merge was unprotected**, so a provider error there would have
+  discarded every proposal the run had paid for. It now degrades to a local coalesce that keeps every
+  item and records `conflicts_unresolved: true`.
+
+---
+
+# EARLIER WORK (2026-11-19 and before) — still valid, read after the above
 
 ## START HERE -> `docs/research/OFFICEQA_BIND_PACKET.md` (rule OQA-BIND-1, amendment B-4)
 
