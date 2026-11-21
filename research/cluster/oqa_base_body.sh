@@ -354,6 +354,23 @@ t2s)
     # NO ACTOR KEY. Trace2Skill does not roll out: its 48 trajectories were collected by STAGE=s0 and this
     # stage only analyses and consolidates them. Leaving the key unloaded proves it cannot roll out.
     log "Trace2Skill over the 48 saved S0 trajectories; the actor key is NOT loaded"
+
+    # A FREE SELF-CHECK BEFORE ANY PAID CALL, which this stage earned. Job 66552508 aborted on the
+    # boundary guard after two seconds - correctly, and at no cost, but only because the guard happened
+    # to fire on the first call. `--dry-run` builds every prompt and runs every guard WITHOUT sending
+    # anything, so a boundary or plumbing problem is found over all 48 trajectories rather than over
+    # whichever one happens to be analysed first.
+    "$OQA_PY" -I research/officeqa/oqa_t2s.py run \
+        --config "$CFG" --s0-dir "$OQA_S0_DIR" --skill "$SKILL_INIT" \
+        --split-dir "$OQA_SPLIT4_DIR" --out "$OQA_T2S_OUT/_dryrun" --dry-run \
+        >> "$OUTDIR/t2s_dryrun.log" 2>&1
+    DRY=$?
+    log "dry run exit $DRY (it makes no request; a non-zero exit here is a plumbing or boundary problem)"
+    grep -E 'BOUNDARY|Traceback|Error' "$OUTDIR/t2s_dryrun.log" | head -5 >> "$OUTDIR/job.log" 2>/dev/null
+    if grep -q 'BOUNDARY VIOLATION' "$OUTDIR/t2s_dryrun.log" 2>/dev/null; then
+        die "the dry run hit the boundary guard; NOTHING was sent. See t2s_dryrun.log"
+    fi
+
     OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl" \
     "$OQA_PY" -I research/officeqa/oqa_t2s.py run \
         --config "$CFG" --s0-dir "$OQA_S0_DIR" --skill "$SKILL_INIT" \

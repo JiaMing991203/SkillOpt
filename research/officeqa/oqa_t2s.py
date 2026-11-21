@@ -253,27 +253,68 @@ def chunk_list(items: list, batch_size: int) -> list:
 # ── the optimizer, through SkillOpt's own route-pinned, ledger-enforced path ─────────────────────────────
 
 class Caller:
-    """Every optimizer call, cached by prompt digest and checked against the answer keys first."""
+    """Every optimizer call, cached by prompt digest and provenance-checked before it is sent.
 
-    def __init__(self, out_dir: str, keys: list, dry_run: bool = False):
+    THE GUARD THIS CLASS FIRST IMPLEMENTED WAS WRONG, AND IT FAILED CLOSED, WHICH IS WHY IT COST
+    NOTHING. Job 66552508 aborted after two seconds with "1 ground-truth string(s) appear in an
+    outbound prompt", before a single paid call. The hits were real and they were not leaks:
+
+        UID0017  the key `[10102000000, 4.73]`  found in AN ACTOR MESSAGE
+        UID0033  the key `March 3, 1977`        found in AN ACTOR MESSAGE
+
+    Both are the question's own key, and in both the actor had ANSWERED CORRECTLY. On a correct episode
+    the actor's own answer IS the ground-truth string - that is what "correct" means - so scanning an
+    outbound prompt for answer keys fires on exactly the episodes the SUCCESS analyst needs. The
+    predicate conflated "the answer key was supplied to the analyst" with "the actor produced the right
+    answer". The same conflation would fire on any value the actor legitimately READ, since the answer
+    to a document question is a number printed in the document.
+
+    SO THE GUARD IS NOW ABOUT PROVENANCE, WHICH IS THE ACTUAL REQUIREMENT. A permitted corpus is built
+    once from the material the prompts are allowed to be made of - every trajectory's permitted view
+    plus the skill document. A ground-truth string found in a prompt is:
+
+        EXPLAINED    it also occurs in the permitted corpus, so it reached the prompt by the actor
+                     having read or written it. Recorded and counted, not a violation.
+        UNEXPLAINED  it does NOT occur in the permitted corpus, so it can only have come from the
+                     evaluator's fields. The run aborts.
+
+    That keeps the fail-closed property for a genuine leak while not refusing a correct episode.
+    """
+
+    def __init__(self, out_dir: str, keys: list, permitted_corpus: str = "", dry_run: bool = False):
         self.cache_dir = os.path.join(out_dir, "cache")
         self.calls: list = []
         self.keys = keys
+        self.permitted = permitted_corpus or ""
         self.dry_run = dry_run
         self.lock = threading.Lock()
         self.leaks: list = []
+        self.explained: list = []
         os.makedirs(self.cache_dir, exist_ok=True)
 
     def _guard(self, phase: str, system: str, user: str) -> None:
-        """No answer key may appear in an outbound prompt. Mechanical, not a convention."""
+        """A key in a prompt is a violation only if the permitted corpus cannot explain it."""
         blob = system + "\n" + user
-        hit = [k for k in self.keys if k in blob]
-        if hit:
+        unexplained: list = []
+        for key in self.keys:
+            if key not in blob:
+                continue
+            if key in self.permitted:
+                with self.lock:
+                    self.explained.append({
+                        "phase": phase, "chars": len(key),
+                        "why": "the string also occurs in the permitted corpus - the actor read it or "
+                               "wrote it - so it did not come from the evaluator"})
+            else:
+                unexplained.append(key)
+        if unexplained:
             with self.lock:
-                self.leaks.append({"phase": phase, "n_keys": len(hit), "example_len": len(hit[0])})
+                self.leaks.append({"phase": phase, "n_unexplained": len(unexplained),
+                                   "example_len": len(unexplained[0])})
             raise SystemExit(
-                f"BOUNDARY VIOLATION in phase {phase}: {len(hit)} ground-truth string(s) appear in an "
-                f"outbound prompt. Nothing further is sent.")
+                f"BOUNDARY VIOLATION in phase {phase}: {len(unexplained)} ground-truth string(s) "
+                f"appear in an outbound prompt and the permitted corpus does NOT contain them, so they "
+                f"can only have come from the evaluator. Nothing further is sent.")
 
     def __call__(self, phase: str, system: str, user: str, *, max_tokens: int = 16384) -> str:
         self._guard(phase, system, user)
@@ -510,7 +551,10 @@ def run(args) -> int:
     with open(args.skill, encoding="utf-8") as f:
         skill = f.read()
     keys = answer_keys(args.split_dir) if args.split_dir else []
-    call = Caller(args.out, keys, dry_run=args.dry_run)
+    # THE PERMITTED CORPUS: everything the prompts are allowed to be made of. A ground-truth string
+    # found in a prompt is explained if it occurs here, and a violation only if it does not.
+    permitted_corpus = "\n".join([t["permitted_view"] for t in trajectories] + [skill])
+    call = Caller(args.out, keys, permitted_corpus=permitted_corpus, dry_run=args.dry_run)
 
     problems: list = []
     if not trajectories:
@@ -535,6 +579,10 @@ def run(args) -> int:
             "triage_only": "results.jsonl `hard`, the binary verdict, used only to choose the analyst",
             "forbidden": "`ground_truth`, `soft`, and the provider's alternate reasoning field",
             "answer_keys_checked_per_prompt": len(keys),
+            "guard": "a ground-truth string in a prompt is a violation ONLY if the permitted corpus "
+                     "cannot explain it. On a CORRECT episode the actor's own answer is the key, so a "
+                     "plain string scan would refuse exactly the episodes the success analyst needs.",
+            "permitted_corpus_chars": len(permitted_corpus),
         },
         "trajectories": {"n": len(trajectories), "per_pass": per_pass,
                          "correct": sum(1 for t in trajectories if t["verdict"] == "correct"),
@@ -590,6 +638,11 @@ def run(args) -> int:
     report["optimizer_usage"] = usage
     report["calls"] = call.calls
     report["boundary_violations"] = call.leaks
+    report["boundary_explained_hits"] = {
+        "n": len(call.explained),
+        "note": "answer-key strings that appeared in a prompt AND in the permitted corpus, so the "
+                "actor had read or written them. Counted for transparency; not leaks.",
+        "sample": call.explained[:6]}
     report["problems"] = problems
     report["verdict"] = "CONSOLIDATED" if report["skill_after"]["changed"] else "UNCHANGED"
     _write(args.out, report, edited)

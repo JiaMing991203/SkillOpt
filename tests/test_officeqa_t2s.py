@@ -109,14 +109,48 @@ def test_the_observation_text_is_kept_because_it_is_the_evidence():
 
 # ───────────────────────── the boundary guard ─────────────────────────
 
-def test_an_answer_key_in_an_outbound_prompt_aborts_the_run(tmp_path):
-    call = T.Caller(str(tmp_path), keys=["1,169.41 million dollars"], dry_run=True)
-    # a clean prompt goes through
-    call("analysis", "system", "an innocent trajectory")
+def test_an_UNEXPLAINED_answer_key_in_an_outbound_prompt_aborts_the_run(tmp_path):
+    """A key the permitted corpus cannot account for can only have come from the evaluator."""
+    call = T.Caller(str(tmp_path), keys=["1,169.41 million dollars"],
+                    permitted_corpus="a trajectory that never mentions the answer", dry_run=True)
+    call("analysis", "system", "an innocent trajectory")        # clean prompt goes through
     with pytest.raises(SystemExit) as exc:
         call("analysis", "system", "the agent should have said 1,169.41 million dollars")
     assert "BOUNDARY VIOLATION" in str(exc.value)
+    assert "permitted corpus does NOT contain them" in str(exc.value)
     assert call.leaks and call.leaks[0]["phase"] == "analysis"
+
+
+def test_a_correct_episode_is_not_refused_because_the_actor_got_the_answer_right(tmp_path):
+    """THE defect that failed job 66552508. On a correct episode the actor's own answer IS the key, so
+    a plain string scan refuses exactly the episodes the success analyst needs.
+
+    The two real hits were UID0017's `[10102000000, 4.73]` and UID0033's `March 3, 1977`, both found in
+    an ACTOR MESSAGE, both the question's own key, both on an episode the actor answered correctly."""
+    for key in ("[10102000000, 4.73]", "March 3, 1977"):
+        trajectory = f"[AGENT]\nAfter checking the table I conclude {key}."
+        call = T.Caller(str(tmp_path), keys=[key], permitted_corpus=trajectory, dry_run=True)
+        call("analysis", "system", "# Agent chat log\n\n" + trajectory)   # must NOT raise
+        assert call.leaks == []
+        assert len(call.explained) == 1
+        assert "did not come from the evaluator" in call.explained[0]["why"]
+
+
+def test_a_value_the_actor_merely_READ_is_also_explained(tmp_path):
+    """The answer to a document question is a number printed in the document, so an observation
+    containing it is unavoidable and harmless."""
+    trajectory = "[TOOL CALL]\ngrep(...)\n[OBSERVATION]\n3507: | Receipts | 1,169.41 |"
+    call = T.Caller(str(tmp_path), keys=["1,169.41"], permitted_corpus=trajectory, dry_run=True)
+    call("analysis", "system", trajectory)
+    assert call.leaks == [] and len(call.explained) == 1
+
+
+def test_the_guard_still_fails_closed_when_there_is_no_permitted_corpus(tmp_path):
+    """An empty corpus explains nothing, so the guard refuses rather than waving a key through."""
+    call = T.Caller(str(tmp_path), keys=["a distinctive answer string"], permitted_corpus="",
+                    dry_run=True)
+    with pytest.raises(SystemExit):
+        call("map", "system", "a distinctive answer string")
 
 
 def test_short_keys_are_not_used_as_a_leak_test(tmp_path):
