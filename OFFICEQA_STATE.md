@@ -10,16 +10,18 @@ commit `5497ee9`. NOT pushed. Tracked tree clean. JOBS LIVE — check `squeue` b
 `squeue -u $USER | grep oqa-` and
 `sacct -X -j 66552420,66552421,66552422,66552423,66552424,66552425,66552763,66552633,66552721`.
 
-| job | stage | state at 03:25 |
+| job | stage | state at 03:38 |
 |---|---|---|
 | 66552420 | prep (free) | **COMPLETED** — preflight READY 39/0/0, 2,428 tests |
-| 66552421 | s0 reference | **COMPLETED** 23:16 — 48 training + 12 validation episodes, all 12/12 |
+| 66552421 | s0 reference | **COMPLETED** 23:16 — 48 training + 12 validation, all 12/12 |
 | 66552422 | Original SkillOpt epoch 1 | **COMPLETED** 3:40 — wrote `best_skill.md`, `meta_skill/`, `slow_update/` |
 | 66552423 | Original SkillOpt epoch 2 | **RUNNING** — the first gated slow update |
 | 66552424 / 66552425 | epochs 3 / 4 | PENDING on the chain |
-| **66552763** | **Trace2Skill** | the LIVE attempt, from bundle `oqa_base_20261121e` |
+| **66552979** | **Trace2Skill** | **RUNNING** from bundle `oqa_base_20261121f`, reusing 48 cached analysis replies |
 | 66552633 | contract: v7 + occurrence measurement (free) | **COMPLETED** |
-| 66552721 | contract: v8 + C-1 replay (free) | COMPLETED its work; exited 1 on a test and a false alarm, both since fixed |
+| 66552721 | contract: v8 + C-1 replay (free) | work COMPLETED; exit 1 from a test C-1 moves + a broken check, both fixed |
+| **66552984** | contract: v9 + **C-2 replay** (free) | **RUNNING** |
+| not yet submitted | contract: `PHASE=lean` (free) | ready in bundle `oqa_ct_20261121c` |
 
 **THREE FAILED t2s ATTEMPTS, each a different defect of MINE, none of which spent anything:**
 * **66552508** — the boundary guard conflated a CORRECT ANSWER with a leaked key. On a correct episode
@@ -104,12 +106,20 @@ to a suspicious 100%.
 by numeric equality. Over 659 operands: selections **566 -> 102**, VIOLATED **186 -> 30**. The old
 tie-break was choosing on numeric equality alone in 82% of its selections.
 
-**TWO DEFECTS IN C-1 REMAIN OPEN, both measured, both specified in the amendment, deliberately NOT
-rushed:**
-* **A** — withdrawn bindings make downstream obligations VANISH rather than UNKNOWN (ledger 1,839 ->
-  911). Repair: `obligations()` must emit them as UNKNOWN naming the refusal.
-* **B** — 199 of 499 ties (39.9%) are the SAME cell observed through different routes. Repair:
-  deduplicate candidates by cell identity before declaring a tie.
+**AMENDMENT C-2 REPAIRS BOTH DEFECTS C-1's REPLAY FOUND**, with five falsifiable predictions recorded
+before the code change; job 66552984 measures them.
+* **A** — withdrawn bindings made downstream obligations VANISH rather than UNKNOWN. Mechanism exact:
+  `obligations()` emitted `cell_bound` then `continue`d, so 464 refusals x 2 = **928**, the whole
+  1,839 -> 911 gap. Now all three requirements are emitted, UNKNOWN, carrying the rivals. A third
+  problem surfaced doing it: the pre-existing branch called a refusal OUTSTANDING with "no available
+  numeric cell has this value", which is FALSE when several cells hold it; a refusal now reports
+  UNKNOWN, "undetermined rather than absent".
+* **B** — 199 of 499 ties (39.9%) were the SAME cell seen through different routes. Candidates are now
+  deduped by a route-independent identity `(file, row label, col index, value, scale factor)`;
+  `n_raw_candidates` stays reportable so nine candidates can be seen to be three cells.
+* **The honest risk, written into the amendment as prediction 5:** a restored binding can support an
+  accusation, so any rise in VIOLATED must be inspected witness by witness, and a rise without an
+  inspectable witness is a reason to WITHDRAW the repair rather than report it.
 
 **Still missing from the §4 demonstration:** a genuinely learned rule with its evidence, a supported
 diagnosis on a later record, a successful/recovered control, and Lean compiled against the C-1 facts.
