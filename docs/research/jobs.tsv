@@ -127,3 +127,7 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66552424	2026-11-21T02:49	oqa-base-A-e3	PENDING	-	01:45:00	4	Original SkillOpt epoch 3
 66552425	2026-11-21T02:49	oqa-base-A-e4	PENDING	-	01:45:00	4	Original SkillOpt epoch 4
 66552508	2026-11-21T02:58	oqa-base-t2s	PENDING	-	02:30:00	4	Trace2Skill over s0's 48 trajectories; NO actor key loaded; bundle oqa_base_20261121c 3765139; upstream pinned 3d0b52a
+66552633	2026-11-21T03:07	oqa-ct-bundle7	COMPLETED	00:01:04	00:20:00	2	Contract arm, FREE: mixed-version bundle corrected as v7 fd0645517a50e991 in v3_occ/, v2_bind digest-verified unchanged, occurrence measurement 201 unique / 64 SUPPORTED, 2471 tests pass
+66552721	2026-11-21T03:14	oqa-ct-replay	FAILED	00:01:20	00:25:00	2	Contract arm, FREE: v8 cfd8318c752db11e frozen and C-1 replay DONE (566->102 selections, VIOLATED 186->30); exit 1 from a byte-reproduction test C-1 deliberately moves and a broken preservation check, both since fixed
+66552741	2026-11-21T03:19	oqa-base-t2s	FAILED	00:00:06	02:30:00	4	Trace2Skill: optimizer route never configured, all 48 calls dispatched to Azure and raised; ZERO paid calls; boundary guard verified correct on the real 48 (0 violations, 7 explained)
+66552763	2026-11-21T03:24	oqa-base-t2s	RUNNING	-	02:30:00	4	Trace2Skill: route fixed and confirmed (paid calls flowing); will crash on a missing `collections` import after the analysis phase, replies cached by prompt digest for reuse

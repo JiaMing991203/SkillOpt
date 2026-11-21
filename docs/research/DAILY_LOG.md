@@ -1801,3 +1801,45 @@ entire MAP phase: 56 became 105 for that method and 68 became 117 campaign-wide,
 Report: `docs/research/OFFICEQA_BASELINE_LAUNCH.md`. Jobs 66552420 (prep, COMPLETED, preflight READY
 39/0/0, 2,428 tests), 66552421 (s0, RUNNING, gated checkpoint passed), 66552422-425 (Original SkillOpt
 epochs), 66552508 (Trace2Skill). 10.58 of 50 requested CPU job-hours reserved.
+
+### 2026-11-21, later — the contract arm, and four defects of mine
+
+**The contract arm's foundation is measured, not assumed.** The source-binding investigation refuted
+column SEMANTICS from the pipe rendering; it never tested OCCURRENCE identity. A grep observation
+prefixes each line with its line number, so a cell has an observable position — (document, line, field
+index). Over the 24 saved training records: 4,261 observed occurrences, 201 at a unique position, 122
+at several, 794 with none, and **64 SUPPORTED** against the frozen prototype's 0.
+
+I nearly reported 201 of 201. A third candidate corroboration, `SOLE_IN_ROW`, lifted the rate to 100%
+— and that attractive number was the tell. It is nearly a tautology: two occurrences of one value on a
+line would occupy two field indices, so the position would not be unique. Entailed share 0.995. It is
+reported and excluded. This is the second time the "a coverage jump is a warning" lesson has paid for
+itself, and the first time I caught it before writing it up rather than after.
+
+**Amendment C-1** replaces `_best_cell`'s tie-break with a refusal. Replayed over 659 operands:
+selections 566 → 102, VIOLATED 186 → 30. The old tie-break was choosing a source cell on numeric
+equality alone in 82% of its selections, and those supported 156 of its 186 accusations.
+
+**Two defects in C-1 found by its own replay**, both recorded in the amendment and deliberately left
+for a fresh prediction rather than patched at 03:20: withdrawn bindings make downstream obligations
+VANISH rather than UNKNOWN (ledger 1,839 → 911), and 39.9% of "ties" are the same cell observed through
+different routes.
+
+**Four defects of mine in one night, each found by machinery and each costing nothing.**
+1. The *preflight* read the backend's defaults — gpt-4o-mini on api.openai.com — in a process that had
+   never applied the config, and called them the campaign's settings. Job 66552338, free.
+2. *Trace2Skill's boundary guard* conflated a correct answer with a leaked key: on a correct episode
+   the actor's own answer IS the ground-truth string. Job 66552508, 2 seconds, no paid call. Now a
+   provenance predicate; verified on the real 48 as 0 violations and 7 explained hits.
+3. *Trace2Skill never configured the optimizer route*, so all 48 calls dispatched to Azure and raised.
+   Job 66552741, zero paid calls. This was the SAME lesson as (1), hours apart, and the campaign body's
+   own header already documented the hazard. The dry run reported healthy both times because it
+   short-circuited before configuring; it now configures too.
+4. A *missing `collections` import*, caught by that dry run. The real run spends its analysis calls
+   before reaching the line, but every reply is cached by prompt digest, so the resubmission reuses
+   them. pyflakes is now run over these modules and a test walks the AST for the same class.
+
+**And one false alarm of mine, corrected rather than dismissed.** A job reported "v2_bind CHANGED". It
+had not — all four digests are byte-identical to the previous job's record. I had moved the
+before-snapshot inside one phase's branch while the after-check stayed outside. A preservation check
+that cries wolf is worse than none.
