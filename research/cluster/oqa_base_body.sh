@@ -93,6 +93,17 @@ log "extracted $(find "$WORK" -type f | wc -l) files to node-local storage"
 #     GPUs                      zero
 #     Actor API                 20,000 attempts AND $15
 #     DeepSeek, all roles       400 attempts AND $20
+# ── THE LEDGER MUST BE POINTED AT ITS DIRECTORY, OR IT DOES NOTHING ─────────────────────────────────────────
+# skillopt/model/spend_ledger.py is "INERT BY DEFAULT. With SKILLOPT_SPEND_LEDGER_DIR unset this module
+# does nothing at all." THIS BODY DID NOT SET IT. Every cap below was configured and NONE was enforced
+# for the whole campaign: the ledger directory stayed empty, 0 claims and 0 spend records, and the prep
+# stage's own LEDGER_BEFORE.json said {"active": false} - which I read past. Measured afterwards from
+# the per-job call logs, nothing overran (actor 1,801 calls / $0.89 of $15; optimizer 148 / $1.28 of
+# $20), so the omission cost nothing. It removed the protection all the same.
+mkdir -p "$OQA_LEDGER_DIR/claims" "$OQA_LEDGER_DIR/spend" "$OQA_LEDGER_DIR/release" \
+    || die "cannot create the ledger at $OQA_LEDGER_DIR"
+export SKILLOPT_SPEND_LEDGER_DIR="$OQA_LEDGER_DIR"
+
 export SKILLOPT_LEDGER_MAX_ATTEMPTS_TARGET="${OQA_CAP_ACTOR_ATTEMPTS:-20000}"
 export SKILLOPT_LEDGER_MAX_USD_TARGET="${OQA_CAP_ACTOR_USD:-15.00}"
 export SKILLOPT_LEDGER_MAX_ATTEMPTS_OPTIMIZER="${OQA_CAP_OPT_CALLS:-400}"
@@ -138,6 +149,21 @@ unset OPTIMIZER_OPENAI_COMPATIBLE_API_KEY TARGET_OPENAI_COMPATIBLE_API_KEY
 unset DEEPSEEK_API_KEY OPENAI_API_KEY AZURE_OPENAI_API_KEY HF_TOKEN HUGGING_FACE_HUB_TOKEN
 ACTOR_KEY=""
 OPT_KEY=""
+# A PAID STAGE MUST NOT START WITH AN INERT LEDGER. Checked in-process, because the env var alone
+# does not prove the module accepted it - an unwritable directory or a missing cap would also leave it
+# inert, and the point of the check is that the caps are live before a key is loaded.
+require_live_ledger() {
+    "$OQA_PY" -I -c "
+import json, os, sys
+sys.path.insert(0, os.environ['OQA_TREE'])
+from skillopt.model import spend_ledger as L
+snap = L.report()
+print(json.dumps({'active': snap.get('active'), 'dir': snap.get('dir')}))
+sys.exit(0 if snap.get('active') else 9)
+" > "$OUTDIR/ledger_live.json" 2>&1         || die "the spend ledger is NOT ACTIVE, so the caps are not enforced. Refusing to load a key. See ledger_live.json"
+    log "ledger live: $(cat "$OUTDIR/ledger_live.json" | tr -d '\n')"
+}
+
 load_actor_key() {
     : "${ACTOR_ENV_FILE:?settings.env must define ACTOR_ENV_FILE}"
     set -a; . "$ACTOR_ENV_FILE"; set +a
@@ -232,6 +258,7 @@ tests fail is a campaign whose results nobody can interpret."
     ;;
 s0)
     : "${OQA_SPLIT4_DIR:?}"
+    require_live_ledger
     load_actor_key
     export SKILLOPT_REQUIRE_ROUTE="$ACTOR_ROUTE;optimizer=none"
     S0="$OQA_BASE_ROOT/s0"
@@ -294,6 +321,7 @@ arm)
     : "${OQA_S0_DIR:?set OQA_S0_DIR to the STAGE=s0 output}"
     : "${OQA_ARM_OUT:?set OQA_ARM_OUT to the durable out_root for Original SkillOpt}"
     : "${OQA_SPLIT4_DIR:?}"
+    require_live_ledger
     load_actor_key
     load_optimizer_key
     export SKILLOPT_REQUIRE_ROUTE="$ACTOR_ROUTE;$OPT_ROUTE"
@@ -348,6 +376,7 @@ arm)
 t2s)
     : "${OQA_S0_DIR:?set OQA_S0_DIR to the STAGE=s0 output}"
     : "${OQA_T2S_OUT:?set OQA_T2S_OUT to the durable out_root for Trace2Skill}"
+    require_live_ledger
     load_optimizer_key
     export SKILLOPT_REQUIRE_ROUTE="target=none;$OPT_ROUTE"
     mkdir -p "$OQA_T2S_OUT"
@@ -387,6 +416,7 @@ heldout)
     : "${OQA_SKILL:?set OQA_SKILL to the skill file to evaluate}"
     : "${OQA_SPLIT4_DIR:?}"
     [ -f "$OQA_SKILL" ] || die "no such skill file: $OQA_SKILL"
+    require_live_ledger
     load_actor_key
     export SKILLOPT_REQUIRE_ROUTE="$ACTOR_ROUTE;optimizer=none"
     LABEL="${OQA_LABEL:-$(basename "${OQA_SKILL%.md}")}"

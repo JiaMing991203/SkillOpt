@@ -318,3 +318,52 @@ def test_the_preflight_applies_the_config_before_asserting_the_outbound_settings
     assert "configure_openai_compatible" in body
     assert "_config_for" in body, "the LIVE config must be read, not _initial_config"
     assert "_initial_config" not in body.split('"""')[2] if body.count('"""') > 2 else True
+
+
+# ───────────────────── the spend ledger must be LIVE, not merely configured ─────────────────────
+
+CLUSTER = os.path.join(REPO, "research", "cluster")
+
+
+def _body():
+    return open(os.path.join(CLUSTER, "oqa_base_body.sh"), encoding="utf-8").read()
+
+
+def test_the_body_points_the_ledger_at_its_directory():
+    """spend_ledger.py is INERT BY DEFAULT: "With SKILLOPT_SPEND_LEDGER_DIR unset this module does
+    nothing at all." This body set every cap and never set that variable, so the ledger stayed empty -
+    0 claims, 0 spend records - and the caps were unenforced for the whole campaign. The prep stage's
+    own LEDGER_BEFORE.json said {"active": false}."""
+    body = _body()
+    code = "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
+    assert 'export SKILLOPT_SPEND_LEDGER_DIR="$OQA_LEDGER_DIR"' in code
+    # and the directory must be created, or the module is inert for a different reason
+    assert '"$OQA_LEDGER_DIR/claims"' in code and '"$OQA_LEDGER_DIR/spend"' in code
+
+
+def test_every_paid_stage_refuses_to_load_a_key_with_an_inert_ledger():
+    """The caps are what the authorization rests on, so a paid stage must fail closed without them."""
+    body = _body()
+    code = "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
+    assert "require_live_ledger()" in code, "the check must exist"
+    # every key load is preceded by the check, within its stage
+    for key_load in ("load_actor_key\n", "load_optimizer_key\n"):
+        idx = 0
+        while True:
+            idx = code.find("    " + key_load, idx)
+            if idx == -1:
+                break
+            before = code[max(0, idx - 400):idx]
+            assert "require_live_ledger" in before, (
+                f"a {key_load.strip()} call is not preceded by require_live_ledger")
+            idx += 1
+
+
+def test_the_check_reads_the_module_rather_than_trusting_the_variable():
+    """An unwritable directory or a missing cap also leaves the module inert, so the env var alone is
+    not proof. The check asks the module."""
+    body = _body()
+    fn = body[body.index("require_live_ledger()"):body.index("load_actor_key()")]
+    assert "spend_ledger" in fn and "report()" in fn
+    assert "active" in fn
+    assert "Refusing to load a key" in fn
