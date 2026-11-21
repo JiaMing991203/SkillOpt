@@ -1,30 +1,49 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 03:25 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`,
-commit `5497ee9`. NOT pushed. Tracked tree clean. JOBS LIVE — check `squeue` before doing anything.**
+**Last update: 2026-11-21 05:05 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`,
+commit `43e7d46`. NOT pushed (168 commits ahead of origin). Tracked tree clean.
+NO OfficeQA JOB RUNNING OR QUEUED — the campaign finished.**
 
-## START HERE -> `docs/research/OFFICEQA_BASELINE_LAUNCH.md` (rules OQA-SEL-4, OQA-BASE-1, OQA-T2S-1)
-## CONTRACT ARM -> amendment **C-1** in `docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md`
+## !! CLUSTER ACCESS IS LOST — READ THIS FIRST !!
 
-**BOTH BASELINES ARE RUNNING. Do NOT resubmit them.** Live state:
-`squeue -u $USER | grep oqa-` and
-`sacct -X -j 66552420,66552421,66552422,66552423,66552424,66552425,66552763,66552633,66552721`.
+The SSH ControlMaster socket `~/.ssh/cm_gl` is **GONE**, and a fresh connection is refused:
+`Authentications that can continue: publickey,keyboard-interactive` → `Permission denied`. The ssh
+config says why in its own comment: **Great Lakes requires Duo 2FA**, so re-authenticating is a manual
+interactive step. **A later session cannot reach the cluster until the user re-opens the master**, e.g.
 
-| job | stage | state at 04:00 |
-|---|---|---|
-| 66552420 | prep (free) | **COMPLETED** — preflight READY 39/0/0 |
-| 66552421 | s0 reference | **COMPLETED** — 48 training + 12 validation, all 12/12 |
-| 66552422/3/4 | Original SkillOpt epochs 1 / 2 / 3 | **ALL COMPLETED** (3:40, ~19m, ~17m) |
-| 66552425 | Original SkillOpt epoch 4 | PENDING — the last one |
-| **66553156** | **Trace2Skill**, consolidation repaired | **RUNNING** from bundle `oqa_base_20261121h` |
-| 66553058 | Trace2Skill, first complete run | COMPLETED but **DEGRADED** — preserved as `trace2skill_degraded_66553058/` |
-| 66552633 / 66552721 / 66552984 | contract: v7, v8+C-1 replay, v9+C-2 replay | all did their work (two exit 1 on tests) |
-| 66553083 | contract: **LEAN COMPILED** | work COMPLETED; exit 1 from the byte test only |
-| 66553105 | contract: determinism probe | work COMPLETED; exit 1 from the byte test only |
+    ssh -M -S ~/.ssh/cm_gl -fN gl          # then complete Duo
 
-**READ JOB STATUS CAREFULLY HERE: three jobs are marked FAILED whose substantive steps all SUCCEEDED**,
-exiting 1 only because the body runs the test suite at the end and one byte-reproduction test is pinned
-as expected-to-change. Check `job.log` before concluding a stage did not run.
+Nothing is at risk: the last job completed at **04:56** and no job was submitted after it. But
+scheduler state could not be re-verified after the socket died, so treat "no jobs" as true as of 04:56
+and confirm with `squeue -u $USER` once access is back.
+
+## !! THE CAMPAIGN'S ARTIFACTS ARE CLUSTER-ONLY — NOT PULLED !!
+
+There is **no `runs/20261121-officeqa-*` directory locally.** Everything below lives only under
+`/nfs/turbo/umms-csriram/yaojm/lean_skillopt/runs/20261121-officeqa-two-baselines/` and
+`.../runs/20261121-officeqa-contract/`, and the socket died before it could be retrieved. **First
+action once SSH is back: pull these**, because CLAUDE.md requires important artifacts in local storage.
+
+    endpoint_S0.md                      9d377d1c2906     887 B
+    endpoint_original_skillopt.md        e35673d87cb7   4,518 B
+    endpoint_trace2skill.md              03d6564f1d10  24,121 B
+    heldout/{S0,original_skillopt,trace2skill}/{p1,p2}/   + each PROVENANCE.json   <-- SEALED
+    original_skillopt/   (summary.json, history.json, slow_update/, skills/)
+    trace2skill/T2S_REPORT.json  + trace2skill_degraded_66553058/ + trace2skill_partial_66553156/
+    ../20261121-officeqa-contract/{v3_occ,v4_c1,v5_c2,v6_lean,v7_det}/
+
+## START HERE -> `docs/research/OFFICEQA_BASELINE_LAUNCH.md` — the complete campaign report (519 lines)
+
+That one document is self-contained: results, frozen setup, resources, the contract arm, ten defects,
+limitations and next actions. The rest of this note is the operational handoff only.
+
+### THE RESULT IN THREE LINES
+* **Original SkillOpt:** 4 epochs, **0 accepts / 4 rejects** on ordinary steps; the only surviving
+  change is the **epoch-2 gated slow update**; validation **4/12 → 5/12**. Endpoint `e35673d87cb7`.
+* **Trace2Skill:** faithful on the **third** attempt — hierarchy 60→22→11→6→2→1, **18 items**, no
+  mechanical fallback, all 18 verified APPLIED. Endpoint `03d6564f1d10`.
+* **Held-out:** all three endpoints, 30/30 in both passes, **180 episodes. SCORES SEALED — do not
+  open them to choose contract features, prompts or repairs.**
 
 **Bundles — NEVER rebuild one while its jobs are queued or running (bash reads the body lazily):**
 * `oqa_base_20261121b` commit `a8f80fa` — the LIVE bundle for s0 and the four epochs.
@@ -37,191 +56,66 @@ Run root `runs/20261121-officeqa-two-baselines/`; FRESH ledger at its `ledger/`,
 under `SLURM_RESTART_COUNT != 0`, so a requeue can never re-spend — recovery is always deliberate.
 Submit with `OQA_BUNDLE=<bundle> bash <bundle>/oqa_base_submit.sh prep|s0|arm|t2s|heldout|chain`.
 
-### THE FROZEN SETUP, in one place
-Rule **OQA-SEL-4**, `docs/research/OFFICEQA_FROZEN_SETS_V4.json`, digest `b0dbbd4be97fc245`:
-**train 12 / val 12 / held-out 30**, disjoint, 0 problems, train and val 3/3/3/3 and held-out 8/8/7/7
-over released `category` x document count. Train and val are OQA-SEL-2's carried forward unchanged;
-held-out retains OQA-SEL-2's 24 and draws 6 more from OQA-SEL-3's 60. Every set is a SUBSET of the
-freeze it subsets and **no item changed the role an earlier freeze gave it**. 6 of 30 held-out are
-UNTESTED for availability. Train and held-out share **exactly one document** (UID0014 / UID0013).
+### EVERYTHING SUBSTANTIVE IS IN THE REPORT — this note keeps only the operational handoff
+`docs/research/OFFICEQA_BASELINE_LAUNCH.md` holds the frozen setup, both results, the resources, the
+contract arm, the ten defects, the limitations and the next actions. It is deliberately NOT duplicated
+here: two copies drift, and the last version of this note had already drifted.
 
-Config `configs/research/officeqa_base2.yaml`: four epochs, one ordinary update per epoch
-(batch_size 40 > 12), gated slow updates from epoch 2 with **slow_update_samples 6**, meta-skill on,
-upstream's strict-improvement rule, gate on the separate 12 val questions, `eval_test: false`.
+Amendments **C-1, C-2, C-3** are in `docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md`, each with the
+prediction recorded BEFORE its code change and the measurement after.
 
-**EFFECTIVE actor settings, verified in outbound requests — not read off the config:** `qwen3-5-4b` on
-EmpirioLabs, temperature 0.7, **output cap 8,000**, `enable_thinking: false` transmitted AND effective
-(0 alternate-reasoning characters in 285 responses), narrow `committed_answer` recovery, 24 tool turns,
-S0 unchanged at `9d377d1c2906`. Document/tool rendering is FROZEN for this campaign.
+### BUNDLES — never rebuild one while its jobs are live (bash reads a body lazily)
+All jobs are finished, so none is locked now. The ones that matter, newest last:
 
-> **Do not mistake the two token fields again.** `env.max_completion_tokens: 16384` reaches NO prompt
-> and NO API call — its only consumer is `rollout_settings_fingerprint`. The transmitted cap is
-> `model.target_openai_compatible_max_tokens` = **8,000**. The inert 16384 is left in place on purpose:
-> changing it would invalidate the fingerprint of every saved S0 trajectory.
+    oqa_base_20261121b  a8f80fa   s0 + the four Original SkillOpt epochs
+    oqa_base_20261121i  c35df7e   the three held-out evaluations
+    oqa_ct_20261121e    82a48d0   the contract arm's last phase (det)
+    oqa_base_20261121h  7d18cb4   Trace2Skill's faithful run came from the NEXT one, i
+    (a..i and ct a..e exist; each change went to a NEW directory, which is why there are so many)
 
-### TRACE2SKILL IS PINNED, AND ITS ADAPTATIONS ARE DECLARED
-Upstream `Qwen-Applications/Trace2Skill` at **`3d0b52a140f002a512930252b613c49048f7d5ac`**, Apache 2.0,
-arXiv:2603.25158. Structure is upstream's `ParallelSkillEvolver`: analysis per trajectory -> MAP per
-record -> **hierarchical** REDUCE (48 -> 6 batch merges at size 8 -> 1 final) -> apply -> verify.
-Four declared adaptations in `research/officeqa/oqa_t2s_prompts.py`: OfficeQA domain; upstream's
-**single-call** analyst rather than its agentic one (the agentic analyst is handed the ground truth);
-a single markdown skill document rather than a skill directory; DeepSeek Flash as the analyst.
-It borrows NOTHING from SkillOpt — a test fails if `valid_seen`, `selection_eval`, `slow_update`,
-`use_gate` or `num_epochs` appears in the module.
+Submit with `OQA_BUNDLE=<bundle> bash <bundle>/oqa_base_submit.sh prep|s0|arm|t2s|heldout|chain`
+or `.../oqa_ct_submit.sh bundle7|replay|c2|lean|det`. **Both scripts now refuse a stage the deployed
+body does not contain** — build a new bundle for new code.
 
-### RESOURCES — this phase has its OWN allowance and ledger
+### RESUME, if anything needs re-running
+`eval_only.py` and `run_batch` resume by id from `<dir>/results.jsonl`; every Trace2Skill optimizer
+reply is cached by prompt digest under `trace2skill/cache/<phase>/`. So resubmit the SAME stage with the
+SAME output directory and only the missing work is paid for. The body refuses to run under
+`SLURM_RESTART_COUNT != 0`, so an automatic requeue can never re-spend.
+
+**Two wiring facts that cost a whole campaign's worth of enforcement, now fixed — do not undo them:**
+* `SKILLOPT_SPEND_LEDGER_DIR` must be exported or `spend_ledger.py` is **inert** and every cap is
+  decorative. Every paid stage now calls `require_live_ledger` first and refuses without it.
+* `OQA_LEAN_BIN` must be the **toolchain** binary
+  (`lean/elan/toolchains/leanprover--lean4---v4.20.0/bin/lean`), not `elan/bin/lean`, which is a shim.
+
+### THIS PHASE'S ALLOWANCE — separate from the historical accounting
 Authorized 2026-11-21: **50 requested CPU job-hours, 0 GPUs, 20,000 actor attempts AND $15, 400
-DeepSeek calls AND $20.** Reserved by submitted jobs: **10.58 CPU hours**; three held-out endpoints will
-add 4:30 for **15:05 of 50**. Whole-campaign projection, computed and checked by the preflight: 396
-episodes, 5,544 attempts, $3.49, **117** optimizer calls.
+DeepSeek calls AND $20.** Used: **CPU 33.42 of 50** (16.58 left; 17.5 of it was seven Trace2Skill
+submissions that used 44 minutes between them), **actor ~3,462 attempts / ~$1.87**, **optimizer 206
+calls of 400 / $2.06**. The optimizer CALL count at 52% is the tightest figure. **GPUs 0 of 0.**
 
-**This allowance is SEPARATE from the historical accounting and does not settle it.** Historical and
-unchanged: EmpirioLabs 12,042 of 30,024 attempts and $8.0147 of $17.00; DeepSeek 105 of 266 and $3.4689
-of $10.00; CPU **disputed** — 35.649 of 44 core-hours or 66.483 of 44 requested walltime. **Which
-convention governs the 44-hour ceiling is still the user's decision.**
+The spend figure is a **reconstruction from two incomplete sources** — see the report §3 and §6f. The
+ledger missed the first 1,801 attempts, so it cannot be cited as this phase's record.
+
+**Historical and untouched:** EmpirioLabs 12,042 of 30,024 and $8.0147 of $17.00; DeepSeek 105 of 266
+and $3.4689 of $10.00; CPU **disputed** — 35.649 of 44 core-hours or 66.483 of 44 requested walltime.
+**Which convention governs that 44-hour ceiling is still the user's decision.**
 
 ### SEALED
-**Held-out scores and trajectories stay sealed while the contract arm is developed.** Do not use them
-to choose contract features, prompts or repairs. Contract development uses the 48 new S0 training
-trajectories and the saved 24-question collection only.
-
-### THE CONTRACT ARM: WHAT IS BUILT AND WHAT IS NOT -> amendment C-1
-**Occurrence-level source binding works where column semantics did not.** `research/officeqa/oqa_occ.py`.
-A grep observation prefixes each line with its LINE NUMBER, so a cell has an observable position -
-(document, line, field). Over the 24 saved TRAINING records: 4,261 observed occurrences, 201 at a
-unique position, 122 at several (UNKNOWN), 794 with none (actor-derived), **64 SUPPORTED** against the
-frozen prototype's 0. A unique position is NOT a binding: support needs ROW_LABEL or QUERY
-corroboration. `SOLE_IN_ROW` was rejected as a near-tautology (entailed 0.995) after it lifted the rate
-to a suspicious 100%.
-
-**Amendment C-1 is implemented and replayed.** `oqa_lc_chain.select_cell` refuses to pick a source cell
-by numeric equality. Over 659 operands: selections **566 -> 102**, VIOLATED **186 -> 30**. The old
-tie-break was choosing on numeric equality alone in 82% of its selections.
-
-**AMENDMENT C-2 REPAIRS BOTH DEFECTS C-1's REPLAY FOUND**, with five falsifiable predictions recorded
-before the code change; job 66552984 measures them.
-* **A** — withdrawn bindings made downstream obligations VANISH rather than UNKNOWN. Mechanism exact:
-  `obligations()` emitted `cell_bound` then `continue`d, so 464 refusals x 2 = **928**, the whole
-  1,839 -> 911 gap. Now all three requirements are emitted, UNKNOWN, carrying the rivals. A third
-  problem surfaced doing it: the pre-existing branch called a refusal OUTSTANDING with "no available
-  numeric cell has this value", which is FALSE when several cells hold it; a refusal now reports
-  UNKNOWN, "undetermined rather than absent".
-* **B** — 199 of 499 ties (39.9%) were the SAME cell seen through different routes. Candidates are now
-  deduped by a route-independent identity `(file, row label, col index, value, scale factor)`;
-  `n_raw_candidates` stays reportable so nine candidates can be seen to be three cells.
-* **The honest risk, written into the amendment as prediction 5:** a restored binding can support an
-  accusation, so any rise in VIOLATED must be inspected witness by witness, and a rise without an
-  inspectable witness is a reason to WITHDRAW the repair rather than report it.
-
-**Still missing from the §4 demonstration:** a genuinely learned rule with its evidence, a supported
-diagnosis on a later record, a successful/recovered control, and Lean compiled against the C-1 facts.
-Lean is at `/nfs/turbo/umms-csriram/yaojm/lean/elan/bin/lean`; `OqaContracts.lean` ALREADY contains
-`unknownBindingNeverViolates`, which is exactly C-1's soundness condition.
-
-### ORIGINAL SkillOpt IS FINISHED — the result, and the caveat that matters as much
-Four epochs, jobs 66552422-425, all COMPLETED. **0 accepts and 4 rejects on ordinary bounded-edit
-steps.** The ONLY surviving change came from the **gated slow update at epoch 2**
-(`best_origin: slow_update_epoch_02`). Epochs 3 and 4 changed nothing: v3 and v4 are byte-identical
-to v2.
-
-| | |
-|---|---|
-| skill lineage | S0 `9d377d1c2906` (887 B) -> v1 `5bd17ea109bc` (940 B) -> v2 `e35673d87cb7` (4,518 B) = **the selected endpoint** |
-| validation | S0 **4/12** -> selected **5/12** (`best_selection_hard` 0.4167) |
-| S0's own spread over 4 independent training passes | **5, 4, 4, 5** of 12 |
-
-**So the accepted gain is ONE question, and S0's own sampling spread is +/-1 question.** The acceptance
-rests on a 1/12 margin; 12 validation questions cannot resolve finer. Upstream's strict-improvement
-rule was preserved, so this is the framework's behaviour and not a weakened gate. The held-out
-measurement is the test of whether it transfers.
-
-### HELD-OUT EVALUATIONS, submitted — SCORES STAY SEALED
-Three distinct endpoints, 30 questions x 2 passes each:
-`endpoint_S0.md` `9d377d1c2906` (job 66553250) · `endpoint_original_skillopt.md` `e35673d87cb7`
-(job 66553251) · Trace2Skill's, pending its job. Staged durably in the run root so a re-run uses the
-same bytes. **Do not use these scores to choose contract features, prompts or repairs.**
-
-### CPU: THE RETRIES WERE THE EXPENSE, AND THE CONVENTION IS WHY
-Counting started jobs at their FULL REQUESTED LIMIT (the established rule), after 23 jobs:
-
-| group | jobs | REQUESTED h | elapsed h |
-|---|---:|---:|---:|
-| **t2s** | 7 | **17.50** | 0.73 |
-| arm | 4 | 6.25 | 1.02 |
-| contract | 7 | 3.00 | 0.14 |
-| heldout | 2 | 3.00 | 0.00 |
-| s0 / prep | 3 | 2.17 | 0.44 |
-| **total** | **23** | **31.92 of 50** | **2.32** |
-
-**My seven Trace2Skill submissions requested 17.5 hours and used 44 minutes — 64% of the CPU
-allowance on retries of one stage**, because each asked for 2:30 and most failed in seconds. The t2s
-request is now sized to its measured 17:42 runtime (0:45). The retries were necessary; the walltime
-was not.
-
-### SPEND, measured from the call logs (the ledger was inert — see below)
-actor **1,801 calls of 20,000 (9.0%), $0.8896 of $15.00**; optimizer **148 of 400 (37.0%), $1.2783 of
-$20.00**. Nothing overran.
-
-### LEAN IS COMPILED, AND WHAT IT COVERS IS NARROW
-Job 66553083: `OqaConnected.lean` over the delivered facts — **50 evidence examples, 0 skipped, lean
-returncode 0, "all statements accepted"** (Lean 4.20.0); `OqaContracts.lean` compiled clean.
-**OQA_LEAN_BIN must be the TOOLCHAIN binary**, `lean/elan/toolchains/leanprover--lean4---v4.20.0/bin/lean`
-— `elan/bin/lean` is a shim with no configured toolchain and fails with "no default toolchain".
-It verifies the **resolution algebra** (an UNKNOWN binding can never yield VIOLATED; a discharge needs
-its binding) — NOT that the extraction is correct or that the occurrence binding picks the right cell.
-
-### AMENDMENTS C-1, C-2, C-3 — the chain of repairs and what each measured
-* **C-1** refuses to select a source cell by numeric equality. 566 -> 102 selections; the old tie-break
-  was choosing on numeric equality alone in **82%** of its selections.
-* **C-2** repaired C-1's two defects. Ledger sizes became **identical at 2,025** in both arms (its
-  sharpest prediction, held); selections 102 -> 257; 39.9% of "ties" were one cell seen twice.
-* **C-3** — an unknown year was becoming an ACCUSATION through `(year or -1)` in an inequality. **55 of
-  69 accusations were false by construction.** Fixed; the stage-diagnosis-group count returned to its
-  historical 14 from C-2's 17, which is independent support. **THE DEFECT PREDATES THE GATE: the old
-  arm carries 186 of the same class, so every prior VIOLATED count in this project — including the
-  three-arm campaign's delivered reports — is inflated by it.**
-* **C-2's accusations are NOT claimed**, per its own prediction 5.
-
-### TWO CLAIMS OF MINE WITHDRAWN, AND ONE DEFECT STILL OPEN
-* **WITHDRAWN:** that C-2 made UID0014's report byte-identical to the historical one. Report generation
-  is **DETERMINISTIC** (16 runs, job 66553105) and UID0014's digest `51f046e063a7` has differed from the
-  historical `8b90446cecdc` continuously since C-1. I had inferred "bytes identical" from a test NAME
-  without reading its assertion — the assertion that failed was the stage-group count, 17 against 14.
-  UID0019's report matches historical **16 of 16**.
-* **OPEN, not mine, not fixed:** `test_four_concurrent_processes_cannot_spend_more_than_the_one_shared_cap`
-  failed once with *"four processes spent 24 against a cap of 23"* — a real violation of `spent <= cap`
-  in the shared spend ledger. **Intermittent, not deterministic: 10 repeats, 10 passes.** Immaterial for
-  this campaign (~$2 of $15) but it is the invariant that protects the authorization.
-
-### TRACE2SKILL'S FIRST COMPLETE RUN WAS DEGRADED — read this before using its skill
-Job 66553058 produced a skill (18,590 bytes, `8af6ca6c6fdb`) but **its consolidation failed**: both
-level-2 merges and the verify step truncated at exactly `completion_tokens=16384` from ~77,000-character
-prompts, so the skill was assembled by a mechanical coalesce with `conflicts_unresolved: true` and 77
-items, and there was no verification. Trace2Skill is NAMED for conflict-free hierarchical consolidation.
-Repaired for job 66553156: merge batches 8 -> 3, levels 4 -> 6, verification chunked at 12 items,
-truncation detected at the call, and the cache key now covers `max_tokens` with a migration that reuses
-good legacy entries and refuses truncated ones.
+**Held-out scores and trajectories must not be used to choose contract features, prompts or repairs.**
+I read episode counts and provenance only. Unseal when the user asks.
 
 ### NEXT ACTIONS
-1. Monitor the chains. On a TIMEOUT, resubmit the same stage (see resume note above).
-2. **Correct the mixed-version bundle before deploying contract code**:
-   `collect_20261118/v2_bind/CC_BUNDLE_v6.json` is run 1's bundle (`36c37a397eddaa65`) beside run 2's
-   artifacts; the honest label for run 2 is **v7**. Re-freeze into a NEW versioned directory and
-   PRESERVE `v2_bind`.
-3. Develop the contract arm in an ISOLATED snapshot: question requirement -> lookup stage -> source
-   column/value -> calculation -> final answer. Report readiness and gaps SEPARATELY.
-4. After the epochs: export the validation-selected endpoint (**S0 itself if no candidate wins the
-   gate** — that is a real outcome), then the three held-out evaluations, two passes of 30 each.
-
-### TWO DEFECTS FOUND 2026-11-21, both in my own safety machinery
-* **The preflight asserted the backend's DEFAULTS** (`gpt-4o-mini` on `api.openai.com`) because it read
-  `_initial_config("target")` in a process that had never applied the config. The config reaches the
-  backend only via `configure_openai_compatible` (`skillopt/engine/trainer.py:843`). Job 66552338
-  failed on this and was right to; it cost nothing. Fixed, plus a new check that the fallbacks are NOT
-  in force.
-* **Trace2Skill's FINAL consolidation merge was unprotected**, so a provider error there would have
-  discarded every proposal the run had paid for. It now degrades to a local coalesce that keeps every
-  item and records `conflicts_unresolved: true`.
+1. **Re-open SSH (Duo), then pull the campaign artifacts listed at the top of this note.**
+2. Unseal the three held-out results when the user wants the comparison.
+3. The contract arm's real gap is the **learner**: a genuinely learned rule over column/series identity
+   with its evidence, a supported diagnosis on a later record, and the recovered-work control on
+   UID0026. Deliberately not started.
+4. Investigate the intermittent `spent <= cap` violation in the shared spend ledger, or decide it is
+   acceptable and record that. Not my code; characterised as intermittent (10 repeats, 10 passes).
+5. Decide whether the **one-question validation margin** makes a larger validation set worth the budget
+   before another comparison is run on this setup.
 
 ---
 

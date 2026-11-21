@@ -1843,3 +1843,44 @@ different routes.
 had not — all four digests are byte-identical to the previous job's record. I had moved the
 before-snapshot inside one phase's branch while the after-check stayed outside. A preservation check
 that cries wolf is worse than none.
+
+### 2026-11-21, 05:05 — the campaign is complete, and cluster access was lost just after
+
+**Both baselines ran end to end and all three held-out evaluations finished** — 180 held-out episodes,
+30/30 in both passes for every endpoint, under one config digest and one commit. Scores sealed. The
+complete record is `docs/research/OFFICEQA_BASELINE_LAUNCH.md` (519 lines).
+
+**Original SkillOpt:** four epochs, 0 accepts and 4 rejects on ordinary bounded-edit steps. The only
+surviving change was the epoch-2 gated slow update, taking validation 4/12 → 5/12. Epochs 3 and 4
+changed nothing. The caveat matters as much as the result: S0's own spread over four independent
+training passes is 5, 4, 4, 5, so a one-question gain sits inside the sampling band and the acceptance
+rests on a 1/12 margin. Upstream's strict-improvement rule was preserved, so this is the framework's
+behaviour, not a weakened gate.
+
+**Trace2Skill** was faithful only on the third attempt. The first two produced degraded consolidations
+— both preserved — because the level-2 merges and the verify step truncated at exactly
+`completion_tokens=16384`. The faithful run needed the output cap raised to 32,768 **through the
+config**, since the backend sends `min(per_call, config.max_tokens)`. Then: hierarchy 60→22→11→6→2→1,
+18 consolidated items (from 77 and 47), no mechanical fallback, all 18 verified APPLIED, 0 truncations.
+The item count falling is the deduplication the method exists for, visible only once the replies
+stopped being cut off.
+
+**Ten defects were mine**, every one caught by machinery rather than by a bill, and several by checks
+that existed only because an earlier one had been found. The two worth repeating: the **spend ledger
+was inert for the whole campaign** because `SKILLOPT_SPEND_LEDGER_DIR` was never exported — every cap
+configured, none enforced, and the prep stage's own `{"active": false}` told me so in a status check I
+wrote and read past. And I **inferred a fact from a test NAME without reading its assertion**, reported
+it, built two further conclusions on it, and withdrew all three. A determinism probe settled it.
+
+**The expense was walltime, not retries.** Seven Trace2Skill submissions at 2:30 each consumed 17.50 of
+the 50 authorized requested job-hours for 44 minutes of compute. The stage is now requested at 0:45.
+
+**Cluster access was lost immediately afterwards.** The `~/.ssh/cm_gl` ControlMaster socket is gone and
+Great Lakes requires Duo 2FA for a fresh connection, so a later session cannot reach the cluster until
+the user re-opens the master interactively. Nothing is at risk — the last job completed at 04:56 and
+none was submitted after — but **the campaign's artifacts were never pulled locally** and now cannot be
+until access returns. That is the first action recorded in the state note.
+
+Memories written: `configured-is-not-effective` (five settings that were set and not in force) and
+`read-the-assertion-not-the-test-name`. `fail-closed-api-endpoints` was updated, because it had already
+warned about the exact defect I repeated — reading a note is not the same as applying it.
