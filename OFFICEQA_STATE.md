@@ -4,31 +4,37 @@
 commit `43e7d46`. NOT pushed (168 commits ahead of origin). Tracked tree clean.
 NO OfficeQA JOB RUNNING OR QUEUED — the campaign finished.**
 
-## !! CLUSTER ACCESS IS LOST — READ THIS FIRST !!
+## CLUSTER ACCESS: fine now, but know the failure mode
 
-The SSH ControlMaster socket `~/.ssh/cm_gl` is **GONE**, and a fresh connection is refused:
+**As of 2026-11-21 18:27 the SSH master is UP** — `ssh -O check gl` reports
+`Master running (pid=87102)`, socket `~/.ssh/cm_gl` re-created at 18:25, round trip works, and
+`squeue` shows **no OfficeQA job queued or running** (the 6 live jobs are the held `e3m-*` Experiment 3
+GPU jobs, not this track's).
+
+**It was DOWN at 05:05 and I recorded it as lost.** That was true then: the socket was absent and a
+fresh connection returned
 `Authentications that can continue: publickey,keyboard-interactive` → `Permission denied`. The ssh
-config says why in its own comment: **Great Lakes requires Duo 2FA**, so re-authenticating is a manual
-interactive step. **A later session cannot reach the cluster until the user re-opens the master**, e.g.
+config explains why in its own comment — **Great Lakes requires Duo 2FA**, so re-authenticating is a
+manual interactive step and the long-lived master is the only thing that avoids it. The master was
+re-opened in the ~13 hours between.
 
-    ssh -M -S ~/.ssh/cm_gl -fN gl          # then complete Duo
+**So the recovery procedure, for next time:** a session that finds the socket gone cannot restore it
+itself. The user must run, and complete Duo for:
 
-Nothing is at risk: the last job completed at **04:56** and no job was submitted after it. But
-scheduler state could not be re-verified after the socket died, so treat "no jobs" as true as of 04:56
-and confirm with `squeue -u $USER` once access is back.
+    ssh -M -S ~/.ssh/cm_gl -fN gl
 
-## !! THE CAMPAIGN'S ARTIFACTS ARE CLUSTER-ONLY — NOT PULLED !!
+Nothing was ever at risk — the last job completed 04:56 and none was submitted after it.
 
-There is **no `runs/20261121-officeqa-*` directory locally.** Everything below lives only under
-`/nfs/turbo/umms-csriram/yaojm/lean_skillopt/runs/20261121-officeqa-two-baselines/` and
-`.../runs/20261121-officeqa-contract/`, and the socket died before it could be retrieved. **First
-action once SSH is back: pull these**, because CLAUDE.md requires important artifacts in local storage.
+## ARTIFACTS: pulled to local storage
+
+`runs/20261121-officeqa-contract/` (672K, 17 files) and `runs/20261121-officeqa-two-baselines/`
+(126M, ~2,354 files) under `~/dev/lean_skillopt/runs/`. Contents worth knowing by name:
 
     endpoint_S0.md                      9d377d1c2906     887 B
     endpoint_original_skillopt.md        e35673d87cb7   4,518 B
     endpoint_trace2skill.md              03d6564f1d10  24,121 B
-    heldout/{S0,original_skillopt,trace2skill}/{p1,p2}/   + each PROVENANCE.json   <-- SEALED
-    original_skillopt/   (summary.json, history.json, slow_update/, skills/)
+    heldout/{S0,original_skillopt,trace2skill}/{p1,p2}/  + PROVENANCE.json   <-- SEALED, see below
+    original_skillopt/   summary.json, history.json, slow_update/, skills/
     trace2skill/T2S_REPORT.json  + trace2skill_degraded_66553058/ + trace2skill_partial_66553156/
     ../20261121-officeqa-contract/{v3_occ,v4_c1,v5_c2,v6_lean,v7_det}/
 
