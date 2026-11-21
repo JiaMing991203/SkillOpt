@@ -70,11 +70,16 @@ def test_chunk_list_reproduces_upstreams_balancing():
     assert sorted(x for b in got for x in b) == list(range(19))
 
 
-def test_the_48_trajectory_reduce_is_genuinely_hierarchical():
-    """48 patches at batch 8 is six merges, then one final merge: two levels, not one flat call."""
-    first = T.chunk_list(list(range(48)), T.MERGE_BATCH_SIZE)
-    assert len(first) == 6 and all(len(b) == 8 for b in first)
-    assert T.MAX_MERGE_LEVELS >= 2
+def test_the_reduce_is_genuinely_hierarchical_and_reaches_one_patch():
+    """Not one flat call, and not a hierarchy that stalls. Measured against the real run: job 66553058
+    produced 60 patches from 48 trajectories, so the budget has to absorb that, not just 48."""
+    first = T.chunk_list(list(range(60)), T.MERGE_BATCH_SIZE)
+    assert len(first) == 20 and all(len(b) == 3 for b in first)
+    n, levels = 60, 0
+    while n > 1 and levels < T.MAX_MERGE_LEVELS:
+        n = len(T.chunk_list(list(range(n)), T.MERGE_BATCH_SIZE))
+        levels += 1
+    assert n == 1 and levels <= T.MAX_MERGE_LEVELS, (levels, n)
 
 
 def test_every_item_survives_every_level_of_batching():
@@ -170,7 +175,9 @@ def test_a_cached_reply_is_reused_and_not_paid_for_again(tmp_path):
     call = T.Caller(str(tmp_path), keys=[], dry_run=True)
     os.makedirs(os.path.join(str(tmp_path), "cache", "map"), exist_ok=True)
     import hashlib as _h
-    digest = _h.sha256(json.dumps({"p": "map", "s": "sys", "u": "usr"}, sort_keys=True).encode()).hexdigest()
+    # the key covers max_tokens too, so the fixture must use the same formula the Caller does
+    digest = _h.sha256(json.dumps(
+        {"p": "map", "s": "sys", "u": "usr", "max_tokens": 16384}, sort_keys=True).encode()).hexdigest()
     with open(os.path.join(str(tmp_path), "cache", "map", f"{digest}.json"), "w", encoding="utf-8") as f:
         json.dump({"text": "the saved reply", "usage": {"prompt_tokens": 7}}, f)
     assert call("map", "sys", "usr") == "the saved reply"
@@ -524,3 +531,79 @@ def test_a_dry_run_that_got_through_every_phase_is_a_SUCCESS():
     apply_block = src[src.index("    edited = phase_apply("):src.index('report["skill_after"]')]
     assert "if args.dry_run:" in apply_block
     assert 'report["dry_run"]' in apply_block
+
+
+def test_the_cache_key_covers_max_tokens_not_only_the_prompt(tmp_path):
+    """Job 66553058's merges truncated at the output cap. Raising the cap would have silently returned
+    the TRUNCATED reply from cache - a cache that defeats the repair it is meant to survive."""
+    call = T.Caller(str(tmp_path), keys=[], dry_run=True)
+    call("merge", "sys", "usr", max_tokens=16384)
+    call("merge", "sys", "usr", max_tokens=32768)
+    digests = {c["digest"] for c in call.calls}
+    assert len(digests) == 2, "the same prompt at a different cap must be a different cache entry"
+
+
+def test_a_truncated_reply_is_detected_at_the_call():
+    """Detected where it happens, not inferred downstream from an unparseable patch."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    assert "truncated = completion >= max_tokens" in src
+    assert "self.truncated.append" in src
+    assert '"truncated_calls"' in src
+
+
+def test_the_merge_batch_is_small_enough_that_a_level_two_merge_can_fit():
+    """All eight level-1 merges succeeded at 4,032-11,334 completion tokens; both level-2 merges
+    truncated at 16,384, because a level-2 merge combines already-MERGED patches of ~10 items each."""
+    assert T.MERGE_BATCH_SIZE == 3
+    assert T.MAX_MERGE_LEVELS >= 5, "smaller batches need more levels to still reach one patch"
+    # 60 patches must reach 1 within the level budget
+    n, levels = 60, 0
+    while n > 1 and levels < T.MAX_MERGE_LEVELS:
+        n = len(T.chunk_list(list(range(n)), T.MERGE_BATCH_SIZE))
+        levels += 1
+    assert n == 1, f"60 patches do not reduce to one within {T.MAX_MERGE_LEVELS} levels (got {n})"
+
+
+def test_verification_is_chunked_so_its_reply_can_fit():
+    """One call asking for per-item JSON over 77 items came back unterminated, so the run had no
+    verification at all."""
+    assert T.VERIFY_ITEMS_PER_CALL <= 15
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    fn = src[src.index("def phase_verify("):src.index("def run(args)")]
+    assert "THESE ITEMS ONLY" in fn
+    assert '"complete"' in fn and '"chunk_failures"' in fn
+
+
+def _legacy_entry(tmp_path, phase, system, user, text, completion_tokens):
+    import hashlib as _h
+    d = _h.sha256(json.dumps({"p": phase, "s": system, "u": user}, sort_keys=True).encode()).hexdigest()
+    p = tmp_path / "cache" / phase
+    p.mkdir(parents=True, exist_ok=True)
+    (p / f"{d}.json").write_text(json.dumps(
+        {"text": text, "usage": {"completion_tokens": completion_tokens}}), encoding="utf-8")
+
+
+def test_a_good_legacy_cache_entry_is_migrated_not_re_paid(tmp_path):
+    """Adding max_tokens to the key was right and would otherwise discard 95 already-paid replies."""
+    _legacy_entry(tmp_path, "analysis", "sys", "usr", "a complete reply", completion_tokens=900)
+    call = T.Caller(str(tmp_path), keys=[], dry_run=True)
+    assert call("analysis", "sys", "usr", max_tokens=16384) == "a complete reply"
+    assert call.calls[-1]["cached"] is True
+    assert call.calls[-1]["migrated"] is True
+
+
+def test_a_TRUNCATED_legacy_entry_is_NOT_migrated(tmp_path):
+    """Reusing one would defeat the very fix the key change exists for."""
+    _legacy_entry(tmp_path, "merge", "sys", "usr", "an unterminated rep", completion_tokens=16384)
+    call = T.Caller(str(tmp_path), keys=[], dry_run=True)
+    got = call("merge", "sys", "usr", max_tokens=16384)
+    assert got == "", "a truncated legacy reply must not be served from cache"
+    assert call.calls[-1]["cached"] is False
+
+
+def test_a_legacy_entry_truncated_at_the_OLD_cap_is_reusable_at_a_HIGHER_one(tmp_path):
+    """The test of the predicate: 'truncated' means it hit the cap it was generated under."""
+    _legacy_entry(tmp_path, "merge", "sys", "usr", "a reply", completion_tokens=16384)
+    call = T.Caller(str(tmp_path), keys=[], dry_run=True)
+    # asked for MORE than the reply used, so it was not cut off at this cap
+    assert call("merge", "sys", "usr", max_tokens=32768) == "a reply"

@@ -55,9 +55,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 RULE = "OQA-T2S-1"
 SCHEMA = "lso.officeqa_trace2skill.v1"
 
-# Upstream defaults for the markdown path: merge batches of 8, at most 4 hierarchy levels.
-MERGE_BATCH_SIZE = 8
-MAX_MERGE_LEVELS = 4
+# Upstream's markdown default is merge batches of 8 with at most 4 hierarchy levels. THREE, HERE, FOR
+# A MEASURED REASON. In job 66553058 all eight level-1 merges succeeded (4,032-11,334 completion
+# tokens) and then BOTH level-2 merges truncated at exactly 16,384 from ~77,000-character prompts,
+# because a level-2 merge combines already-MERGED patches carrying ~10 items each. The consolidation
+# therefore degraded to a mechanical coalesce with no conflict resolution - losing the one property
+# the method is named for. Smaller batches mean more levels and smaller outputs, which is how
+# upstream's own hierarchy is supposed to absorb this.
+MERGE_BATCH_SIZE = 3
+MAX_MERGE_LEVELS = 6
 # Two DeepSeek requests in flight, by instruction.
 MAX_WORKERS = 2
 PASSES = (1, 2, 3, 4)
@@ -291,6 +297,7 @@ class Caller:
         self.lock = threading.Lock()
         self.leaks: list = []
         self.explained: list = []
+        self.truncated: list = []
         os.makedirs(self.cache_dir, exist_ok=True)
 
     def extend_permitted(self, text: str) -> None:
@@ -342,15 +349,35 @@ class Caller:
 
     def __call__(self, phase: str, system: str, user: str, *, max_tokens: int = 16384) -> str:
         self._guard(phase, system, user)
-        digest = hashlib.sha256(
-            json.dumps({"p": phase, "s": system, "u": user}, sort_keys=True).encode()).hexdigest()
+        # THE KEY MUST COVER EVERYTHING THAT AFFECTS THE REPLY, not just the prompt. `max_tokens` was
+        # missing, so raising it to fix a TRUNCATED reply would have silently returned the truncated
+        # one from cache - a cache that defeats the repair it is meant to survive.
+        digest = hashlib.sha256(json.dumps(
+            {"p": phase, "s": system, "u": user, "max_tokens": max_tokens},
+            sort_keys=True).encode()).hexdigest()
         path = os.path.join(self.cache_dir, phase, f"{digest}.json")
+        # A LEGACY ENTRY, from before `max_tokens` joined the key. Adding it to the key was correct and
+        # would otherwise discard 95 already-paid replies, so a legacy entry is MIGRATED - but only if
+        # it was not truncated. A truncated reply is exactly what the key change exists to stop being
+        # reused, so migrating one would defeat the fix.
+        legacy = os.path.join(self.cache_dir, phase, f"{hashlib.sha256(json.dumps({'p': phase, 's': system, 'u': user}, sort_keys=True).encode()).hexdigest()}.json")
+        migrated = False
+        if not os.path.isfile(path) and os.path.isfile(legacy):
+            with open(legacy, encoding="utf-8") as f:
+                old_rec = json.load(f)
+            was_truncated = int((old_rec.get("usage") or {}).get("completion_tokens") or 0) >= max_tokens
+            if not was_truncated:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                old_rec["migrated_from_legacy_key"] = True
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(old_rec, f, indent=1, sort_keys=True, default=str)
+                migrated = True
         if os.path.isfile(path):
             with open(path, encoding="utf-8") as f:
                 rec = json.load(f)
             with self.lock:
                 self.calls.append({"phase": phase, "digest": digest[:12], "cached": True,
-                                   "usage": rec.get("usage")})
+                                   "migrated": migrated, "usage": rec.get("usage")})
             return rec.get("text") or ""
         if self.dry_run:
             with self.lock:
@@ -361,13 +388,24 @@ class Caller:
         from skillopt.model import chat_optimizer  # type: ignore
         text, usage = chat_optimizer(system=system, user=user,
                                      max_completion_tokens=max_tokens, stage=f"t2s_{phase}")
+        # TRUNCATION IS THE FAILURE MODE THAT COST THIS STAGE ITS CONSOLIDATION, so it is detected
+        # here rather than inferred downstream from an unparseable reply. Job 66553058: the two
+        # level-2 merges and the verify step all came back at EXACTLY completion_tokens 16384 with no
+        # terminator, from ~77,000-character prompts.
+        completion = int((usage or {}).get("completion_tokens") or 0)
+        truncated = completion >= max_tokens
+        if truncated:
+            with self.lock:
+                self.truncated.append({"phase": phase, "completion_tokens": completion,
+                                       "max_tokens": max_tokens, "prompt_chars": len(user),
+                                       "reply_chars": len(text or "")})
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump({"phase": phase, "system": system, "user": user, "text": text,
                        "usage": usage, "utc": _utc()}, f, indent=1, sort_keys=True, default=str)
         with self.lock:
             self.calls.append({"phase": phase, "digest": digest[:12], "cached": False,
-                               "usage": usage, "chars": len(text or "")})
+                               "usage": usage, "chars": len(text or ""), "truncated": truncated})
         return text or ""
 
 
@@ -603,19 +641,55 @@ def phase_apply(call: Caller, skill: str, merged: dict, P) -> str:
     return out
 
 
+VERIFY_ITEMS_PER_CALL = 12
+
+
 def phase_verify(call: Caller, original: str, merged: dict, edited: str, P) -> dict:
-    user = ("# Original document\n\n" + original + "\n\n# Merged patch\n\n" + render_patch(merged) +
-            "\n\n# Edited document\n\n" + edited + "\n\n# Task\nReport the JSON described above.")
-    text = call("verify", P.VERIFY_SYSTEM, user)
-    raw = (text or "").strip()
-    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
-    if fence:
-        raw = fence.group(1)
-    try:
-        return {"parsed": True, **json.loads(raw)}
-    except ValueError as exc:
-        return {"parsed": False, "error": f"the verifier did not return JSON: {exc}",
-                "raw_chars": len(text or "")}
+    """Check the merged patch against the edited document, IN CHUNKS OF ITEMS.
+
+    One call for everything truncated in job 66553058: a 76,925-character prompt asking for per-item
+    JSON over 77 items came back at exactly 16,384 completion tokens with the JSON unterminated, so the
+    run had no verification at all. The item list is therefore chunked; each chunk reports only its own
+    items, and the verdicts are concatenated. The documents are repeated in every chunk, which costs
+    prompt tokens - the cheap direction - to buy a reply that fits.
+    """
+    items = merged.get("items") or []
+    chunks = [items[i:i + VERIFY_ITEMS_PER_CALL]
+              for i in range(0, len(items), VERIFY_ITEMS_PER_CALL)] or [[]]
+    all_items, unrequested, failures = [], [], []
+
+    for n, chunk in enumerate(chunks, start=1):
+        part = dict(merged)
+        part["items"] = chunk
+        user = ("# Original document\n\n" + original +
+                "\n\n# Merged patch (items " +
+                f"{(n - 1) * VERIFY_ITEMS_PER_CALL + 1}-{(n - 1) * VERIFY_ITEMS_PER_CALL + len(chunk)}"
+                f" of {len(items)})\n\n" + render_patch(part) +
+                "\n\n# Edited document\n\n" + edited +
+                "\n\n# Task\nReport the JSON described above, for THESE ITEMS ONLY.")
+        text = call("verify", P.VERIFY_SYSTEM, user)
+        raw = (text or "").strip()
+        fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
+        if fence:
+            raw = fence.group(1)
+        try:
+            got = json.loads(raw)
+        except ValueError as exc:
+            failures.append({"chunk": n, "error": str(exc), "raw_chars": len(text or "")})
+            continue
+        for item in (got.get("items") or []):
+            item["chunk"] = n
+            all_items.append(item)
+        unrequested.extend(got.get("unrequested") or [])
+
+    verdicts = collections.Counter(str(i.get("verdict")) for i in all_items)
+    return {"parsed": not failures or bool(all_items),
+            "chunks": len(chunks), "items_per_call": VERIFY_ITEMS_PER_CALL,
+            "n_items_in_patch": len(items), "n_items_verified": len(all_items),
+            "verdicts": dict(verdicts),
+            "items": all_items, "unrequested": unrequested,
+            "chunk_failures": failures,
+            "complete": len(all_items) == len(items) and not failures}
 
 
 # ── the run ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -745,6 +819,11 @@ def run(args) -> int:
     report["optimizer_usage"] = usage
     report["calls"] = call.calls
     report["boundary_violations"] = call.leaks
+    report["truncated_calls"] = {
+        "n": len(call.truncated),
+        "note": "a reply that reached the output cap is incomplete; it is detected at the call rather "
+                "than inferred downstream from an unparseable patch",
+        "calls": call.truncated}
     report["boundary_explained_hits"] = {
         "n": len(call.explained),
         "note": "answer-key strings that appeared in a prompt AND in the permitted corpus, so the "
@@ -765,7 +844,9 @@ def run(args) -> int:
                       "skill": {"before": report["skill_before"]["sha256_12"],
                                 "after": report["skill_after"]["sha256_12"],
                                 "changed": report["skill_after"]["changed"]},
-                      "optimizer_usage": usage, "problems": problems}, indent=1, default=str))
+                      "optimizer_usage": usage,
+                      "truncated_calls": report["truncated_calls"]["n"],
+                      "problems": problems}, indent=1, default=str))
     # A dry run is successful when it got through every phase without a boundary violation or an
     # exception. It cannot change a skill, so "unchanged" must not be read as failure.
     if args.dry_run:

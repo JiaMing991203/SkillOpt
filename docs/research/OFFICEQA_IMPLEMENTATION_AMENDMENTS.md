@@ -714,3 +714,52 @@ state rather than a conservative one.
 3. **Ledger size is unchanged at 2,025 in both arms.** This change moves states, never counts.
 4. **DISCHARGED does not rise.** An unknown year cannot discharge a period requirement any more than
    it can violate one. If DISCHARGED rises, the branch is granting a witness it does not have.
+
+### C-3, measured — and a claim of mine withdrawn, with the inference error named
+
+**Report generation is DETERMINISTIC** (job 66553105, `oqa_report_det.py`: 8 regenerations within one
+process and 8 across processes with fresh hash seeds, for two reports).
+
+| report | digest now | historical | matches |
+|---|---|---|---|
+| UID0019 (arm B, LC_ACTION) | `338b6a2d7b6f` | `338b6a2d7b6f` | **16 of 16** |
+| UID0014 (arm C, LC_STAGE) | `51f046e063a7` | `8b90446cecdc` | **0 of 16** |
+
+**I WITHDRAW the claim that C-2 restored UID0014's report byte-identically**, and the two conclusions I
+drew from it — that C-1's whole effect on that report came from spurious ties, and that the blast
+radius of C-1+C-2 on historical report text was zero. All three were wrong.
+
+**The inference error, named plainly.** Job 66552984's pytest summary showed this test failing with the
+parametrisation `-False`, whose digest assertion is `now != historical`. I read that failure as "the
+bytes must therefore be identical". The assertion that actually failed was a **later one in the same
+test**: *"the stage group count keeps its historical value" — `assert 17 == 14`*. I inferred a fact
+from a test NAME without reading its assertion message, and then built two conclusions on it. The
+digest has differed from the historical one continuously since C-1.
+
+**What the stage-group count actually shows, and it supports C-3.**
+
+| | stage diagnosis groups in UID0014's report |
+|---|---:|
+| historical (old tie-break) | 14 |
+| under C-2 | **17** |
+| under C-3 | **14** again |
+
+C-2 restored bindings that then produced false `period_match` accusations, and each added a stage
+diagnosis group. C-3 made an undetermined year UNKNOWN instead of VIOLATED, and the count returned to
+its historical value — the assertion passes again. That is independent support for C-3 being the right
+repair, arrived at by reading the failure instead of guessing at it.
+
+**Under C-3 the whole suite is otherwise green: 2,506 passed, 9 skipped, 368 subtests, 1 failure** —
+the UID0014 digest, which is now pinned as *expected to change* with its measured digest recorded. The
+earlier `True` pin is reverted.
+
+**Lean, run in a job (66553083).** `OqaConnected.lean` over the delivered facts: **50 evidence examples
+encoded, 0 skipped, lean returncode 0, "all statements accepted"** (Lean 4.20.0). The standing
+theorems in `OqaContracts.lean` compiled clean. Two notes kept deliberately narrow: the first two
+attempts failed on the BINARY, not the proofs — `elan/bin/lean` is a shim with no configured toolchain,
+and the real binary is under `elan/toolchains/leanprover--lean4---v4.20.0/bin/` — and what is verified
+is the RESOLUTION ALGEBRA, not that the extraction is correct or that the occurrence binding picks the
+right cell.
+
+**The ledger overspend is INTERMITTENT, not deterministic:** ten repeats, ten passes. It remains a real
+violation of `spent <= cap` that happened once, now characterised rather than explained away.

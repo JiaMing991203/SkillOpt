@@ -394,15 +394,25 @@ def test_the_in_sample_note_tests_the_attempt_when_the_model_records_them():
 @pytest.mark.skipif(not CAMPAIGN or not os.path.isdir(CAMPAIGN),
                     reason="needs the frozen campaign directory in OQA_CAMPAIGN_ROOT")
 @pytest.mark.parametrize("arm,item,epoch,condition,bytes_preserved", [
+    # MEASURED, not assumed (job 66553105, oqa_report_det.py, 8 runs within one process and 8 across
+    # processes with fresh hash seeds): report generation is DETERMINISTIC, and UID0019's report is
+    # byte-identical to the historical one in all 16 runs. So this case pins a genuine invariant.
     ("B", "UID0019", 3, "LC_ACTION", True),
-    # THIS CASE MOVED UNDER C-1 AND MOVED BACK UNDER C-2, which is a result rather than a nuisance.
-    # C-1 refused to select a source cell on numeric equality alone and UID0014's report changed. C-2
-    # then deduplicated candidates that were ONE CELL seen through several observations - and the
-    # report became byte-identical to the historical one again. So C-1's entire effect on this report
-    # was caused by SPURIOUS TIES, not by any genuine ambiguity, and the blast radius of C-1+C-2 on
-    # historical report text is ZERO. Re-pinned to True, with the reason recorded rather than the
-    # expectation quietly flipped.
-    ("C", "UID0014", 3, "LC_STAGE", True),
+    # AND THIS ONE GENUINELY MOVES, deterministically: 51f046e063a7f2ce against the historical
+    # 8b90446cecdc935c, the same digest in all 16 runs. C-1's selection gate legitimately changes which
+    # source cell is reported, and the historical report was generated under the tie-break C-1 refuses.
+    #
+    # I BRIEFLY PINNED THIS TO True AND THAT WAS WRONG. I read an earlier job's failure of THIS test as
+    # evidence that C-2 had restored the bytes - but the assertion that failed there was not the digest
+    # one at all, it was "the stage group count keeps its historical value" (17 against 14). I inferred
+    # a fact from a test NAME without reading its assertion. The digest has differed from the
+    # historical one continuously since C-1.
+    #
+    # The stage-group count is the part that tells a story: C-2 took it 14 -> 17 by restoring bindings
+    # that then produced FALSE period accusations, and C-3 returned it to 14 by making an undetermined
+    # year UNKNOWN instead of VIOLATED. That assertion passes again, which is independent support for
+    # C-3 being the right repair.
+    ("C", "UID0014", 3, "LC_STAGE", False),
 ])
 def test_regenerating_a_real_historical_report_reproduces_its_bytes(
         arm, item, epoch, condition, bytes_preserved):
