@@ -252,15 +252,16 @@ nothing in this phase bears on it.
 
 **Prep (free, 1:18).** 2,428 tests passed, 11 skipped. The 12/12/30 split materialized and was compared
 to the manifest **id by id**, not by count — exact match in all three roles, pairwise disjoint. The
-ledger's cap mechanism was proven to hold **on this filesystem** against concurrency, restarts and an
-unwritable ledger (it rests on `O_CREAT|O_EXCL` atomicity, which is exactly what can differ between
-local disk and NFS). **Preflight: READY — 39 pass, 0 warn, 0 fail.**
+ledger's cap **mechanism** was exercised against concurrency, restarts and an unwritable ledger and
+held — but see §6f: that test runs in its own temporary directory, so it proves the mechanism and says
+nothing about whether this campaign was wired to it, and it was not. **Preflight: READY — 39 pass, 0
+warn, 0 fail.**
 
 **S0 stage (23:16).** 48 training + 12 validation episodes, all 12/12 per pass. The gated first-three
 checkpoint passed before the remaining 45 were run.
 
-**Original SkillOpt epoch 1 (3:40).** Wrote `best_skill.md`, `meta_skill/`, `slow_update/`, `steps/`,
-`summary.json`. Epoch 2 — the first *gated* slow update — is running.
+**Original SkillOpt, four epochs (3:40 then ~19, ~17 and ~19 min).** Each wrote `best_skill.md`,
+`meta_skill/`, `slow_update/`, `steps/` and `summary.json`; the outcome is in §1a.
 
 **The saved 2026-11-18 collection is configuration-identical** and reusable in principle: recorded
 skill digest `9d377d1c2906` equals the current S0 digest, recovery policy `committed_answer`,
