@@ -11,6 +11,9 @@
 #                   same saved records and compare the C-1 selection gate against the tie-break it
 #                   replaced. The amendment's prediction is committed in writing BEFORE this runs, and
 #                   the tool reports whether it held. Writes to v4_c1/, leaving v3_occ/ untouched.
+#   PHASE=c2        FREE. Freeze the post-C-2 state as v9 and replay again, so amendment C-2's five
+#                   predictions can be read off a measurement. Writes to v5_c2/; v3_occ/ and v4_c1/
+#                   are left alone, so the three semantic states stay separately inspectable.
 #
 # WHY THIS IS A SEPARATE BODY AND A SEPARATE BUNDLE. The baseline jobs (66552421-425, 66552508) are
 # running from oqa_base_20261121b and oqa_base_20261121c. bash reads a script body lazily, so touching
@@ -33,7 +36,7 @@
 set -uo pipefail
 B="${OQA_BUNDLE:?OQA_BUNDLE must be set}"
 PHASE="${PHASE:-bundle7}"
-case "$PHASE" in bundle7|replay) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
+case "$PHASE" in bundle7|replay|c2) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
 
 if [ "${SLURM_RESTART_COUNT:-0}" != "0" ]; then
     echo "REFUSING: SLURM_RESTART_COUNT=${SLURM_RESTART_COUNT}" >&2; exit 6
@@ -119,6 +122,29 @@ for p in 1 2 3 4; do
 done
 
 fi   # end PHASE=bundle7
+
+if [ "$PHASE" = "c2" ]; then
+    V5="$OQA_CT_ROOT/v5_c2"
+    mkdir -p "$V5" || exit 3
+    log "1/3 freezing the POST-C-2 semantic state as v9; v7, v8, v3_occ and v4_c1 are left alone"
+    "$OQA_PY" -I research/officeqa/oqa_cc_bundle.py freeze \
+        --model "$CC18/CC_MODEL_v1.json" --records "$CC18/CC_RECORDS_v2.json" \
+        --prompt "$CC18/CC_PROMPT.txt" --out "$V5" --label v9 2>&1 \
+        | tee "$OUTDIR/bundle_v9.txt" || status=$?
+    log "v9 freeze exit $status"
+
+    log "2/3 replaying under C-2, against the five predictions recorded in the amendment"
+    # Prediction 1 is the sharp one: the two arms should now have the SAME ledger size, because the
+    # gate changes obligation STATES and never their existence. If the sizes still differ, the repair
+    # is incomplete, and the tool's own totals say so.
+    "$OQA_PY" -I research/officeqa/oqa_occ_replay.py \
+        --predictions "$COL/collect/predictions" \
+        --model "$CC18/CC_MODEL_v1.json" \
+        --records "$COL/collect/results.jsonl" \
+        --out "$V5" 2>&1 | tee "$OUTDIR/occ_replay_c2.txt" || status=$?
+    log "replay exit $status"
+    OUT="$V5"
+fi
 
 if [ "$PHASE" = "replay" ]; then
     V4="$OQA_CT_ROOT/v4_c1"
