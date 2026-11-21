@@ -25,18 +25,29 @@ itself. The user must run, and complete Duo for:
 
 Nothing was ever at risk — the last job completed 04:56 and none was submitted after it.
 
-## ARTIFACTS: pulled to local storage
+## ARTIFACTS: pulled and DIGEST-VERIFIED locally
 
-`runs/20261121-officeqa-contract/` (672K, 17 files) and `runs/20261121-officeqa-two-baselines/`
-(126M, ~2,354 files) under `~/dev/lean_skillopt/runs/`. Contents worth knowing by name:
+`~/dev/lean_skillopt/runs/20261121-officeqa-two-baselines/` — **1,834 files, 47.9 MB** — and
+`.../20261121-officeqa-contract/` — 17 files, 672 KB. The three endpoints were checked against the
+digests recorded in their `PROVENANCE.json`, and all three match:
 
-    endpoint_S0.md                      9d377d1c2906     887 B
-    endpoint_original_skillopt.md        e35673d87cb7   4,518 B
-    endpoint_trace2skill.md              03d6564f1d10  24,121 B
-    heldout/{S0,original_skillopt,trace2skill}/{p1,p2}/  + PROVENANCE.json   <-- SEALED, see below
-    original_skillopt/   summary.json, history.json, slow_update/, skills/
-    trace2skill/T2S_REPORT.json  + trace2skill_degraded_66553058/ + trace2skill_partial_66553156/
+    endpoint_S0.md                      9d377d1c2906     887 B   OK
+    endpoint_original_skillopt.md        e35673d87cb7   4,518 B   OK
+    endpoint_trace2skill.md              03d6564f1d10  24,121 B   OK
+
+    heldout/{S0,original_skillopt,trace2skill}/{p1,p2}/   30/30 each   <-- SEALED
+      + PROVENANCE.json per endpoint (skill digest, config digest, commit, rule, split, n, passes)
+    original_skillopt/   summary.json, history.json, slow_update/epoch_0{1,2,3,4}/, skills/v0000..0004
+    trace2skill/T2S_REPORT.json, trace2skill_skill.md, cache/{analysis,map,merge,apply,verify}/
+      + trace2skill_degraded_66553058/ + trace2skill_partial_66553156/   (the two degraded runs)
     ../20261121-officeqa-contract/{v3_occ,v4_c1,v5_c2,v6_lean,v7_det}/
+      v6_lean holds OqaConnected.lean and the compile record; v7_det the determinism probe
+
+**A pull-verification trap, since it cost three attempts.** macOS now ships **openrsync** (protocol 29),
+which does **not** accept `--info=stats2`: it prints its usage and exits, and through a pipe that looks
+like success. Use `-a --stats`. And verify a pull by `find | wc -l` on an **absolute** path — the shell's
+cwd resets between tool calls, so a relative check silently measures the wrong directory. I concluded
+"transferred nothing" twice before the problem was mine both times.
 
 ## START HERE -> `docs/research/OFFICEQA_BASELINE_LAUNCH.md` — the complete campaign report (519 lines)
 
