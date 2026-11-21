@@ -198,3 +198,107 @@ def test_the_measurement_is_labelled_reused_development_evidence():
     assert "REUSED DEVELOPMENT EVIDENCE" in doc["label"]
     assert "No validation or held-out record takes part" in doc["label"]
     _json.dumps(doc, default=str)
+
+
+# ───────────────────────── amendment C-1: the chain may not pick a cell by value ─────────────────────────
+
+CHAIN = _mod("oqa_lc_chain")
+
+
+def _hit(value, where, basis=None, step=1, factor=1.0):
+    return {"value": value, "available_from": step, "scale_factor": factor,
+            "column_basis": basis, "row_label": where, "column": where,
+            "source": {"kind": "observation", "ref": where}, "table_key": where}
+
+
+def test_one_candidate_is_selected_without_needing_corroboration():
+    cell, basis = CHAIN.select_cell([_hit(500.0, "a")], None)
+    assert cell is not None
+    assert basis["basis"] == CHAIN.SOLE_CANDIDATE
+    assert basis["n_candidates"] == 1
+
+
+def test_no_candidate_is_reported_as_such_not_as_a_refusal():
+    cell, basis = CHAIN.select_cell([], None)
+    assert cell is None
+    assert basis["basis"] is None
+    assert basis["n_candidates"] == 0
+
+
+def test_several_candidates_without_corroboration_select_NOTHING():
+    """THE defect C-1 repairs: `_best_cell` returned a tie-break winner here."""
+    hits = [_hit(500.0, "a", step=1), _hit(500.0, "b", step=2)]
+    cell, basis = CHAIN.select_cell(hits, None)
+    assert cell is None, "a tie broken by numeric equality is not an established source binding"
+    assert basis["basis"] == CHAIN.REFUSED_NO_CORROBORATION
+    assert basis["n_candidates"] == 2
+    assert len(basis["rivals"]) == 2
+    assert "not an established source binding" in basis["why"]
+
+
+def test_several_candidates_with_an_unknown_occurrence_still_select_nothing():
+    hits = [_hit(500.0, "a"), _hit(500.0, "b")]
+    support = {"binding": O.UNKNOWN, "match": O.SEVERAL_POSITIONS}
+    cell, basis = CHAIN.select_cell(hits, support)
+    assert cell is None
+    assert basis["basis"] == CHAIN.REFUSED_NO_CORROBORATION
+    assert basis["occurrence_match"] == O.SEVERAL_POSITIONS
+
+
+def test_several_candidates_with_a_supported_occurrence_do_select_and_record_the_position():
+    hits = [_hit(500.0, "a"), _hit(500.0, "b")]
+    support = {"binding": O.SUPPORTED, "match": O.UNIQUE_POSITION,
+               "position": {"document": "b.txt", "line": 100, "field": 2},
+               "supporting": ["ROW_LABEL"]}
+    cell, basis = CHAIN.select_cell(hits, support)
+    assert cell is not None
+    assert basis["basis"] == CHAIN.OCCURRENCE_CORROBORATED
+    assert basis["occurrence"] == {"document": "b.txt", "line": 100, "field": 2}
+    assert basis["corroborated_by"] == ["ROW_LABEL"]
+
+
+def test_the_refusal_names_the_rivals_so_a_reader_can_judge():
+    hits = [_hit(500.0, "alpha", basis="FLAT"), _hit(500.0, "beta"), _hit(500.0, "gamma")]
+    _, basis = CHAIN.select_cell(hits, None)
+    assert {r["column_basis"] for r in basis["rivals"]} == {"FLAT", None}
+    assert len(basis["rivals"]) == 3
+
+
+def test_the_gate_can_only_withhold_a_selection_never_invent_one():
+    """C-1's committed prediction: the change only ever WITHHOLDS. Selections cannot increase."""
+    for hits in ([], [_hit(1.0, "a")], [_hit(1.0, "a"), _hit(1.0, "b")]):
+        for support in (None, {"binding": O.UNKNOWN}, {"binding": O.SUPPORTED, "supporting": ["QUERY"]}):
+            cell, _ = CHAIN.select_cell(hits, support)
+            if not hits:
+                assert cell is None
+            elif len(hits) == 1:
+                assert cell is not None      # unchanged from the old behaviour
+            else:
+                assert (cell is not None) == (support is not None
+                                              and support.get("binding") == O.SUPPORTED)
+
+
+def test_the_packet_step_shape_feeds_the_same_occurrence_measurement():
+    """A chain packet uses kind/text/cmd/obs/args; a saved trajectory uses type/content. One measurement."""
+    steps = [
+        {"i": 1, "kind": "tool", "tool": "grep",
+         "args": {"pattern": "individual", "path": "/d/b_1942.txt"},
+         "cmd": "grep(pattern='individual', path='/d/b_1942.txt')",
+         "obs": "100: | Individual receipts | 4242 |"},
+        {"i": 2, "kind": "message", "text": "The Individual receipts row gives 4242."},
+    ]
+    index = O.support_index(steps)
+    assert index[4242.0]["binding"] == O.SUPPORTED
+    assert index[4242.0]["position"] == {"document": "b_1942.txt", "line": 100, "field": 2}
+    # and the args are preferred over re-parsing the cmd string
+    assert O.observed_occurrences(steps)[0]["document"] == "b_1942.txt"
+
+
+def test_normalize_drops_anything_that_is_not_a_known_step_shape():
+    out = O.normalize([{"kind": "tool", "cmd": "c", "obs": "o"},
+                       {"type": "message", "content": "m"},
+                       {"kind": "message", "text": "t"},
+                       {"kind": "provider_debug", "content": "SECRET"},
+                       "not a dict"])
+    assert [i["kind"] for i in out] == ["tool", "message", "message"]
+    assert all("SECRET" not in str(i) for i in out)

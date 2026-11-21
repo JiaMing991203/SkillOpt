@@ -104,22 +104,48 @@ def tokens(text) -> set:
     return {w.lower() for w in _WORD.findall(str(text or ""))} - STOPWORDS
 
 
-def observed_occurrences(conv: list) -> list:
+def normalize(items: list) -> list:
+    """One shape for the two recorded forms, so the SAME measurement serves both.
+
+    A saved trajectory uses {"type": "tool_call", "cmd", "obs"} and {"type": "message", "content"};
+    a chain packet uses {"kind": "tool", "cmd", "obs", "args"} and {"kind": "message", "text"}. Both
+    become {"kind": "tool"|"message", "cmd", "obs", "args", "text"}. Anything else is dropped, so a
+    field added to either form later cannot reach a prompt or a binding silently.
+    """
+    out: list = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind") or {"tool_call": "tool", "message": "message"}.get(item.get("type"))
+        if kind == "tool":
+            out.append({"kind": "tool", "cmd": str(item.get("cmd") or ""),
+                        "obs": str(item.get("obs") or ""),
+                        "args": item.get("args") if isinstance(item.get("args"), dict) else {}})
+        elif kind == "message":
+            out.append({"kind": "message",
+                        "text": str(item.get("text") if item.get("text") is not None
+                                    else (item.get("content") or ""))})
+    return out
+
+
+def observed_occurrences(items: list) -> list:
     """Every numeric cell the actor actually OBSERVED, with its position and its line's evidence.
 
     Only line-numbered, pipe-delimited observation lines qualify. An observation without line numbers
     carries no position, so it yields nothing rather than a guess.
     """
     out: list = []
-    for entry in conv:
-        if not isinstance(entry, dict) or entry.get("type") != "tool_call":
+    for entry in normalize(items):
+        if entry["kind"] != "tool":
             continue
-        cmd = str(entry.get("cmd") or "")
-        path_match = _PATH.search(cmd)
-        document = os.path.basename(path_match.group(1)) if path_match else "?"
-        pattern_match = _PATTERN.search(cmd)
-        pattern_tokens = tokens(pattern_match.group(1)) if pattern_match else set()
-        for raw_line in str(entry.get("obs") or "").splitlines():
+        cmd = entry["cmd"]
+        args = entry.get("args") or {}
+        raw_path = args.get("path") or (_PATH.search(cmd).group(1) if _PATH.search(cmd) else "")
+        document = os.path.basename(str(raw_path)) if raw_path else "?"
+        raw_pattern = args.get("pattern") or (_PATTERN.search(cmd).group(1)
+                                              if _PATTERN.search(cmd) else "")
+        pattern_tokens = tokens(raw_pattern) if raw_pattern else set()
+        for raw_line in entry["obs"].splitlines():
             line_match = _LINE.match(raw_line)
             if not line_match:
                 continue
@@ -144,7 +170,7 @@ def observed_occurrences(conv: list) -> list:
     return out
 
 
-def actor_written(conv: list) -> dict:
+def actor_written(items: list) -> dict:
     """Numbers the actor wrote in its OWN messages, each with the words of every message that wrote it.
 
     The actor's own text is the only place its intent is observable, so the tokens are collected per
@@ -152,10 +178,10 @@ def actor_written(conv: list) -> dict:
     claim.
     """
     out: dict = collections.defaultdict(set)
-    for entry in conv:
-        if not isinstance(entry, dict) or entry.get("type") != "message":
+    for entry in normalize(items):
+        if entry["kind"] != "message":
             continue
-        content = str(entry.get("content") or "")
+        content = entry["text"]
         message_tokens = tokens(content)
         for num in _NUM.finditer(content):
             value = parse_value(num.group(0))
@@ -177,10 +203,10 @@ def corroborations(occurrence: dict, message_tokens: set) -> list:
     return found
 
 
-def bind(conv: list) -> dict:
+def bind(items: list) -> dict:
     """Bind every number the actor wrote to an observed occurrence, or say why it cannot be bound."""
-    occurrences = observed_occurrences(conv)
-    written = actor_written(conv)
+    occurrences = observed_occurrences(items)
+    written = actor_written(items)
     by_value: dict = collections.defaultdict(list)
     for occurrence in occurrences:
         by_value[occurrence["value"]].append(occurrence)
@@ -312,3 +338,13 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def support_index(items: list) -> dict:
+    """value -> its occurrence binding, for a consumer that must decide whether a source is established.
+
+    This is the interface `oqa_lc_chain` uses under amendment C-1. It deliberately returns the WHOLE
+    record rather than a boolean, so the consumer can report WHY a selection was refused and which
+    rival positions existed, instead of only that it was refused.
+    """
+    return {b["value"]: b for b in bind(items)["bindings"]}

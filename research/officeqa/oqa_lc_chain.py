@@ -38,6 +38,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import oqa_occ as OCC            # amendment C-1: occurrence-level source corroboration
 import oqa_check as CHK  # noqa: E402
 import oqa_lc_cells as CELLS  # noqa: E402
 import oqa_obligations as OB  # noqa: E402
@@ -229,11 +231,15 @@ def build(packet: dict, model: dict) -> dict:
         for c in conversions(step.get("text") or ""):
             convs.append({**c, "step": step["i"]})
 
+    # Amendment C-1: the occurrence index is computed once from the permitted steps and consulted for
+    # every operand, so a tie between equal-valued cells is broken by observed evidence or not at all.
+    occurrence_support = OCC.support_index(packet.get("steps") or [])
+
     operands = []
     for o in state["operands"]:
         hits = _match_cells(o["value"], cells, o["step"])
-        operands.append({**o, "cells": hits,
-                         "cell": _best_cell(hits),
+        cell, basis = select_cell(hits, occurrence_support.get(o["value"]))
+        operands.append({**o, "cells": hits, "cell": cell, "selection": basis,
                          "role": "operand"})
     computed = [{**c, "cells": _match_cells(c["value"], cells, c["step"]), "role": "computed"}
                 for c in state["computed"]]
@@ -248,14 +254,51 @@ def build(packet: dict, model: dict) -> dict:
     return chain
 
 
-def _best_cell(hits: list) -> dict | None:
-    """The binding to report: prefer an exact value match, then a FLAT column, then the earliest."""
+SOLE_CANDIDATE = "SOLE_CANDIDATE"
+OCCURRENCE_CORROBORATED = "OCCURRENCE_CORROBORATED"
+REFUSED_NO_CORROBORATION = "REFUSED_NO_CORROBORATION"
+
+
+def select_cell(hits: list, support: dict | None) -> tuple:
+    """Which source cell to report, and WHY - or a refusal with the rivals named. Amendment C-1.
+
+    WHAT THIS REPLACED AND WHY. `_best_cell` was handed every cell whose value matched the operand and
+    returned one of them, ranked by exact-match, then FLAT column, then earliest step. When several
+    cells hold the same number that is a source binding resting on numeric equality and a tie-break,
+    and the ledger would then discharge or violate an obligation against a cell the actor may never
+    have read. "Numeric equality alone must not establish cell, series or period identity."
+
+    So a tie is now resolved only by evidence INDEPENDENT of the number: an occurrence binding
+    (research/officeqa/oqa_occ.py) that is SUPPORTED, meaning the value sits at a unique observed
+    (document, line, field) position AND the actor's own words or its own grep pattern corroborate that
+    line. Without that, no cell is selected and the rivals are recorded.
+
+    Returns (cell_or_None, basis_record). The basis is always recorded, including on a refusal, so a
+    reader can tell "no candidate" from "several candidates and no way to choose".
+    """
     if not hits:
-        return None
+        return None, {"basis": None, "n_candidates": 0,
+                      "why": "no cell in the permitted view holds this value"}
     ranked = sorted(hits, key=lambda c: (c["scale_factor"] != 1.0,
                                          c.get("column_basis") != CELLS.COL_FLAT,
                                          c["available_from"]))
-    return ranked[0]
+    if len(hits) == 1:
+        return ranked[0], {"basis": SOLE_CANDIDATE, "n_candidates": 1,
+                           "why": "exactly one cell in the permitted view holds this value"}
+    supported = bool(support and support.get("binding") == OCC.SUPPORTED)
+    if supported:
+        return ranked[0], {
+            "basis": OCCURRENCE_CORROBORATED, "n_candidates": len(hits),
+            "occurrence": support.get("position"), "corroborated_by": support.get("supporting"),
+            "why": "several cells hold this value, and the actor's own observation corroborates one "
+                   "position independently of the number"}
+    return None, {
+        "basis": REFUSED_NO_CORROBORATION, "n_candidates": len(hits),
+        "occurrence_match": (support or {}).get("match"),
+        "rivals": [{"where": _where(c), "column_basis": c.get("column_basis"),
+                    "scale_factor": c.get("scale_factor")} for c in ranked[:6]],
+        "why": "several cells hold this value and no occurrence corroborates one of them; a unique "
+               "numeric match is not an established source binding, so no cell is selected"}
 
 
 # ── obligations ─────────────────────────────────────────────────────────────────

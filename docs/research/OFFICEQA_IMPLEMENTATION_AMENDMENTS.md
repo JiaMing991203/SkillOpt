@@ -392,3 +392,75 @@ findings. The frozen hypothesis `scale_binds` is about the unit, and the leaf do
 the expected effect on bindings is therefore **zero**, and section 6 of the packet reports the measured
 outcome rather than this expectation. The finding the leaf WOULD support — an operand whose column is not
 the asked measure — needs a predicate the vocabulary does not have, and that extension stays unimplemented.
+
+## C-1 — 2026-11-21. A value match may not select a source cell; an occurrence must corroborate it
+
+**Recorded BEFORE the code change, rule OQA-OCC-1.** Baseline preserved: `collect_20261118/v2_bind/`
+(digest-checked before and after by the job, which fails if anything there changed), the 24 collected
+episodes and their freeze `2083b4587253`, the learned hypothesis, and every existing analysis file. New
+output goes to `runs/20261121-officeqa-contract/v3_occ/`. The mixed-version bundle is corrected in the
+same job by freezing the current semantic state as **v7** in that new directory rather than relabelling
+v6 in place.
+
+**The defect, in one sentence.** `oqa_lc_chain._best_cell` is handed every cell whose value matches an
+operand and **silently returns one of them**, ranked by exact-match, then FLAT column, then earliest
+step. When several cells hold the same number the chain therefore reports a source binding that rests on
+nothing but numeric equality and a tie-break — exactly what "numeric equality alone must not establish
+cell, series or period identity" forbids. The ledger then discharges or violates an obligation against a
+cell the actor may never have read.
+
+**Reason, measured on the 24 corrected-client TRAINING records before any code was written**
+(`research/officeqa/oqa_occ.py`, reused development evidence; no validation or held-out record takes
+part). A `grep` observation prefixes each matched line with its **line number**, so a cell has an
+observable position — (document, line, field index) — independent of what its column means:
+
+| | measured |
+|---|---:|
+| records where the occurrence channel exists at all | **20 of 24** |
+| observed numeric occurrences | 4,261 |
+| distinct numbers the actor wrote | 1,117 |
+| of those, at a **unique** observed position | **201** |
+| at several positions → correctly UNKNOWN | 122 |
+| at no observed position (actor-derived results) | 794 |
+| unique position **and independently corroborated** | **64** |
+
+**A unique position is not a binding, and the module says so.** Corroboration must be independent of the
+number: `ROW_LABEL` (the actor's own message naming a distinctive token from the line the value sits on,
+stopwords removed) or `QUERY` (the line was returned by a grep whose pattern the actor chose). 64 of 201
+reach that bar.
+
+**A third candidate was rejected, and the rejection is the useful part.** `SOLE_IN_ROW` — the value
+occurs once on its line — looked like a corroboration and lifted the supported rate to **100% of unique
+positions**. That attractive number was the tell: it is very nearly a tautology, because two occurrences
+of one value on a single line would occupy two field indices and the position would not be unique.
+Measured, **200 of 201** unique positions were sole-in-row, an entailed share of 0.995. It is computed
+and reported for transparency and excluded from support. Honest support is 64, not 201.
+
+**The change.** `_best_cell` is replaced by a selection that refuses to choose without evidence:
+
+| candidates | occurrence evidence | result |
+|---|---|---|
+| exactly one | not required | selected, basis `SOLE_CANDIDATE` |
+| several | a SUPPORTED occurrence binding for that value | selected, basis `OCCURRENCE_CORROBORATED`, position recorded |
+| several | UNKNOWN or absent | **no selection.** The rivals are recorded and the obligation becomes UNKNOWN |
+
+Nothing else changes: the obligation vocabulary, the stage states, the `reopen` semantics on a dropped
+assumption, the learned hypothesis and the report format are all untouched. The corroboration is computed
+ABOVE `oqa_lc_cells`, which stays byte-identical, keeping B-2's promise.
+
+**What is NOT claimed.**
+* **Not the column's meaning.** A corroborated occurrence says *which cell*, not what the cell measures.
+  Both witnessed error classes of OQA-BIND-1 are column *selection* errors and this does not settle
+  them; it supplies the cell identity a later stage contract would need.
+* **Not that an unbound number is wrong.** Most numbers the actor writes are its own intermediate
+  results, so `NO_OCCURRENCE` is a category and not a fault.
+* **Not that a record without numbered observations failed.** Four of the 24 read documents without
+  producing numbered lines. The channel is absent there — genuinely missing information, reported as its
+  own outcome rather than folded into UNKNOWN.
+
+**Prediction, committed before the replay runs.** Fewer reported source bindings, not more, because the
+change only ever *withholds* a selection. Specifically: the count of operands carrying a selected cell
+will **fall**; some obligations currently DISCHARGED or VIOLATED will become **UNKNOWN**; and the number
+of *supported* bindings will not rise above the 64 the occurrence measurement found. If the replay shows
+*more* selections, the implementation is wrong rather than the prediction. An increase in coverage would
+be a defect here, not a result.
