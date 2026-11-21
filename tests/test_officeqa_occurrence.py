@@ -476,3 +476,71 @@ def test_the_replay_reports_whether_the_ledger_sizes_are_identical():
     assert '"every_accusation_with_its_witness"' in src
     # and the committed prediction is quoted in the module, so the measurement names what it tests
     assert "committed_prediction" in src
+
+
+# ───────────────────────── amendment C-3: an unknown year is not a wrong year ─────────────────────────
+
+def _chain_with_period(period, period_text, row_label, question):
+    cell = {"value": 500.0, "available_from": 1, "scale_factor": 1.0, "column_basis": "FLAT",
+            "row_label": row_label, "column": "Receipts", "col_index": 1,
+            "source": {"kind": "grep", "file": "b.txt", "step": 1}, "table_key": "b.txt#1",
+            "period": period, "period_text": period_text, "scale": None}
+    return {"id": "T", "question": "q", "task": OB.derive(question), "cells": [cell],
+            "operands": [{"raw": "500", "value": 500.0, "step": 2, "cells": [cell], "cell": cell,
+                          "selection": {"basis": CHAIN.SOLE_CANDIDATE, "n_candidates": 1,
+                                        "n_raw_candidates": 1}, "role": "operand"}],
+            "computed": [], "conversions": [], "computations": [],
+            "answer": "500", "answer_value": 500.0,
+            "model": {"version": "t", "sha256": "x", "assumptions": []}}
+
+
+def _period_ob(chain):
+    return next((r for r in CHAIN.obligations(chain) if r["kind"] == "period_match"), None)
+
+
+def test_a_period_with_no_year_is_UNKNOWN_not_VIOLATED():
+    """THE false-accusation class: 55 of 69 accusations in the C-2 replay were rows like `Aug.`
+    reported as "August (year unknown) is not among the asked June 1970, 1960, 1969"."""
+    chain = _chain_with_period({"year": None}, "August (year unknown)", "Aug.",
+                               "What were receipts in June 1970, 1960 and 1969, in millions?")
+    ob = _period_ob(chain)
+    assert ob is not None
+    assert ob["state"] == CHAIN.UNKNOWN, f"an undetermined year must not be an accusation: {ob}"
+    assert ob.get("year_undetermined") is True
+    assert "NO YEAR" in ob["why"]
+    assert "an undetermined year is not a wrong one" in ob["why"]
+
+
+def test_the_sentinel_is_gone_from_the_span_comparison():
+    """`(cp.get("year") or -1)` put -1 into an inequality, and -1 is outside any span of real years.
+
+    Checked against CODE, not text: the amendment's own comment quotes the old expression in order to
+    explain why it was wrong, and a text scan trips on its own documentation.
+    """
+    src = open(os.path.join(RESEARCH, "oqa_lc_chain.py"), encoding="utf-8").read()
+    code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
+    assert 'cp.get("year") or -1' not in code
+    assert 'min(asked_years) < cp["year"] < max(asked_years)' in code
+
+
+def test_a_period_with_a_KNOWN_wrong_year_is_still_an_accusation():
+    """C-3 must not silence real mismatches: 14 of the 69 had a known year and may be genuine."""
+    chain = _chain_with_period({"year": 1955}, "January 1955", "1955-January",
+                               "What were receipts in January 1956 and February 1956, in millions?")
+    ob = _period_ob(chain)
+    assert ob["state"] == "VIOLATED", f"a known wrong year must still be reported: {ob}"
+    assert ob.get("year_undetermined") is None
+
+
+def test_a_matching_year_still_discharges():
+    chain = _chain_with_period({"year": 1961}, "1961", "1961",
+                               "What were receipts in fiscal year 1961, in millions of dollars?")
+    ob = _period_ob(chain)
+    assert ob["state"] == "DISCHARGED"
+
+
+def test_an_unknown_year_cannot_DISCHARGE_either():
+    """C-3's prediction 4: an unknown year grants no witness, in either direction."""
+    chain = _chain_with_period({"year": None}, "June (year unknown)", "June",
+                               "What were receipts in fiscal year 1961, in millions of dollars?")
+    assert _period_ob(chain)["state"] == CHAIN.UNKNOWN

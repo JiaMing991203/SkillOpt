@@ -646,3 +646,71 @@ anyone proposes a repair; it changes nothing. **Impact on the live campaign is i
 block against caps of 20,000 attempts and $15, with about $2 spent — but the invariant `spent <= cap`
 is the thing that protects the authorization, so it is recorded as an open defect rather than rounded
 away.
+
+## C-3 — 2026-11-21. An unknown year became an accusation, through a sentinel in an inequality
+
+**Recorded BEFORE the code change, rule OQA-OCC-1.** This amendment exists because C-2's prediction 5
+was discharged honestly and the answer was unfavourable. Output goes to `v7_c3/`; v7, v8, v9 and the
+directories `v3_occ/`, `v4_c1/`, `v5_c2/`, `v6_lean/` are all left alone.
+
+### What the inspection found, and what it costs C-2
+
+C-2's prediction 5 said: *"any increase must be inspected witness by witness before it is believed, and
+an increase without an inspectable witness is a reason to withdraw the repair, not to report it."*
+VIOLATED had risen from C-1's 30 to C-2's 69, so the replay was made to carry every accusation with its
+witness. Inspected:
+
+| | |
+|---|---:|
+| accusations under the gate | **69**, every one of kind `period_match` |
+| …resting on a period whose **YEAR IS UNKNOWN** | **55 (80%)** |
+| …with a known year, so potentially real | 14 |
+| concentrated in | 2 records — UID0028 (39), UID0228 (30) |
+| the same class in the old tie-break arm | **186** |
+
+The witnesses are unambiguous. A row labelled `Aug.` yields period *"August (year unknown)"*, and the
+obligation reports *"row period August (year unknown) is not among the asked June 1970, 1960, 1969 and
+is not inside their span"* — **VIOLATED**. A period whose year is undetermined cannot be known to be
+outside the asked periods. This is a false accusation, and it is made against the actor.
+
+**THE MECHANISM, exactly.** In the `period_match` branch:
+
+```python
+elif len(asked_years) >= 2 and min(asked_years) < (cp.get("year") or -1) < max(asked_years):
+```
+
+`cp["period"]` is not None here — it is a dict whose `year` is None — so the earlier UNKNOWN branch
+does not fire. `(None or -1)` substitutes **−1** for "unknown", −1 lies outside any span of real years,
+the guard is False, and control falls through to VIOLATED. **A sentinel standing in for "unknown",
+used in an inequality, is precisely how an unknown becomes an accusation.**
+
+**SO C-2's ACCUSATIONS ARE WITHDRAWN AS A CLASS**, per prediction 5. To be clear about what is and is
+not affected:
+* C-2's **repairs stand** — predictions 1, 3 and 4 held, the ledger sizes are identical, and the
+  byte-identical historical report is independent evidence that defect B was real.
+* C-2's **accusations are not claimed**. 80% are false by construction; the remaining 14 rest on
+  bindings whose correctness I have not established.
+* **This defect PREDATES the gate.** The old tie-break arm carries 186 VIOLATED of the same kind, so
+  every previous VIOLATED count in this project — including the three-arm campaign's delivered reports
+  — is inflated by it. That is a finding about the historical record, not only about tonight's work.
+
+### The change
+
+An explicit branch: if the cell's period has **no year**, the obligation is **UNKNOWN**, with a `why`
+naming the row label and saying that the year is undetermined so the period cannot be compared. The
+sentinel is removed from the inequality, which now runs only when the year is known.
+
+**Why not decide it from the month alone.** Tempting, and unsound here: UID0028's asked periods are
+"June 1970, 1960, 1969" — two of them BARE YEARS with no month — so an August row could be August 1960
+or August 1969 and might well be within what the question asks. The asked-period representation is
+already known to be loose (`oqa_obligations._periods` reads "fiscal years 1929-1942" as two bare
+years). With that representation, an unknown year is genuinely undecidable, and UNKNOWN is the honest
+state rather than a conservative one.
+
+**PREDICTION, committed before the replay.**
+1. **Gated-arm VIOLATED falls from 69 to 14** — exactly the unknown-year class moves to UNKNOWN.
+2. **Old-arm VIOLATED falls substantially from 186**, because the class predates the gate and the
+   replay runs both arms through the same `obligations()`.
+3. **Ledger size is unchanged at 2,025 in both arms.** This change moves states, never counts.
+4. **DISCHARGED does not rise.** An unknown year cannot discharge a period requirement any more than
+   it can violate one. If DISCHARGED rises, the branch is granting a witness it does not have.

@@ -440,11 +440,29 @@ def obligations(chain: dict) -> list:
         else:
             cp = cell["period"]
             asked_text = ", ".join(p["text"] for p in asked_periods)
-            if cp.get("year") in asked_years:
+            if cp.get("year") is None:
+                # AMENDMENT C-3. This used to fall through to VIOLATED, because the span guard below
+                # read `(cp.get("year") or -1)` and -1 lies outside any span of real years. A SENTINEL
+                # STANDING IN FOR "UNKNOWN", USED IN AN INEQUALITY, IS HOW AN UNKNOWN BECOMES AN
+                # ACCUSATION: 55 of 69 accusations in the C-2 replay were rows like `Aug.` reported as
+                # "August (year unknown) is not among the asked June 1970, 1960, 1969".
+                #
+                # The month alone cannot settle it either. UID0028's asked periods include two BARE
+                # YEARS, so an August row could be August 1960 or August 1969 and might be exactly what
+                # the question asks about. `oqa_obligations._periods` is known to read "fiscal years
+                # 1929-1942" as two bare years, so with this representation an unknown year is
+                # genuinely undecidable and UNKNOWN is the honest state, not a cautious one.
+                out.append(_ob("period_match", sub,
+                               "the cell's period must be one the question asks about", UNKNOWN,
+                               f"the row label {cell.get('row_label')!r} yields the period "
+                               f"{cell.get('period_text')} with NO YEAR, so it cannot be compared "
+                               f"with the asked {asked_text}; an undetermined year is not a wrong one",
+                               ["TASK", "OBS"], _witness(cell), year_undetermined=True))
+            elif cp.get("year") in asked_years:
                 out.append(_ob("period_match", sub, "the cell's period must be one the question asks about",
                                DISCHARGED, f"row period {cell['period_text']} matches the asked {asked_text}",
                                ["TASK", "OBS"], _witness(cell)))
-            elif len(asked_years) >= 2 and min(asked_years) < (cp.get("year") or -1) < max(asked_years):
+            elif len(asked_years) >= 2 and min(asked_years) < cp["year"] < max(asked_years):
                 # A year INSIDE the span of the asked years is not reported as wrong. `oqa_obligations._periods`
                 # reads "fiscal years 1929-1942" as the two bare years 1929 and 1942, so every intermediate year
                 # of a regression over that span would otherwise be flagged - twelve loud false positives on

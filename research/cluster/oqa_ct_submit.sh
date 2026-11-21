@@ -1,7 +1,7 @@
 #!/bin/bash
 # Submit a contract-arm phase. Rule OQA-OCC-1.
 #
-#   OQA_BUNDLE=<bundle> bash oqa_ct_submit.sh bundle7|replay|c2|lean [--dry-run]
+#   OQA_BUNDLE=<bundle> bash oqa_ct_submit.sh bundle7|replay|c2|lean|det [--dry-run]
 #
 #     bundle7  0:20  FREE  correct the mixed-version bundle as v7 in a new directory, measure
 #                          occurrence-level binding over the saved training records, run the tests
@@ -11,7 +11,7 @@
 #
 # Free: the body drops every credential before Python starts. 0:20 requested is 0.333 CPU job-hours.
 set -euo pipefail
-WHAT="${1:?usage: oqa_ct_submit.sh bundle7|replay|c2|lean [--dry-run]}"
+WHAT="${1:?usage: oqa_ct_submit.sh bundle7|replay|c2|lean|det [--dry-run]}"
 DRY=0
 [ "${2:-}" = "--dry-run" ] && DRY=1
 B="${OQA_BUNDLE:?set OQA_BUNDLE to the bundle directory}"
@@ -39,7 +39,7 @@ if [ -n "$_accepts" ] && ! printf '%s' "|$_accepts|" | grep -q "|$_probe|"; then
     exit 2
 fi
 
-case "$WHAT" in bundle7) T=00:20:00 ;; replay) T=00:25:00 ;; c2) T=00:25:00 ;; lean) T=00:30:00 ;;
+case "$WHAT" in bundle7) T=00:20:00 ;; replay) T=00:25:00 ;; c2) T=00:25:00 ;; lean) T=00:30:00 ;; det) T=00:20:00 ;;
   *) echo "unknown: $WHAT" >&2; exit 2 ;; esac
 if [ "$DRY" = "1" ]; then printf '  %-18s %s  PHASE=%s\n' "oqa-ct-$WHAT" "$T" "$WHAT"; exit 0; fi
 sbatch --parsable --job-name="oqa-ct-$WHAT" --account="$ACCOUNT" --partition="$PARTITION" \

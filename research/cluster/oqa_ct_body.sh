@@ -14,6 +14,9 @@
 #   PHASE=c2        FREE. Freeze the post-C-2 state as v9 and replay again, so amendment C-2's five
 #                   predictions can be read off a measurement. Writes to v5_c2/; v3_occ/ and v4_c1/
 #                   are left alone, so the three semantic states stay separately inspectable.
+#   PHASE=det       FREE. Is a generated contract report byte-deterministic? A byte-reproduction test
+#                   gave OPPOSITE results in two jobs whose report-generating code was identical, so
+#                   until this is settled no claim that a repair "restored the bytes" can stand.
 #   PHASE=lean      FREE. Run the deployed checker under C-2 to produce the facts actually delivered,
 #                   then generate and COMPILE the Lean file over them. Writes to v6_lean/.
 #
@@ -49,7 +52,7 @@
 set -uo pipefail
 B="${OQA_BUNDLE:?OQA_BUNDLE must be set}"
 PHASE="${PHASE:-bundle7}"
-case "$PHASE" in bundle7|replay|c2|lean) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
+case "$PHASE" in bundle7|replay|c2|lean|det) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
 
 if [ "${SLURM_RESTART_COUNT:-0}" != "0" ]; then
     echo "REFUSING: SLURM_RESTART_COUNT=${SLURM_RESTART_COUNT}" >&2; exit 6
@@ -135,6 +138,21 @@ for p in 1 2 3 4; do
 done
 
 fi   # end PHASE=bundle7
+
+if [ "$PHASE" = "det" ]; then
+    V7="$OQA_CT_ROOT/v7_det"
+    mkdir -p "$V7" || exit 3
+    log "measuring report determinism, within one process and across processes"
+    for it in UID0014 UID0019; do
+        arm=C; cond=LC_STAGE
+        [ "$it" = "UID0019" ] && { arm=B; cond=LC_ACTION; }
+        "$OQA_PY" -I research/officeqa/oqa_report_det.py \
+            --campaign "$CAMP" --arm "$arm" --item "$it" --epoch 3 --condition "$cond" \
+            --repeats 8 --out "$V7/DET_$it.json" 2>&1 | tee "$OUTDIR/det_$it.txt" || status=$?
+        log "  $it verdict: $(grep -oE '\"verdict\": \"[A-Z_]+\"' "$OUTDIR/det_$it.txt" | head -1)"
+    done
+    OUT="$V7"
+fi
 
 if [ "$PHASE" = "lean" ]; then
     : "${OQA_LEAN_BIN:?settings.env must define OQA_LEAN_BIN for the lean phase}"
