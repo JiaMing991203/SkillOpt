@@ -628,3 +628,20 @@ def test_the_caller_default_follows_the_effective_cap(tmp_path):
     other = T.Caller(str(tmp_path), keys=[], dry_run=True, default_max_tokens=16384)
     other("merge", "sys", "usr")
     assert a != other.calls[-1]["digest"], "a different effective cap must key differently"
+
+
+def test_the_recorded_skill_digest_is_the_digest_of_the_file_that_gets_written():
+    """Job 66553248 reported b0bb1b0cf0fa for a file whose digest is 03d6564f1d10, because the digest
+    was taken over `edited` and the file was written as `edited + newline`. Matching the complete
+    effective endpoint inputs is exactly what the rule for reusing an evaluation requires, so a digest
+    that cannot verify the artifact is useless for it."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    # the normalisation happens BEFORE the digest
+    run_body = src[src.index("def run(args)"):src.index("def _write(")]
+    norm = run_body.index('edited = edited if edited.endswith')
+    dig = run_body.index('"sha256_12": hashlib.sha256(edited.encode())')
+    assert norm < dig, "normalise before digesting, or the digest describes something unwritten"
+    # and _write must not re-normalise, or it could diverge again
+    write_body = src[src.index("def _write("):]
+    assert 'f.write(edited)' in write_body
+    assert 'endswith' not in write_body.split('f.write(edited)')[0].split('if edited:')[-1]

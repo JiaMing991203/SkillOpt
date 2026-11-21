@@ -818,8 +818,16 @@ def run(args) -> int:
         else:
             problems.append("the apply phase returned no document; the skill is UNCHANGED")
         edited = skill
+    # NORMALISE ONCE, THEN DIGEST WHAT IS WRITTEN. The digest used to be taken over `edited` while
+    # `_write` saved `edited + "\n"`, so the recorded digest could NEVER match the endpoint file that
+    # is handed to the held-out evaluation - and matching the complete effective inputs is exactly what
+    # the rule for reusing an evaluation requires. Job 66553248 reported b0bb1b0cf0fa for a file whose
+    # digest is 03d6564f1d10.
+    edited = edited if edited.endswith("\n") else edited + "\n"
     report["skill_after"] = {"bytes": len(edited.encode()),
                              "sha256_12": hashlib.sha256(edited.encode()).hexdigest()[:12],
+                             "sha256": hashlib.sha256(edited.encode()).hexdigest(),
+                             "note": "the digest of the bytes written to trace2skill_skill.md",
                              "changed": edited.strip() != skill.strip()}
     report["verify"] = phase_verify(call, skill, merged, edited, P) if merged else {"parsed": False}
 
@@ -870,8 +878,9 @@ def _write(out_dir: str, report: dict, edited: str | None) -> None:
     with open(os.path.join(out_dir, "T2S_REPORT.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1, sort_keys=True, default=str)
     if edited:
+        # `edited` is already newline-normalised by run(), so what is digested is what is written.
         with open(os.path.join(out_dir, "trace2skill_skill.md"), "w", encoding="utf-8") as f:
-            f.write(edited if edited.endswith("\n") else edited + "\n")
+            f.write(edited)
 
 
 def main(argv=None) -> int:
