@@ -1,0 +1,1341 @@
+{
+ "design": {
+  "heldout": 30,
+  "heldout_attempts_per_question_per_endpoint": 2,
+  "train": 12,
+  "val": 12
+ },
+ "digest": "b0dbbd4be97fc2452509799d9917a7bdfd20083055427d3d4bdc400c9c13d7c3",
+ "disjoint": true,
+ "excluded": {
+  "UID0046": "OQA-SEL-2: the evidence test found no retrievable value for this question in the supplied page or anywhere in the parsed document. Carried forward as an exclusion from the TRAIN pool only. It is not among OQA-SEL-2's 12 training items, so this rule's train set is unaffected."
+ },
+ "generated": "2026-11-21T02:32:13-05:00",
+ "prior_research_exposure": {
+  "heldout": {
+   "UID0003": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0004": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0005": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0006": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0008": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0009": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0010": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0011": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0012": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0013": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0015": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0016": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0020": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0021": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0022": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0023": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0025": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0062": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0068": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0076": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0078": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0080": [
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0082": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0088": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0089": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "heldout"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0112": [
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0131": [
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0171": [
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0214": [
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ],
+   "UID0232": [
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "heldout"
+    }
+   ]
+  },
+  "train": {
+   "UID0014": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0017": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0026": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0028": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0030": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0031": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0033": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0034": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0063": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0065": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0079": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ],
+   "UID0085": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "train"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "train"
+    }
+   ]
+  },
+  "val": {
+   "UID0001": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0027": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0041": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0052": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0070": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0072": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0086": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0091": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0109": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0142": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0154": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ],
+   "UID0161": [
+    {
+     "freeze": "OQA-SEL-2",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS.json",
+     "role": "val"
+    },
+    {
+     "freeze": "OQA-SEL-3",
+     "record": "docs/research/OFFICEQA_FROZEN_SETS_V3.json",
+     "role": "val"
+    }
+   ]
+  }
+ },
+ "problems": [],
+ "rule": "OQA-SEL-4",
+ "schema": "lso.officeqa_frozen_sets.v4",
+ "sets": {
+  "heldout": {
+   "balanced": true,
+   "excluded": [],
+   "ids": [
+    "UID0003",
+    "UID0004",
+    "UID0005",
+    "UID0006",
+    "UID0008",
+    "UID0009",
+    "UID0010",
+    "UID0011",
+    "UID0012",
+    "UID0013",
+    "UID0015",
+    "UID0016",
+    "UID0020",
+    "UID0021",
+    "UID0022",
+    "UID0023",
+    "UID0025",
+    "UID0062",
+    "UID0068",
+    "UID0076",
+    "UID0078",
+    "UID0080",
+    "UID0082",
+    "UID0088",
+    "UID0089",
+    "UID0112",
+    "UID0131",
+    "UID0171",
+    "UID0214",
+    "UID0232"
+   ],
+   "method": "OQA-SEL-2's 24 retained first, then drawn from OQA-SEL-3's 60 by sha256(\"OQA-SEL-4\"+uid) ascending, to the quota {\"easy/single\": 8, \"easy/multi\": 8, \"hard/single\": 7, \"hard/multi\": 7}",
+   "n_available": 24,
+   "n_untested": 6,
+   "per_stratum": {
+    "easy/multi": 8,
+    "easy/single": 8,
+    "hard/multi": 7,
+    "hard/single": 7
+   },
+   "per_stratum_shortfall": {},
+   "previous_items_dropped": [],
+   "released_split": "test",
+   "released_split_size": 172,
+   "retained_from_previous": [
+    "UID0003",
+    "UID0004",
+    "UID0005",
+    "UID0006",
+    "UID0008",
+    "UID0009",
+    "UID0010",
+    "UID0011",
+    "UID0012",
+    "UID0013",
+    "UID0015",
+    "UID0016",
+    "UID0020",
+    "UID0021",
+    "UID0022",
+    "UID0023",
+    "UID0025",
+    "UID0062",
+    "UID0068",
+    "UID0076",
+    "UID0078",
+    "UID0082",
+    "UID0088",
+    "UID0089"
+   ],
+   "shortfall": 0,
+   "source_documents": {
+    "UID0003": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/february-1954-6685?page=14"
+    ],
+    "UID0004": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1941-6529?page=15",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/february-1954-6685?page=14"
+    ],
+    "UID0005": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1941-6529?page=15",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/february-1954-6685?page=14"
+    ],
+    "UID0006": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1998-7096?page=73&deep=true"
+    ],
+    "UID0008": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2012-7151?page=18",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2022-616226?page=20"
+    ],
+    "UID0009": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2011-7148?page=50"
+    ],
+    "UID0010": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2025-687694?page=76"
+    ],
+    "UID0011": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1946-6594?page=72&deep=true"
+    ],
+    "UID0012": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1958-6741?page=16"
+    ],
+    "UID0013": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1942-6547?page=76"
+    ],
+    "UID0015": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/november-1981-7019?page=24"
+    ],
+    "UID0016": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1982-7023?page=24"
+    ],
+    "UID0020": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1944-6570?page=14"
+    ],
+    "UID0021": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1982-7023?page=21&deep=true"
+    ],
+    "UID0022": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1999-7097?page=18",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1994-7076?page=34"
+    ],
+    "UID0023": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1939-6510?page=15"
+    ],
+    "UID0025": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1942-6550?page=18&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1947-6607?page=24&deep=true"
+    ],
+    "UID0062": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/april-1948-6615?page=13",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1952-6671?page=15"
+    ],
+    "UID0068": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=22&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2017-552379?page=22"
+    ],
+    "UID0076": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1990-7060?page=27",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1991-7064?page=29"
+    ],
+    "UID0078": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2010-7146?page=26",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2015-519209?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2024-679984?page=28"
+    ],
+    "UID0080": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1955-6696?page=51"
+    ],
+    "UID0082": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2011-7149?page=57&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=56&deep=true"
+    ],
+    "UID0088": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2012-7142?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2017-575188?page=22"
+    ],
+    "UID0089": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2017-575188?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2020-598551?page=24"
+    ],
+    "UID0112": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-1996-7087?page=12",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2001-7107?page=16&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2006-7127?page=19",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2011-7148?page=20"
+    ],
+    "UID0131": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2003-7116?page=32",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2008-7137?page=38"
+    ],
+    "UID0171": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1963-6804?page=39",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1964-6816?page=34"
+    ],
+    "UID0214": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1970-6877?page=31"
+    ],
+    "UID0232": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1949-6626?page=18"
+    ]
+   },
+   "strata": {
+    "UID0003": "hard/single",
+    "UID0004": "hard/multi",
+    "UID0005": "hard/multi",
+    "UID0006": "easy/single",
+    "UID0008": "easy/multi",
+    "UID0009": "hard/single",
+    "UID0010": "hard/single",
+    "UID0011": "easy/single",
+    "UID0012": "hard/single",
+    "UID0013": "hard/single",
+    "UID0015": "hard/single",
+    "UID0016": "easy/single",
+    "UID0020": "easy/single",
+    "UID0021": "easy/single",
+    "UID0022": "hard/multi",
+    "UID0023": "easy/single",
+    "UID0025": "hard/multi",
+    "UID0062": "hard/multi",
+    "UID0068": "hard/multi",
+    "UID0076": "easy/multi",
+    "UID0078": "easy/multi",
+    "UID0080": "easy/single",
+    "UID0082": "easy/multi",
+    "UID0088": "easy/multi",
+    "UID0089": "easy/multi",
+    "UID0112": "hard/multi",
+    "UID0131": "easy/multi",
+    "UID0171": "easy/multi",
+    "UID0214": "hard/single",
+    "UID0232": "easy/single"
+   },
+   "target": 30,
+   "verdicts": {
+    "UID0003": "AVAILABLE",
+    "UID0004": "AVAILABLE",
+    "UID0005": "AVAILABLE",
+    "UID0006": "AVAILABLE",
+    "UID0008": "AVAILABLE",
+    "UID0009": "AVAILABLE",
+    "UID0010": "AVAILABLE",
+    "UID0011": "AVAILABLE",
+    "UID0012": "AVAILABLE",
+    "UID0013": "AVAILABLE",
+    "UID0015": "AVAILABLE",
+    "UID0016": "AVAILABLE",
+    "UID0020": "AVAILABLE",
+    "UID0021": "AVAILABLE",
+    "UID0022": "AVAILABLE",
+    "UID0023": "AVAILABLE",
+    "UID0025": "AVAILABLE",
+    "UID0062": "AVAILABLE",
+    "UID0068": "AVAILABLE",
+    "UID0076": "AVAILABLE",
+    "UID0078": "AVAILABLE",
+    "UID0080": "UNTESTED",
+    "UID0082": "AVAILABLE",
+    "UID0088": "AVAILABLE",
+    "UID0089": "AVAILABLE",
+    "UID0112": "UNTESTED",
+    "UID0131": "UNTESTED",
+    "UID0171": "UNTESTED",
+    "UID0214": "UNTESTED",
+    "UID0232": "UNTESTED"
+   }
+  },
+  "train": {
+   "balanced": false,
+   "excluded": [
+    "UID0046"
+   ],
+   "ids": [
+    "UID0014",
+    "UID0017",
+    "UID0026",
+    "UID0028",
+    "UID0030",
+    "UID0031",
+    "UID0033",
+    "UID0034",
+    "UID0063",
+    "UID0065",
+    "UID0079",
+    "UID0085"
+   ],
+   "method": "carried forward unchanged from OQA-SEL-2, no draw",
+   "n_available": 12,
+   "n_untested": 0,
+   "not_in_released_split": [],
+   "per_stratum": {
+    "easy/multi": 3,
+    "easy/single": 3,
+    "hard/multi": 3,
+    "hard/single": 3
+   },
+   "previous_items_dropped": [],
+   "released_split": "train",
+   "released_split_size": 50,
+   "retained_from_previous": [
+    "UID0014",
+    "UID0017",
+    "UID0026",
+    "UID0028",
+    "UID0030",
+    "UID0031",
+    "UID0033",
+    "UID0034",
+    "UID0063",
+    "UID0065",
+    "UID0079",
+    "UID0085"
+   ],
+   "shortfall": 0,
+   "source_documents": {
+    "UID0014": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1942-6547?page=76",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2001-7108?page=17&deep=true"
+    ],
+    "UID0017": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1982-7028?page=13"
+    ],
+    "UID0026": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1963-6793?page=88",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1962-6781?page=82&deep=true"
+    ],
+    "UID0028": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1970-6882?page=89&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1964-6816?page=25&deep=true"
+    ],
+    "UID0030": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-1990-7062?page=19&deep=true"
+    ],
+    "UID0031": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1992-7068?page=158&deep=true"
+    ],
+    "UID0033": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/april-1977-6964?page=9"
+    ],
+    "UID0034": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1992-7069?page=32"
+    ],
+    "UID0063": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1990-7061?page=127"
+    ],
+    "UID0065": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1998-7094?page=7",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1995-7084?page=16"
+    ],
+    "UID0079": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2011-7149?page=25",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2013-7155?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2015-519209?page=23",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2017-575188?page=23",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2019-584842?page=22"
+    ],
+    "UID0085": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2019-584842?page=23",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2018-581283?page=22"
+    ]
+   },
+   "strata": {
+    "UID0014": "easy/multi",
+    "UID0017": "hard/single",
+    "UID0026": "easy/multi",
+    "UID0028": "hard/multi",
+    "UID0030": "hard/single",
+    "UID0031": "hard/single",
+    "UID0033": "easy/single",
+    "UID0034": "easy/single",
+    "UID0063": "easy/single",
+    "UID0065": "hard/multi",
+    "UID0079": "easy/multi",
+    "UID0085": "hard/multi"
+   },
+   "target": 12,
+   "verdicts": {
+    "UID0014": "AVAILABLE",
+    "UID0017": "AVAILABLE",
+    "UID0026": "AVAILABLE",
+    "UID0028": "AVAILABLE",
+    "UID0030": "AVAILABLE_VIA_TOOLS",
+    "UID0031": "AVAILABLE",
+    "UID0033": "AVAILABLE",
+    "UID0034": "AVAILABLE",
+    "UID0063": "AVAILABLE",
+    "UID0065": "AVAILABLE",
+    "UID0079": "AVAILABLE",
+    "UID0085": "AVAILABLE"
+   }
+  },
+  "val": {
+   "balanced": false,
+   "excluded": [],
+   "ids": [
+    "UID0001",
+    "UID0027",
+    "UID0041",
+    "UID0052",
+    "UID0070",
+    "UID0072",
+    "UID0086",
+    "UID0091",
+    "UID0109",
+    "UID0142",
+    "UID0154",
+    "UID0161"
+   ],
+   "method": "carried forward unchanged from OQA-SEL-2, no draw",
+   "n_available": 12,
+   "n_untested": 0,
+   "not_in_released_split": [],
+   "per_stratum": {
+    "easy/multi": 3,
+    "easy/single": 3,
+    "hard/multi": 3,
+    "hard/single": 3
+   },
+   "previous_items_dropped": [],
+   "released_split": "val",
+   "released_split_size": 24,
+   "retained_from_previous": [
+    "UID0001",
+    "UID0027",
+    "UID0041",
+    "UID0052",
+    "UID0070",
+    "UID0072",
+    "UID0086",
+    "UID0091",
+    "UID0109",
+    "UID0142",
+    "UID0154",
+    "UID0161"
+   ],
+   "shortfall": 0,
+   "source_documents": {
+    "UID0001": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1941-6529?page=15"
+    ],
+    "UID0027": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1970-6882?page=89&deep=true"
+    ],
+    "UID0041": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1970-6886?page=35"
+    ],
+    "UID0052": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2000-7102?page=56"
+    ],
+    "UID0070": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1939-6518?page=81",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/february-1939-6505?page=111",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1939-6519?page=117",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/april-1939-6506?page=95",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/may-1939-6507?page=109",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1939-6508?page=117",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1939-6509?page=109",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1939-6510?page=117",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-1939-6511?page=66&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1939-6520?page=68",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/november-1939-6512?page=70",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1939-6513?page=72"
+    ],
+    "UID0072": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2011-7149?page=58",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=57"
+    ],
+    "UID0086": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2022-627778?page=86"
+    ],
+    "UID0091": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1940-6528?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1941-6540?page=64"
+    ],
+    "UID0109": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2015-519209?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2020-598551?page=24"
+    ],
+    "UID0142": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1944-6567?page=93"
+    ],
+    "UID0154": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1977-6963?page=83",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1978-6975?page=84"
+    ],
+    "UID0161": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1980-6999?page=88",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1985-7040?page=48"
+    ]
+   },
+   "strata": {
+    "UID0001": "hard/single",
+    "UID0027": "hard/single",
+    "UID0041": "easy/single",
+    "UID0052": "easy/single",
+    "UID0070": "easy/multi",
+    "UID0072": "easy/multi",
+    "UID0086": "hard/single",
+    "UID0091": "easy/multi",
+    "UID0109": "hard/multi",
+    "UID0142": "easy/single",
+    "UID0154": "hard/multi",
+    "UID0161": "hard/multi"
+   },
+   "target": 12,
+   "verdicts": {
+    "UID0001": "AVAILABLE",
+    "UID0027": "AVAILABLE",
+    "UID0041": "AVAILABLE",
+    "UID0052": "AVAILABLE",
+    "UID0070": "AVAILABLE",
+    "UID0072": "AVAILABLE",
+    "UID0086": "AVAILABLE",
+    "UID0091": "AVAILABLE",
+    "UID0109": "AVAILABLE",
+    "UID0142": "AVAILABLE",
+    "UID0154": "AVAILABLE",
+    "UID0161": "AVAILABLE"
+   }
+  }
+ },
+ "source": {
+  "manifest": "data/officeqa_id_split",
+  "released_counts": {
+   "heldout": 172,
+   "train": 50,
+   "val": 24
+  }
+ },
+ "source_document_overlap": {
+  "documents_per_set": {
+   "heldout": {
+    "documents": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/april-1948-6615?page=13",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1939-6510?page=15",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1947-6607?page=24&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1952-6671?page=15",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1963-6804?page=39",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1964-6816?page=34",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1998-7096?page=73&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2003-7116?page=32",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2008-7137?page=38",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2010-7146?page=26",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2011-7149?page=57&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2012-7142?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2015-519209?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=22&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=56&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2017-575188?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2017-575188?page=22",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2020-598551?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2024-679984?page=28",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/february-1954-6685?page=14",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1941-6529?page=15",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1955-6696?page=51",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1970-6877?page=31",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1942-6547?page=76",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1946-6594?page=72&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1944-6570?page=14",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2012-7151?page=18",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2017-552379?page=22",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2022-616226?page=20",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2025-687694?page=76",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1949-6626?page=18",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1982-7023?page=21&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1982-7023?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1990-7060?page=27",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1991-7064?page=29",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1994-7076?page=34",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1999-7097?page=18",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/november-1981-7019?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1942-6550?page=18&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1958-6741?page=16",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-1996-7087?page=12",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2001-7107?page=16&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2006-7127?page=19",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2011-7148?page=20",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-2011-7148?page=50"
+    ],
+    "n": 46
+   },
+   "train": {
+    "documents": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/april-1977-6964?page=9",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1982-7028?page=13",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1964-6816?page=25&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1995-7084?page=16",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2001-7108?page=17&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2011-7149?page=25",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2013-7155?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2015-519209?page=23",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2017-575188?page=23",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2018-581283?page=22",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2019-584842?page=22",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2019-584842?page=23",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1962-6781?page=82&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1963-6793?page=88",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1942-6547?page=76",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1970-6882?page=89&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1990-7061?page=127",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1992-7069?page=32",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1998-7094?page=7",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1992-7068?page=158&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-1990-7062?page=19&deep=true"
+    ],
+    "n": 21
+   },
+   "val": {
+    "documents": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/april-1939-6506?page=95",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/august-1939-6510?page=117",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1939-6513?page=72",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1940-6528?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-1941-6540?page=64",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2011-7149?page=58",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2015-519209?page=21",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2016-535293?page=57",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2020-598551?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2022-627778?page=86",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/february-1939-6505?page=111",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1939-6518?page=81",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1941-6529?page=15",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1939-6509?page=109",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1939-6508?page=117",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1970-6882?page=89&deep=true",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-2000-7102?page=56",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1939-6519?page=117",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1944-6567?page=93",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1977-6963?page=83",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1978-6975?page=84",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1980-6999?page=88",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/march-1985-7040?page=48",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/may-1939-6507?page=109",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/november-1939-6512?page=70",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1939-6520?page=68",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/october-1970-6886?page=35",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/september-1939-6511?page=66&deep=true"
+    ],
+    "n": 28
+   }
+  },
+  "pairs": {
+   "train|heldout": {
+    "items_touching_a_shared_document": {
+     "heldout": [
+      "UID0013"
+     ],
+     "train": [
+      "UID0014"
+     ]
+    },
+    "n_shared_documents": 1,
+    "shared_documents": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/july-1942-6547?page=76"
+    ]
+   },
+   "train|val": {
+    "items_touching_a_shared_document": {
+     "train": [
+      "UID0028"
+     ],
+     "val": [
+      "UID0027"
+     ]
+    },
+    "n_shared_documents": 1,
+    "shared_documents": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/june-1970-6882?page=89&deep=true"
+    ]
+   },
+   "val|heldout": {
+    "items_touching_a_shared_document": {
+     "heldout": [
+      "UID0004",
+      "UID0005",
+      "UID0089"
+     ],
+     "val": [
+      "UID0001",
+      "UID0109"
+     ]
+    },
+    "n_shared_documents": 2,
+    "shared_documents": [
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/december-2020-598551?page=24",
+     "https://fraser.stlouisfed.org/title/treasury-bulletin-407/january-1941-6529?page=15"
+    ]
+   }
+  }
+ },
+ "subset_of_previous_freeze": {
+  "heldout": {
+   "is_subset": true,
+   "items_outside": [],
+   "of": "OQA-SEL-3"
+  },
+  "train": {
+   "is_subset": true,
+   "items_outside": [],
+   "of": "OQA-SEL-3"
+  },
+  "val": {
+   "is_subset": true,
+   "items_outside": [],
+   "of": "OQA-SEL-2"
+  }
+ },
+ "supersedes": {
+  "digest": "117836ff413934b307d282109675d10febec442c6431f7064cadef42fad098e5",
+  "rule": "OQA-SEL-3"
+ }
+}

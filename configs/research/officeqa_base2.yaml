@@ -1,0 +1,85 @@
+# THE TWO-BASELINE OfficeQA CAMPAIGN, 2026-11-21. Rule OQA-SEL-4: train 12, val 12, held-out 30.
+#
+#   arm A   "Original SkillOpt framework baseline"   OFFICEQA_STAGE_REPORT_DIR unset -> the analyst prompt is
+#                                                    byte-identical to upstream's. Four epochs over the same 12
+#                                                    training questions, one ordinary update per epoch, gated
+#                                                    slow updates and meta-skill from epoch 2, upstream's
+#                                                    strict-improvement acceptance rule.
+#   Trace2Skill                                      NOT this file. It is not an epoch-structured trainer: it
+#                                                    collects fixed-S0 trajectories, analyses each, proposes
+#                                                    per-trajectory patches and consolidates them once. It
+#                                                    shares the actor interface and the permitted evidence
+#                                                    through its own stage in oqa_base_body.sh.
+#
+# WHY A SEPARATE FILE FROM officeqa_api3.yaml. Only two things differ, and both are the user's specification:
+# the split directory now holds 12/12/30 instead of 24/24/60, and a scheduled slow update draws SIX training
+# questions instead of ten. Everything else - actor, optimizer, tool interface, turn budget, scorer, gate
+# semantics, edit budget - is inherited unchanged, so the two campaigns remain comparable where they overlap.
+#
+# THIS IS NOT A REPRODUCTION OF THE SkillOpt PAPER. Disclosed, not buried: our dataset is far smaller (12
+# training questions against the paper's benchmarks), the actor is a HOSTED FP8 endpoint rather than a local
+# bfloat16 server, and the setting is offline - the agent reads parsed Treasury Bulletin text through local
+# document tools with no web search. The framework's algorithm is upstream's; the scale and the environment
+# are ours.
+#
+# Supplied at runtime, never stored here:
+#   TARGET_OPENAI_COMPATIBLE_API_KEY / OPTIMIZER_OPENAI_COMPATIBLE_API_KEY, --optimizer_model,
+#   env.split_dir, env.data_dirs.
+_base_: officeqa_api.yaml
+
+env:
+  # Rule OQA-SEL-4, docs/research/OFFICEQA_FROZEN_SETS_V4.json: train 12, val 12, test 30. Disjoint, every
+  # item kept the role an earlier freeze gave it, and each set is a subset of the corresponding OQA-SEL-3 set.
+  split_mode: split_dir
+  split_dir: ""               # supplied at submit time
+  data_dirs: []               # supplied at submit time
+  search_mode: offline
+  use_local_tools: true
+  workers: 4
+  max_tool_turns: 24
+  # ── THE TWO TOKEN KNOBS, WHICH ARE NOT THE SAME KNOB ────────────────────────────────────────────────────
+  # The EFFECTIVE output cap is 8,000 tokens and it comes from `model.target_openai_compatible_max_tokens`
+  # in officeqa_api.yaml, not from the field below. VERIFIED, not assumed: all 285 transmitted actor requests
+  # of the 2026-11-18 collection carried `max_tokens: 8000`, temperature 0.7, model qwen3-5-4b and
+  # extra_body {"enable_thinking": false}. The preflight re-asserts it before any paid call.
+  #
+  # `env.max_completion_tokens` below reaches NO prompt and NO API call. Its only consumer is
+  # rollout_settings_fingerprint(), the digest the provenance guard compares when deciding whether a saved
+  # trajectory may be reused. It is therefore left at the inherited 16384 ON PURPOSE: changing it to 8000
+  # would be cosmetically more honest and would invalidate the fingerprint of every saved S0 trajectory,
+  # forcing Trace2Skill to re-pay for 12 rollouts it can otherwise reuse. The misleading number is documented
+  # here instead of being silently corrected at that price.
+  max_completion_tokens: 16384
+  limit: 0
+
+train:
+  num_epochs: 4
+  # batch_size 40 is inherited and exceeds the 12 training questions, so ceil(12/40) = 1 step per epoch:
+  # ONE ordinary skill update per epoch, four in total, which is what the design asks for.
+
+gradient:
+  analyst_workers: 2
+
+optimizer:
+  # Paper-style gated slow updates and optimizer-side memory, from epoch 2, exactly as in the three-arm
+  # campaign. The gate is the same 12-question validation gate an ordinary step faces.
+  use_slow_update: true
+  slow_update_gate_with_selection: true
+  use_meta_skill: true
+  # SIX, by specification ("Six questions sampled from training, following the upstream schedule from epoch
+  # 2"), against the three-arm campaign's ten and upstream's twenty.
+  #
+  # Six is also comfortably the safest of the three. This repo disables per-trajectory truncation in the slow
+  # update (skillopt/optimizer/slow_update.py), so the longitudinal prompt carries BOTH trajectories of every
+  # comparison pair at full length. Measured mix for six pairs is ~138,345 prompt tokens and the worst case
+  # where every pair shows a trajectory is ~207,414 - both inside the 243,986-token request that job 66271290
+  # proved this endpoint accepts. Ten pairs were only proven at the measured mix.
+  slow_update_samples: 6
+  longitudinal_pair_policy: mixed
+
+evaluation:
+  use_gate: true
+  sel_env_num: 0              # the whole 12-question validation set
+  # The held-out set is evaluated by a SEPARATE job over the DISTINCT selected endpoints, so S0 is scored once
+  # instead of once per method.
+  eval_test: false
