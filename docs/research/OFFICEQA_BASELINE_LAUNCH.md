@@ -8,28 +8,73 @@ question attempt. **Attempt** = one HTTP request to the actor (an episode makes 
 
 ---
 
-## 1. What has actually been submitted
+## 1. What ran, and what came out
 
-| Job | Stage | Walltime | State at 03:27 |
+**Both baselines completed end to end.** Three held-out evaluations are running or done.
+
+| Job | Stage | State |
+|---|---|---|
+| 66552420 | prep (free) | **COMPLETED** — preflight READY 39/0/0, 2,428 tests |
+| 66552421 | S0 reference, 48 training + 12 validation | **COMPLETED** 23:16, all 12/12 |
+| 66552422–425 | **Original SkillOpt** epochs 1–4 | **ALL COMPLETED** |
+| 66553248 | **Trace2Skill**, third attempt | **COMPLETED** 13:33 — the faithful run |
+| 66553250 / 66553251 / 66553363 | held-out: S0 / Original SkillOpt / Trace2Skill | running or done, 2 passes × 30 each |
+| 66552633, 66552721, 66552984 | contract: v7, v8 + C-1 replay, v9 + C-2 replay | all did their work |
+| 66553083 | contract: **Lean compiled** | work COMPLETED |
+| 66553105 | contract: determinism probe | work COMPLETED |
+
+**Six jobs are marked FAILED whose substantive steps all succeeded**, exiting 1 only because the body
+runs the test suite last and one byte-reproduction test is pinned as expected-to-change. Read
+`job.log` before concluding a stage did not run. The genuinely failed jobs were: one free prep
+(66552338, a defect in my preflight), one free Lean submission against a stale bundle (66553061), and
+**four Trace2Skill attempts** (§6).
+
+### 1a. Original SkillOpt — the result
+
+Four epochs. **0 accepts and 4 rejects on ordinary bounded-edit steps.** The only change that survived
+the gate came from the **gated slow update at epoch 2**; epochs 3 and 4 changed nothing (v3 and v4 are
+byte-identical to v2).
+
+| | |
+|---|---|
+| skill lineage | S0 `9d377d1c2906` (887 B) → v1 `5bd17ea109bc` (940 B) → **v2 `e35673d87cb7` (4,518 B) = the selected endpoint** |
+| validation | S0 **4/12** → selected **5/12** (`best_selection_hard` 0.4167, `best_origin: slow_update_epoch_02`) |
+| S0's own spread over four independent training passes | **5, 4, 4, 5** of 12 |
+
+**The gain is one question, and S0's own sampling spread is ±1 question.** The acceptance rests on a
+1/12 margin; twelve validation questions cannot resolve finer. Upstream's strict-improvement rule was
+preserved, so this is the framework's own behaviour, not a weakened gate. Whether it transfers is what
+the held-out measurement is for.
+
+### 1b. Trace2Skill — the result, and two degraded runs preserved as evidence
+
+| | first run (66553058) | second (66553156) | **third (66553248)** |
+|---|---:|---:|---:|
+| truncated calls | 3, undetected | 3 | **0** |
+| hierarchy | 60 → 8, level 2 failed | 27 → 9 → 3, level 4 failed | **60 → 22 → 11 → 6 → 2 → 1** |
+| consolidated items | 77 | 47 | **18** |
+| `conflicts_unresolved` | true | true | **none** |
+| verification | unparseable | — | **complete, all 18 APPLIED** |
+| endpoint | 18,590 B | — | **24,121 B** |
+
+The third run is the faithful one: the final merge succeeded, so there is no mechanical fallback and
+the method's defining property — hierarchical, conflict-free consolidation — is actually achieved. The
+item count falling **77 → 47 → 18** is the deduplication the method exists for, visible only once the
+replies stopped being cut off. Individual merges still failed at three levels; those keep their inputs
+rather than losing proposals, which is why the hierarchy still converged. The two degraded runs are
+preserved as `trace2skill_degraded_66553058/` and `trace2skill_partial_66553156/`.
+
+### 1c. The three held-out endpoints, all distinct
+
+| endpoint | digest | bytes | job |
 |---|---|---:|---|
-| 66552420 | prep (free) | 0:20 | **COMPLETED** 1:18 |
-| 66552421 | S0 reference: 4×12 training + 12 validation | 1:30 | **COMPLETED** 23:16 — all 12/12 |
-| 66552422 | **Original SkillOpt** epoch 1 | 1:00 | **COMPLETED** 3:40 |
-| 66552423 | Original SkillOpt epoch 2 (first gated slow update) | 1:45 | **RUNNING** |
-| 66552424 / 66552425 | epochs 3 / 4 | 1:45 each | PENDING on the chain |
-| **66552763** | **Trace2Skill** | 2:30 | **RUNNING**, paid calls flowing |
-| 66552633 | contract: v7 + occurrence measurement (free) | 0:20 | **COMPLETED** 1:04 |
-| 66552721 | contract: v8 + C-1 replay (free) | 0:25 | work COMPLETED; exited 1 (see §6) |
+| S0 | `9d377d1c2906` | 887 | 66553250 — **COMPLETE, 30/30 × 2** |
+| Original SkillOpt | `e35673d87cb7` | 4,518 | 66553251 |
+| Trace2Skill | `03d6564f1d10` | 24,121 | 66553363 |
 
-Every baseline link is `afterok`. Both methods hang off the S0 stage and run **in parallel**, so one
-method's adapter problem cannot hold the other. There was no in-flight OfficeQA job to continue — the
-previous one ended 2026-11-18 — so this is a fresh submission, not a duplicate.
-
-**Why a new campaign exists at all.** The three-arm campaign of 2026-11-17 ran through the **broken**
-actor client, under which S0 scored 4/24 against 9.75/24 corrected. Its numbers measure a defect and
-sampling together and cannot serve as a baseline.
-
----
+Each writes a `PROVENANCE.json` carrying the skill digest, config digest, commit, frozen-set rule,
+split, question count and pass count — the complete effective inputs the reuse rule needs.
+**Scores and trajectories stay sealed.**
 
 ## 2. The frozen setup
 
@@ -257,65 +302,73 @@ record takes part):
 
 Reproduced **exactly** under cluster Python 3.11 as under local 3.9.
 
-### 5c. Amendment C-1: a value match may not select a source cell
-`oqa_lc_chain._best_cell` was handed every cell whose value matched an operand and **silently returned
-one**, ranked by exact match, then FLAT column, then earliest step. The ledger would then discharge or
-violate a requirement against a cell the actor may never have read. C-1 replaces that with a refusal:
-one candidate → selected; several + a SUPPORTED occurrence → selected and the position recorded;
-several + UNKNOWN → **no selection**, rivals recorded, obligation UNKNOWN.
+### 5c. The amendment chain C-1 → C-2 → C-3, each measured against a prediction written first
 
-**Replayed (job 66552721), against a prediction written in the amendment first.** 659 operands:
+**C-1.** `oqa_lc_chain._best_cell` was handed every cell whose value matched an operand and **silently
+returned one**, ranked by exact match then FLAT column then earliest step — so the ledger could discharge
+or violate a requirement against a cell the actor may never have read. C-1 refuses: one candidate →
+selected; several + a SUPPORTED occurrence → selected with the position recorded; several + UNKNOWN →
+**no selection**, rivals recorded.
 
-| | old tie-break | under C-1 |
-|---|---:|---:|
-| operands with a selected source cell | **566** | **102** (67 sole, 35 corroborated) |
-| ledger DISCHARGED | 254 | 81 |
-| ledger **VIOLATED** | **186** | **30** |
-| ledger OUTSTANDING | 19 | 30 |
+**C-2** repaired the two defects C-1's own replay found: withdrawn bindings made downstream obligations
+*vanish* rather than become UNKNOWN (464 refusals × 2 = 928, the whole ledger gap), and 39.9% of "ties"
+were one cell seen through several observations.
 
-**The headline.** The old tie-break was selecting a source cell on numeric equality alone in **464 of
-566 selections (82%)**, and those supported **156 of its 186 VIOLATED obligations** — accusations
-resting on cells the actor may never have read. Fewer findings, and the ones left rest on something.
+**C-3** — an unknown year was becoming an **accusation**. The span guard read `(cp.get("year") or -1)`,
+so "unknown" became −1, which lies outside any span of real years, and fell through to VIOLATED. **A
+sentinel standing in for unknown, used in an inequality, is how an undetermined fact becomes an
+accusation.**
 
-### 5d. Two defects in C-1, found by its own replay — open, and deliberately not rushed
-- **A.** The amendment predicted withdrawn bindings would make obligations **UNKNOWN**. They do not: the
-  ledger shrinks **1,839 → 911**, because obligations *downstream* of a cell aren't generated at all
-  when no cell was selected. On UID0044, 406 records (132 DISCHARGED) become 142 (0 DISCHARGED, 141
-  UNKNOWN) — **264 requirements vanish**. That is an unknown effect silently meaning "nothing changed",
-  which the chain module's own docstring exists to prevent. The prediction's *direction* held; this
-  sub-claim **failed**, and the failure is a defect in my implementation. Repair: `obligations()` must
-  emit them as UNKNOWN naming the refusal.
-- **B.** `_match_cells` treats one cell observed through different routes as distinct candidates. Of 499
-  operands with several candidates, **199 (39.9%) collapse to a single cell** once keyed by (row label,
-  column, value, scale factor); mean candidates **8.61 → 3.54**. The UID0044 witness is typical: three
-  "rivals" for `-3044.0` are the supplied page and two greps **of the same document**. So some of the
-  464 withdrawals refuse a tie that does not exist. Repair: deduplicate by cell identity before
-  declaring a tie. (Measured with a stand-in model locally, so the share is indicative.)
+| over the same 24 records, 659 operands | old tie-break | C-1 | C-2 | C-3 |
+|---|---:|---:|---:|---:|
+| operands with a selected source cell | 566 | 102 | 257 | 257 |
+| ledger obligations | 1,839 → 2,025 | 911 → 2,025 | **2,025** | **2,025** |
+| DISCHARGED | 254 | 81 | 192 | 192 |
+| **VIOLATED** | **186** | 30 | 69 | **14** |
 
-Both repairs are specified in the amendment and left for their own committed prediction and replay. I
-already learnt once tonight that a semantic change made in a hurry produces a half-right result.
+**What each prediction did.** C-1's held in direction (selections can only fall). C-2's sharpest held
+*exactly*: both arms carry **2,025 obligations**, so the gate changes obligation states and never their
+existence. C-2's prediction that DISCHARGED and VIOLATED would not rise was **violated as written, and
+the fault was mine** — I wrote it as though only one of its two repairs were applied. C-3 moved the 55
+false accusations to UNKNOWN and returned the stage-diagnosis-group count to its historical 14 from
+C-2's 17, which is independent support for it being the right repair.
+
+**C-2's accusations are not claimed**, per its own prediction 5: 55 of 69 were false by construction and
+the remaining 14 rest on bindings whose correctness I have not established. **And the defect predates the
+gate** — the old tie-break arm carries 186 of the same class, so every prior VIOLATED count in this
+project, including the three-arm campaign's delivered reports, is inflated by it. That is a finding about
+the historical record, not only about tonight.
+
+### 5d. Lean, compiled in a job — and what it does not cover
+
+Job 66553083, Lean 4.20.0: `OqaConnected.lean` over the delivered facts — **50 evidence examples
+encoded, 0 skipped, returncode 0, "all statements accepted"**. The standing theorems in
+`OqaContracts.lean` compiled clean.
+
+It verifies the **resolution algebra**: that an UNKNOWN or CONFLICT binding can never yield VIOLATED,
+that a discharge requires its binding, that a withdrawal reopens rather than silently satisfies. That is
+exactly the soundness condition C-1, C-2 and C-3 rely on, since all three make *more* bindings UNKNOWN —
+the theorem says doing so can withdraw a discharge but can never manufacture an accusation. **It does not
+establish that the extraction is correct, that the occurrence binding picks the right cell, or that the
+specification is complete.** No Python mirror was substituted: the first two attempts failed on the
+*binary* (`elan/bin/lean` is a shim with no configured toolchain; the real one is under
+`elan/toolchains/leanprover--lean4---v4.20.0/bin/`).
 
 ### 5e. Still missing from the §4 demonstration — the honest gap list
+
 1. **A genuinely learned rule with its evidence.** Not done. The current hypothesis
-   (`96c3d1bd9aad6f4d`) is about *units*, and both witnessed error classes are *column selection*,
-   which it cannot express. A learner call needs the optimizer; by your priority ordering it waits
-   until Trace2Skill has finished.
+   (`96c3d1bd9aad6f4d`) is about *units*, and both witnessed error classes are *column selection*, which
+   it cannot express. Deliberately not started: tonight repeatedly showed that semantic work done in a
+   hurry produces half-right results, and a learner needs evidence selection, a freeze, a proposal, a
+   compilation into the vocabulary and a check on later records.
 2. **A supported diagnosis on a later record.** Not done — needs (1).
 3. **A successful/recovered control.** Not done. UID0026 is the natural witness: one message holds both
    a superseded wrong calculation and the committed right one.
-4. **Lean compiled against the C-1 facts.** Not done, and it is now *warranted*, unlike for B-4 where
-   no encoded fact changed. `OqaContracts.lean` already contains **`unknownBindingNeverViolates`** —
-   "withdrawing a binding may withdraw a discharge, it may never manufacture an accusation" — which is
-   **exactly** C-1's soundness condition. Lean is at `/nfs/…/lean/elan/bin/lean`. Note precisely what
-   that would establish: the **resolution algebra**, not that the occurrence extraction is correct.
-5. **A counterexample-repair path with regressions.** Partially: C-1 *is* a repair of a counterexample
-   class with 121 tests as regression, but defects A and B are the live counterexamples and are unrepaired.
-
-**On the source-binding result:** it demonstrated a failing *extraction method*, not that inference from
-permitted observations is impossible — §5b is the small supported connection tested before proposing any
-parser overhaul, and it found a channel that works at a modest, measured rate.
-
----
+4. **Lean verification** — **DONE** (§5d), with its scope stated narrowly.
+5. **A counterexample-repair path with regressions** — **DONE**: C-1 → C-2 → C-3, each with a prediction
+   committed before its replay, each repairing a counterexample the previous one's measurement produced,
+   with 146+ tests as the regression net. The "isolated optimizer rehearsal" of delivering a report is
+   not done.
 
 ## 6. Five defects of mine, each caught by machinery, none of which spent anything
 
