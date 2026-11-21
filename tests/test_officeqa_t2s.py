@@ -510,3 +510,17 @@ def test_the_guard_admits_that_it_is_permissive_downstream():
     fn = src[src.index("def extend_permitted"):src.index("def _guard")]
     assert "PERMISSIVE" in fn
     assert "not the main protection" in fn or "MAIN PROTECTION IS STRUCTURAL" in fn
+
+
+def test_a_dry_run_that_got_through_every_phase_is_a_SUCCESS():
+    """It returns no document by design - it sends nothing - so "unchanged" is not failure. Reporting
+    it as one made every dry run exit 1, which trains a reader to ignore the self-check's one signal."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    tail = src[src.index("    # A dry run is successful when"):src.index("def _write(")]
+    assert "if args.dry_run:" in tail
+    assert "call.leaks" in tail, "a boundary violation must still fail the dry run"
+    # and the expected-empty outcome is recorded rather than filed as a problem
+    assert '"the apply phase returned no document' in src
+    apply_block = src[src.index("    edited = phase_apply("):src.index('report["skill_after"]')]
+    assert "if args.dry_run:" in apply_block
+    assert 'report["dry_run"]' in apply_block

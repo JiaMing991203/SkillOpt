@@ -721,7 +721,16 @@ def run(args) -> int:
 
     edited = phase_apply(call, skill, merged, P) if merged else ""
     if not edited:
-        problems.append("the apply phase returned no document; the skill is UNCHANGED")
+        # A DRY RUN RETURNS NOTHING BY DESIGN - it builds and guards every prompt and sends none - so
+        # an empty document there is the expected outcome, not a fault. Reporting it as a problem made
+        # every dry run exit 1, which trains a reader to ignore the one signal the self-check exists to
+        # give. The dry run's real failures are a boundary violation or an exception, both of which
+        # still surface.
+        if args.dry_run:
+            report["dry_run"] = ("prompts were built and guarded for every phase; nothing was sent, "
+                                 "so no document was produced and the skill is untouched")
+        else:
+            problems.append("the apply phase returned no document; the skill is UNCHANGED")
         edited = skill
     report["skill_after"] = {"bytes": len(edited.encode()),
                              "sha256_12": hashlib.sha256(edited.encode()).hexdigest()[:12],
@@ -757,6 +766,10 @@ def run(args) -> int:
                                 "after": report["skill_after"]["sha256_12"],
                                 "changed": report["skill_after"]["changed"]},
                       "optimizer_usage": usage, "problems": problems}, indent=1, default=str))
+    # A dry run is successful when it got through every phase without a boundary violation or an
+    # exception. It cannot change a skill, so "unchanged" must not be read as failure.
+    if args.dry_run:
+        return 1 if (call.leaks or any("error" in str(r) for r in records)) else 0
     return 1 if (problems and not report["skill_after"]["changed"]) else 0
 
 
