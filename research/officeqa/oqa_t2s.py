@@ -347,6 +347,61 @@ class Caller:
         return text or ""
 
 
+def configure_models(config_path: str, optimizer_model: str) -> dict:
+    """Point the model layer at DeepSeek before anything is sent, exactly as the trainer does.
+
+    WHY THIS EXISTS, and it is the second time this project has paid for the lesson.
+    `skillopt.model.chat_optimizer` is a ROUTER whose default is Azure, and a config file does not
+    reach it by itself - `skillopt.engine.trainer` calls `set_optimizer_backend` and
+    `configure_openai_compatible`. Without that step every call raises
+
+        ValueError: Azure OpenAI endpoint is not configured for optimizer
+
+    which is what job 66552741 did, 48 times, after a dry run had reported everything healthy. The
+    campaign body's own header already warned about this router (job 66271190 dispatched a perfect
+    openai-compatible config to Azure and recorded `no_content`); the preflight was fixed for it
+    earlier the same night and this module was not.
+
+    It runs in DRY RUN TOO. The dry run's whole purpose is to exercise the real path without sending,
+    and it missed this precisely because it short-circuited before configuring anything.
+    """
+    sys.path.insert(0, _tree())
+    from skillopt.config import load_config  # type: ignore
+    from skillopt.model import (configure_openai_compatible,  # type: ignore
+                                set_optimizer_backend)
+
+    cfg = load_config(config_path) if config_path else {}
+
+    def _get(path, default=None):
+        if path in cfg:
+            return cfg[path]
+        node = cfg
+        for part in path.split("."):
+            if isinstance(node, dict) and part in node:
+                node = node[part]
+            else:
+                return default
+        return node
+
+    backend = _get("model.optimizer_backend", "openai_compatible") or "openai_compatible"
+    set_optimizer_backend(backend)
+    configure_openai_compatible(
+        optimizer_base_url=_get("model.optimizer_openai_compatible_base_url") or None,
+        optimizer_model=optimizer_model or _get("model.optimizer_openai_compatible_model") or None,
+        optimizer_max_tokens=_get("model.optimizer_openai_compatible_max_tokens"),
+        optimizer_timeout_seconds=_get("model.optimizer_openai_compatible_timeout_seconds"),
+    )
+    from skillopt.model import openai_compatible_backend as B  # type: ignore
+    live = B._config_for("optimizer")
+    effective = {"backend": backend, "base_url": live.base_url, "model": live.deployment,
+                 "max_tokens": live.max_tokens, "timeout_seconds": live.timeout_seconds,
+                 "api_key_present": bool(live.api_key)}
+    # Fail here rather than 48 times inside the analysis phase.
+    if backend == "openai_compatible" and "deepseek" not in str(live.base_url):
+        raise SystemExit(f"the optimizer is not pointed at DeepSeek: {effective}")
+    return effective
+
+
 def _parallel(fn, items: list, workers: int = MAX_WORKERS) -> list:
     """Run fn over items, preserving input order, never losing an exception silently."""
     out: dict = {}
@@ -547,6 +602,8 @@ def run(args) -> int:
     import oqa_t2s_prompts as P  # type: ignore
 
     os.makedirs(args.out, exist_ok=True)
+    # BEFORE anything is built or sent, and in dry run too: the router's default is Azure.
+    effective_optimizer = configure_models(args.config, args.optimizer_model)
     trajectories, per_pass = collect_trajectories(args.s0_dir)
     with open(args.skill, encoding="utf-8") as f:
         skill = f.read()
@@ -573,6 +630,7 @@ def run(args) -> int:
                        "consolidated skill is the endpoint.",
         "inputs": {"s0_dir": args.s0_dir, "skill": args.skill, "split_dir": args.split_dir,
                    "optimizer_model": args.optimizer_model},
+        "effective_optimizer": effective_optimizer,
         "boundary": {
             "permitted": "conversation.json (actor messages, tool calls, observations) and the saved "
                          "target prompts",
@@ -600,10 +658,14 @@ def run(args) -> int:
         return 1
 
     records = phase_analysis(call, trajectories, P)
+    analysis_errors = collections.Counter(str(r["error"]) for r in records if r.get("error"))
     report["analysis"] = {
         "n_records": len(records),
         "parsed": sum(1 for r in records if r.get("parsed")),
         "failed": [r["trajectory_id"] for r in records if not r.get("parsed")],
+        # Surfaced, not buried. The first version reported only "parsed: 0" while 48 identical
+        # exceptions sat in the per-record field, so the summary said nothing about the cause.
+        "errors": dict(analysis_errors),
         "by_analyst": {k: sum(1 for r in records if r.get("analyst") == k) for k in ("error", "success")},
         "cause_items": sum(r.get("n_cause", 0) for r in records),
         "memory_items": sum(r.get("n_memory", 0) for r in records),
@@ -647,9 +709,10 @@ def run(args) -> int:
     report["verdict"] = "CONSOLIDATED" if report["skill_after"]["changed"] else "UNCHANGED"
     _write(args.out, report, edited)
     print(json.dumps({"verdict": report["verdict"], "trajectories": report["trajectories"],
+                      "effective_optimizer": effective_optimizer,
                       "analysis": {k: report["analysis"][k] for k in
                                    ("n_records", "parsed", "by_analyst", "cause_items",
-                                    "memory_items")},
+                                    "memory_items", "errors")},
                       "map": {k: report["map"][k] for k in
                               ("patches_proposed", "items_proposed", "records_without_a_patch")},
                       "reduce_levels": levels,

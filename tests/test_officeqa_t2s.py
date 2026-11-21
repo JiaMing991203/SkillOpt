@@ -363,3 +363,36 @@ def test_the_merge_prompt_requires_conflicts_to_be_resolved_not_accumulated():
 def test_the_success_analyst_separates_a_good_method_from_a_lucky_outcome():
     assert "luck" in P.SUCCESS_ANALYSIS_SYSTEM.lower()
     assert "correct outcome does NOT establish a good method" in P.SUCCESS_ANALYSIS_SYSTEM
+
+
+def test_the_optimizer_route_is_configured_before_anything_is_sent():
+    """Job 66552741's defect: `chat_optimizer` is a ROUTER whose default is Azure, and a config file
+    does not reach it by itself. Every call raised "Azure OpenAI endpoint is not configured", 48 times,
+    AFTER a dry run had reported everything healthy."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    body = src[src.index("def run(args)"):src.index("def _write(")]
+    assert "configure_models(" in body
+    # it must happen BEFORE the trajectories are gathered, so nothing is built against a bad route
+    assert body.index("configure_models(") < body.index("collect_trajectories(")
+    # and it must NOT be skipped in dry run: the dry run's purpose is to exercise the real path
+    line = next(l for l in body.splitlines() if "configure_models(" in l)
+    assert "dry_run" not in line and "dry-run" not in line
+
+
+def test_configure_models_sets_the_backend_selector_not_only_the_url():
+    """Pinning the base URL alone leaves the ROUTER pointed elsewhere."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    fn = src[src.index("def configure_models("):src.index("def _parallel(")]
+    assert "set_optimizer_backend" in fn
+    assert "configure_openai_compatible" in fn
+    assert "_config_for(\"optimizer\")" in fn, "the LIVE config must be read back, not assumed"
+    assert "deepseek" in fn, "it must refuse a route that is not DeepSeek"
+
+
+def test_analysis_errors_are_surfaced_in_the_summary_not_buried_per_record():
+    """The first version printed only "parsed: 0" while 48 identical exceptions sat in a per-record
+    field, so the summary said nothing about the cause."""
+    src = open(os.path.join(RESEARCH, "oqa_t2s.py"), encoding="utf-8").read()
+    assert '"errors": dict(analysis_errors)' in src
+    printed = src[src.index('print(json.dumps({"verdict": report["verdict"]'):]
+    assert '"errors"' in printed
