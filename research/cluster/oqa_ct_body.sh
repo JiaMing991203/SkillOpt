@@ -14,6 +14,19 @@
 #   PHASE=c2        FREE. Freeze the post-C-2 state as v9 and replay again, so amendment C-2's five
 #                   predictions can be read off a measurement. Writes to v5_c2/; v3_occ/ and v4_c1/
 #                   are left alone, so the three semantic states stay separately inspectable.
+#   PHASE=lean      FREE. Run the deployed checker under C-2 to produce the facts actually delivered,
+#                   then generate and COMPILE the Lean file over them. Writes to v6_lean/.
+#
+#                   WHAT COMPILING THIS DOES AND DOES NOT ESTABLISH, because the distinction is the
+#                   whole point. OqaContracts.lean checks the RESOLUTION ALGEBRA: that an UNKNOWN or
+#                   CONFLICT binding can never yield VIOLATED, that a discharge requires the binding,
+#                   and that a withdrawal reopens rather than silently satisfies. That is exactly the
+#                   soundness condition C-1 and C-2 rely on, since both make MORE bindings UNKNOWN -
+#                   the theorem says doing so can withdraw a discharge but can never manufacture an
+#                   accusation. It does NOT establish that the extraction is correct, that the
+#                   occurrence binding identifies the right cell, or that the specification is
+#                   complete. No Python mirror is substituted for the compiler: if lean is absent the
+#                   phase reports that it did not run.
 #
 # WHY THIS IS A SEPARATE BODY AND A SEPARATE BUNDLE. The baseline jobs (66552421-425, 66552508) are
 # running from oqa_base_20261121b and oqa_base_20261121c. bash reads a script body lazily, so touching
@@ -36,7 +49,7 @@
 set -uo pipefail
 B="${OQA_BUNDLE:?OQA_BUNDLE must be set}"
 PHASE="${PHASE:-bundle7}"
-case "$PHASE" in bundle7|replay|c2) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
+case "$PHASE" in bundle7|replay|c2|lean) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
 
 if [ "${SLURM_RESTART_COUNT:-0}" != "0" ]; then
     echo "REFUSING: SLURM_RESTART_COUNT=${SLURM_RESTART_COUNT}" >&2; exit 6
@@ -122,6 +135,36 @@ for p in 1 2 3 4; do
 done
 
 fi   # end PHASE=bundle7
+
+if [ "$PHASE" = "lean" ]; then
+    : "${OQA_LEAN_BIN:?settings.env must define OQA_LEAN_BIN for the lean phase}"
+    V6="$OQA_CT_ROOT/v6_lean"
+    mkdir -p "$V6" || exit 3
+    "$OQA_LEAN_BIN" --version > "$OUTDIR/lean_version.txt" 2>&1 \
+        || { log "no usable lean at OQA_LEAN_BIN; the phase stops rather than substituting a mirror"; \
+             status=1; }
+    log "lean: $(head -1 "$OUTDIR/lean_version.txt" 2>/dev/null)"
+
+    log "1/3 running the DEPLOYED checker under C-2, so Lean sees the facts actually delivered"
+    "$OQA_PY" -I research/officeqa/oqa_cc_run.py check \
+        --model "$CC18/CC_MODEL_v1.json" \
+        --records "$COL/connected_contract/CC_RECORDS_collect24.json" \
+        --which descriptive --out "$V6" 2>&1 | tee "$OUTDIR/cc_check_c2.txt" || status=$?
+    log "checker exit $status"
+
+    log "2/3 generating and COMPILING the Lean file over those facts"
+    "$OQA_PY" -I research/officeqa/oqa_cc_lean.py \
+        --check "$V6/CC_CHECK_descriptive.json" --out "$V6" \
+        --lean-bin "$OQA_LEAN_BIN" 2>&1 | tee "$OUTDIR/lean.txt" || status=$?
+    log "lean export/compile exit $status"
+
+    log "3/3 compiling the standing contract theorems too, from the tracked source"
+    mkdir -p "$V6/standing" && cp research/officeqa/lean/OqaContracts.lean "$V6/standing/" 2>/dev/null
+    ( cd "$V6/standing" && timeout "${OQA_LEAN_TIMEOUT:-600}" "$OQA_LEAN_BIN" OqaContracts.lean ) \
+        > "$OUTDIR/lean_standing.txt" 2>&1
+    log "standing theorems exit $? (see lean_standing.txt)"
+    OUT="$V6"
+fi
 
 if [ "$PHASE" = "c2" ]; then
     V5="$OQA_CT_ROOT/v5_c2"
