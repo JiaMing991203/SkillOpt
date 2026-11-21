@@ -436,3 +436,43 @@ def test_an_operand_with_no_candidate_at_all_also_keeps_its_requirements():
     downstream = [r for r in mine if r["kind"] in ("period_match", "unit_match")]
     assert all(r["state"] == CHAIN.UNKNOWN for r in downstream)
     assert all(r.get("unresolvable_without_a_source") for r in downstream)
+
+
+# ───────────────────────── the replay must carry accusations, not just count them ─────────────────────────
+
+REPLAY = _mod("oqa_occ_replay")
+
+
+def test_the_replay_carries_every_accusation_with_its_witness():
+    """C-2's prediction 5: "any increase must be inspected witness by witness before it is believed".
+    A count cannot be inspected, so the witnesses have to be in the artifact."""
+    task = OB.derive("What were receipts in fiscal year 1961, in millions of dollars?")
+    # a cell whose period is plainly not the asked one, which is what produces a period VIOLATED
+    cell = {"value": 500.0, "available_from": 1, "scale_factor": 1.0, "column_basis": "FLAT",
+            "row_label": "1999", "column": "Receipts", "col_index": 1,
+            "source": {"kind": "grep", "file": "b.txt", "step": 1}, "table_key": "b.txt#1",
+            "period": {"year": 1999}, "period_text": "1999", "scale": None}
+    chain = {"id": "T", "question": "q", "task": task, "cells": [cell],
+             "operands": [{"raw": "500", "value": 500.0, "step": 2, "cells": [cell], "cell": cell,
+                           "selection": {"basis": CHAIN.SOLE_CANDIDATE, "n_candidates": 1,
+                                         "n_raw_candidates": 1}, "role": "operand"}],
+             "computed": [], "conversions": [], "computations": [],
+             "answer": "500", "answer_value": 500.0,
+             "model": {"version": "t", "sha256": "x", "assumptions": []}}
+    out = REPLAY._ledger_states(chain, chain["operands"])
+    assert "violated" in out
+    assert out["n"] == sum(out["states"].values())
+    for v in out["violated"]:
+        assert {"kind", "subject", "why", "witness", "supports"} <= set(v)
+        assert v["why"], "an accusation without a stated reason cannot be inspected"
+
+
+def test_the_replay_reports_whether_the_ledger_sizes_are_identical():
+    """C-2's prediction 1 is the sharp one, so the artifact must answer it directly rather than
+    leaving a reader to add up four deltas."""
+    src = open(os.path.join(RESEARCH, "oqa_occ_replay.py"), encoding="utf-8").read()
+    assert '"ledger_size_identical"' in src
+    assert '"accusations_under_the_gate"' in src
+    assert '"every_accusation_with_its_witness"' in src
+    # and the committed prediction is quoted in the module, so the measurement names what it tests
+    assert "committed_prediction" in src
