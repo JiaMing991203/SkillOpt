@@ -1,23 +1,36 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 03:05 EST, after launching the two-baseline campaign. Branch
-`officeqa-contracts`, worktree `SkillOpt-officeqa`, commit `1ad701c`. NOT pushed. Tracked tree clean.
-SIX OfficeQA JOBS LIVE — see below before doing anything.**
+**Last update: 2026-11-21 03:25 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`,
+commit `5497ee9`. NOT pushed. Tracked tree clean. JOBS LIVE — check `squeue` before doing anything.**
 
 ## START HERE -> `docs/research/OFFICEQA_BASELINE_LAUNCH.md` (rules OQA-SEL-4, OQA-BASE-1, OQA-T2S-1)
+## CONTRACT ARM -> amendment **C-1** in `docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md`
 
-**BOTH BASELINES ARE SUBMITTED AND RUNNING. Do NOT resubmit them.** Check live state first:
-`squeue -u $USER | grep oqa-base` and `sacct -X -j 66552420,66552421,66552422,66552423,66552424,66552425,66552508`.
+**BOTH BASELINES ARE RUNNING. Do NOT resubmit them.** Live state:
+`squeue -u $USER | grep oqa-` and
+`sacct -X -j 66552420,66552421,66552422,66552423,66552424,66552425,66552763,66552633,66552721`.
 
-| job | stage | walltime | depends on |
-|---|---|---:|---|
-| 66552420 | prep (free) — **COMPLETED**, preflight READY 39/0/0, 2,428 tests | 0:20 | — |
-| 66552421 | s0 reference: 4 passes x 12 train + 12 val — **RUNNING**, gated checkpoint passed | 1:30 | 66552420 |
-| 66552422 | Original SkillOpt epoch 1 | 1:00 | 66552421 |
-| 66552423/4/5 | Original SkillOpt epochs 2 / 3 / 4 | 1:45 each | the previous epoch |
-| 66552508 | **Trace2Skill** (no actor calls; reuses s0's 48 trajectories) | 2:30 | 66552421 |
+| job | stage | state at 03:25 |
+|---|---|---|
+| 66552420 | prep (free) | **COMPLETED** — preflight READY 39/0/0, 2,428 tests |
+| 66552421 | s0 reference | **COMPLETED** 23:16 — 48 training + 12 validation episodes, all 12/12 |
+| 66552422 | Original SkillOpt epoch 1 | **COMPLETED** 3:40 — wrote `best_skill.md`, `meta_skill/`, `slow_update/` |
+| 66552423 | Original SkillOpt epoch 2 | **RUNNING** — the first gated slow update |
+| 66552424 / 66552425 | epochs 3 / 4 | PENDING on the chain |
+| **66552763** | **Trace2Skill** | the LIVE attempt, from bundle `oqa_base_20261121e` |
+| 66552633 | contract: v7 + occurrence measurement (free) | **COMPLETED** |
+| 66552721 | contract: v8 + C-1 replay (free) | COMPLETED its work; exited 1 on a test and a false alarm, both since fixed |
 
-Both methods hang off s0 and run in PARALLEL after it. Every link is `afterok`.
+**THREE FAILED t2s ATTEMPTS, each a different defect of MINE, none of which spent anything:**
+* **66552508** — the boundary guard conflated a CORRECT ANSWER with a leaked key. On a correct episode
+  the actor's own answer IS the ground-truth string, so a string scan refuses exactly the episodes the
+  success analyst needs. Now a PROVENANCE guard: a key is a violation only if the permitted corpus
+  cannot explain it. Verified on the real 48: **0 violations, 7 explained hits.**
+* **66552741** — `chat_optimizer` is a ROUTER whose default is **Azure**; the config does not reach it
+  without `set_optimizer_backend` + `configure_openai_compatible`. 48 calls raised, 0 paid. The
+  preflight had the same defect hours earlier and I failed to carry the fix across.
+* The dry run reported healthy both times because it short-circuited before configuring. It now
+  configures too, and the stage refuses to proceed if the guard fires.
 
 **Bundles — NEVER rebuild one while its jobs are queued or running (bash reads the body lazily):**
 * `oqa_base_20261121b` commit `a8f80fa` — the LIVE bundle for s0 and the four epochs.
@@ -77,6 +90,31 @@ convention governs the 44-hour ceiling is still the user's decision.**
 **Held-out scores and trajectories stay sealed while the contract arm is developed.** Do not use them
 to choose contract features, prompts or repairs. Contract development uses the 48 new S0 training
 trajectories and the saved 24-question collection only.
+
+### THE CONTRACT ARM: WHAT IS BUILT AND WHAT IS NOT -> amendment C-1
+**Occurrence-level source binding works where column semantics did not.** `research/officeqa/oqa_occ.py`.
+A grep observation prefixes each line with its LINE NUMBER, so a cell has an observable position -
+(document, line, field). Over the 24 saved TRAINING records: 4,261 observed occurrences, 201 at a
+unique position, 122 at several (UNKNOWN), 794 with none (actor-derived), **64 SUPPORTED** against the
+frozen prototype's 0. A unique position is NOT a binding: support needs ROW_LABEL or QUERY
+corroboration. `SOLE_IN_ROW` was rejected as a near-tautology (entailed 0.995) after it lifted the rate
+to a suspicious 100%.
+
+**Amendment C-1 is implemented and replayed.** `oqa_lc_chain.select_cell` refuses to pick a source cell
+by numeric equality. Over 659 operands: selections **566 -> 102**, VIOLATED **186 -> 30**. The old
+tie-break was choosing on numeric equality alone in 82% of its selections.
+
+**TWO DEFECTS IN C-1 REMAIN OPEN, both measured, both specified in the amendment, deliberately NOT
+rushed:**
+* **A** — withdrawn bindings make downstream obligations VANISH rather than UNKNOWN (ledger 1,839 ->
+  911). Repair: `obligations()` must emit them as UNKNOWN naming the refusal.
+* **B** — 199 of 499 ties (39.9%) are the SAME cell observed through different routes. Repair:
+  deduplicate candidates by cell identity before declaring a tie.
+
+**Still missing from the §4 demonstration:** a genuinely learned rule with its evidence, a supported
+diagnosis on a later record, a successful/recovered control, and Lean compiled against the C-1 facts.
+Lean is at `/nfs/turbo/umms-csriram/yaojm/lean/elan/bin/lean`; `OqaContracts.lean` ALREADY contains
+`unknownBindingNeverViolates`, which is exactly C-1's soundness condition.
 
 ### NEXT ACTIONS
 1. Monitor the chains. On a TIMEOUT, resubmit the same stage (see resume note above).

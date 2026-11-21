@@ -396,3 +396,42 @@ def test_analysis_errors_are_surfaced_in_the_summary_not_buried_per_record():
     assert '"errors": dict(analysis_errors)' in src
     printed = src[src.index('print(json.dumps({"verdict": report["verdict"]'):]
     assert '"errors"' in printed
+
+
+def test_every_stdlib_module_the_research_code_uses_is_actually_imported():
+    """The bug this pins: `collections.Counter` was used in oqa_t2s.run() and `collections` was never
+    imported, so the module raised NameError at runtime. Syntax checks and the unit tests above both
+    passed, because none of them calls run() - and run() cannot be called locally any more, since
+    configure_models imports skillopt, which needs Python 3.10+.
+
+    So this walks the AST for `<module>.<attr>` uses of known stdlib modules and asserts each one is
+    imported in that file. It is a narrow linter, but it is exactly the class of mistake that reached
+    the cluster twice tonight.
+    """
+    import ast as _ast
+    stdlib = {"collections", "json", "os", "re", "sys", "glob", "hashlib", "datetime", "argparse",
+              "threading", "itertools", "math", "csv", "time", "subprocess", "statistics",
+              "functools", "textwrap", "shutil", "random", "copy"}
+    checked = 0
+    for name in ("oqa_t2s.py", "oqa_occ.py", "oqa_occ_replay.py", "oqa_base_preflight.py",
+                 "oqa_base_verify.py", "oqa_sel4.py", "oqa_t2s_prompts.py"):
+        path = os.path.join(RESEARCH, name)
+        tree = _ast.parse(open(path, encoding="utf-8").read())
+        imported, aliases = set(), set()
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Import):
+                for a in node.names:
+                    imported.add(a.asname or a.name.split(".")[0])
+                    aliases.add(a.name.split(".")[0])
+            elif isinstance(node, _ast.ImportFrom) and node.module:
+                for a in node.names:
+                    imported.add(a.asname or a.name)
+        used = set()
+        for node in _ast.walk(tree):
+            if (isinstance(node, _ast.Attribute) and isinstance(node.value, _ast.Name)
+                    and node.value.id in stdlib):
+                used.add(node.value.id)
+        missing = sorted(used - imported - aliases)
+        assert not missing, f"{name} uses {missing} without importing them"
+        checked += 1
+    assert checked == 7

@@ -38,7 +38,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import oqa_lc_chain as CHAIN          # noqa: E402
 import oqa_lc_cells as CELLS          # noqa: E402
-import oqa_occ as OCC                 # noqa: E402
 import oqa_trace as TRACE             # noqa: E402
 
 RULE = "OQA-OCC-1"
