@@ -54,7 +54,10 @@ T2S_OUT="$OQA_BASE_ROOT/trace2skill"
 sub() {
     local name="$1" time="$2" cpus="$3" mem="$4" dep="$5" extra="$6"
     if [ "$DRY" = "1" ]; then
-        printf '  %-22s %s  cpus=%s mem=%s  dep=%-22s %s\n' "$name" "$time" "$cpus" "$mem" "${dep:-none}" "$extra"
+        # The plan goes to STDERR. Callers capture stdout to chain dependencies, so a plan line printed on
+        # stdout would be swallowed into the next job's --dependency argument.
+        printf '  %-22s %s  cpus=%s mem=%s  dep=%-22s %s\n' \
+            "$name" "$time" "$cpus" "$mem" "${dep:-none}" "$extra" >&2
         echo "DRY"
         return 0
     fi

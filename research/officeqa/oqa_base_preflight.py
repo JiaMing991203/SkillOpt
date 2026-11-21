@@ -75,6 +75,17 @@ REQUIRED_ENV = {
 # val and test through the aliases `valid_seen` and `valid_unseen` (skillopt/datasets/base.py _SPLIT_ALIAS).
 SPLIT_ROLE_DIR = {"train": "train", "val": "val", "heldout": "test"}
 
+# The backend's own fallbacks, which are a live hazard rather than a hypothetical: with the role
+# environment unset, `_initial_config` yields gpt-4o-mini on OpenAI's endpoint. A preflight that reads the
+# backend without applying the config reports exactly these and calls them the campaign's settings.
+BACKEND_FALLBACKS = {"model": "gpt-4o-mini", "base_url_host": "api.openai.com"}
+
+
+def is_backend_fallback(model, base_url) -> bool:
+    """True if these are the backend's unconfigured defaults rather than a configured endpoint."""
+    return (str(model) == BACKEND_FALLBACKS["model"]
+            or BACKEND_FALLBACKS["base_url_host"] in str(base_url))
+
 
 def _utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -209,20 +220,48 @@ def check_config(results: list, cfg_path: str) -> dict:
 
 
 def check_outbound(results: list, resolved: dict) -> dict:
-    """The EFFECTIVE actor settings: the backend's own config object plus the environment."""
+    """The EFFECTIVE actor settings, measured the way the trainer produces them.
+
+    THE MISTAKE THIS FUNCTION MADE ON ITS FIRST RUN, kept here because it is the whole point of the
+    check. It read `_initial_config("target")` in a process that had never applied the config, and
+    `_initial_config` reads only environment variables. With those unset the backend falls back to
+    `gpt-4o-mini` on `https://api.openai.com/v1`, so the preflight reported the BACKEND'S DEFAULTS and
+    called them the campaign's settings. Job 66552338 failed on exactly that and it was right to.
+
+    The config never reaches the backend by itself. `skillopt.engine.trainer` calls
+    `configure_openai_compatible(...)`, which writes the resolved values into both the module's config
+    object and the environment (`_update_config`), so the CONFIG wins and the environment is its record.
+    This function therefore performs the same application before asserting anything - which is what
+    makes the assertion a statement about the paid stages rather than about an unconfigured process.
+    """
     sys.path.insert(0, _tree())
     eff: dict = {}
     try:
         from skillopt.model import openai_compatible_backend as B  # type: ignore
-        cfg = B._initial_config("target")  # the same call the module makes for TARGET_CONFIG
+        # The same call the trainer makes, with the same fields, so the path under test is the real one.
+        B.configure_openai_compatible(
+            target_base_url=resolved.get("model.target_openai_compatible_base_url") or None,
+            target_model=resolved.get("model.target_openai_compatible_model") or None,
+            target_temperature=resolved.get("model.target_openai_compatible_temperature"),
+            target_max_tokens=resolved.get("model.target_openai_compatible_max_tokens"),
+        )
+        cfg = B._config_for("target")      # the LIVE config, after the config has been applied
         eff = {"base_url": cfg.base_url, "model": cfg.deployment, "max_tokens": cfg.max_tokens,
                "temperature": cfg.temperature, "timeout_seconds": cfg.timeout_seconds,
-               "api_key_present": bool(cfg.api_key)}
+               "api_key_present": bool(cfg.api_key),
+               "applied_via": "configure_openai_compatible, as skillopt.engine.trainer does"}
     except Exception as exc:  # noqa: BLE001
         _check(results, "outbound/backend_config_builds", False,
                {"error": f"{type(exc).__name__}: {exc}"})
         return eff
     _check(results, "outbound/backend_config_builds", True, {"from": "openai_compatible_backend"})
+    # The backend's fallbacks are a live hazard, not a hypothetical: an unset base URL silently becomes
+    # OpenAI's. Assert they are NOT what is in force, so a future config that fails to apply is caught
+    # here rather than by a bill.
+    _check(results, "outbound/not_the_backend_fallback",
+           not is_backend_fallback(eff.get("model"), eff.get("base_url")),
+           {"effective_model": eff.get("model"), "effective_base_url": eff.get("base_url"),
+            "fallbacks_that_must_not_be_in_force": BACKEND_FALLBACKS})
     for key, want in REQUIRED_OUTBOUND.items():
         got = eff.get(key)
         ok = (abs(float(got) - float(want)) < 1e-9) if isinstance(want, float) else (got == want)

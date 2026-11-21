@@ -289,3 +289,23 @@ def test_a_prior_collection_with_a_different_skill_is_not_reusable(tmp_path):
     assert out["verdict"] == "NOT_REUSABLE_recorded_skill_differs"
     # it is a WARN, not a FAIL: losing reuse costs money, it does not invalidate the campaign
     assert all(r["verdict"] != "FAIL" for r in results)
+
+
+def test_the_backend_fallback_is_recognised_as_such():
+    """Job 66552338's finding: an unconfigured backend reports gpt-4o-mini on OpenAI's endpoint, and a
+    preflight that reads it without applying the config calls those the campaign's settings."""
+    assert PRE.is_backend_fallback("gpt-4o-mini", "https://api.empiriolabs.ai/v1") is True
+    assert PRE.is_backend_fallback("qwen3-5-4b", "https://api.openai.com/v1") is True
+    assert PRE.is_backend_fallback("gpt-4o-mini", "https://api.openai.com/v1") is True
+    # the configured endpoint is not a fallback
+    assert PRE.is_backend_fallback("qwen3-5-4b", "https://api.empiriolabs.ai/v1") is False
+    assert PRE.REQUIRED_OUTBOUND["base_url"] == "https://api.empiriolabs.ai/v1"
+
+
+def test_the_preflight_applies_the_config_before_asserting_the_outbound_settings():
+    """The config does not reach the backend by itself; the trainer calls configure_openai_compatible."""
+    src = open(os.path.join(RESEARCH, "oqa_base_preflight.py"), encoding="utf-8").read()
+    body = src[src.index("def check_outbound"):src.index("def check_prior_collection")]
+    assert "configure_openai_compatible" in body
+    assert "_config_for" in body, "the LIVE config must be read, not _initial_config"
+    assert "_initial_config" not in body.split('"""')[2] if body.count('"""') > 2 else True
