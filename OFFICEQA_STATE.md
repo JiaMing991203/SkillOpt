@@ -10,29 +10,21 @@ commit `5497ee9`. NOT pushed. Tracked tree clean. JOBS LIVE — check `squeue` b
 `squeue -u $USER | grep oqa-` and
 `sacct -X -j 66552420,66552421,66552422,66552423,66552424,66552425,66552763,66552633,66552721`.
 
-| job | stage | state at 03:38 |
+| job | stage | state at 04:00 |
 |---|---|---|
-| 66552420 | prep (free) | **COMPLETED** — preflight READY 39/0/0, 2,428 tests |
-| 66552421 | s0 reference | **COMPLETED** 23:16 — 48 training + 12 validation, all 12/12 |
-| 66552422 | Original SkillOpt epoch 1 | **COMPLETED** 3:40 — wrote `best_skill.md`, `meta_skill/`, `slow_update/` |
-| 66552423 | Original SkillOpt epoch 2 | **RUNNING** — the first gated slow update |
-| 66552424 / 66552425 | epochs 3 / 4 | PENDING on the chain |
-| **66552979** | **Trace2Skill** | **RUNNING** from bundle `oqa_base_20261121f`, reusing 48 cached analysis replies |
-| 66552633 | contract: v7 + occurrence measurement (free) | **COMPLETED** |
-| 66552721 | contract: v8 + C-1 replay (free) | work COMPLETED; exit 1 from a test C-1 moves + a broken check, both fixed |
-| **66552984** | contract: v9 + **C-2 replay** (free) | **RUNNING** |
-| not yet submitted | contract: `PHASE=lean` (free) | ready in bundle `oqa_ct_20261121c` |
+| 66552420 | prep (free) | **COMPLETED** — preflight READY 39/0/0 |
+| 66552421 | s0 reference | **COMPLETED** — 48 training + 12 validation, all 12/12 |
+| 66552422/3/4 | Original SkillOpt epochs 1 / 2 / 3 | **ALL COMPLETED** (3:40, ~19m, ~17m) |
+| 66552425 | Original SkillOpt epoch 4 | PENDING — the last one |
+| **66553156** | **Trace2Skill**, consolidation repaired | **RUNNING** from bundle `oqa_base_20261121h` |
+| 66553058 | Trace2Skill, first complete run | COMPLETED but **DEGRADED** — preserved as `trace2skill_degraded_66553058/` |
+| 66552633 / 66552721 / 66552984 | contract: v7, v8+C-1 replay, v9+C-2 replay | all did their work (two exit 1 on tests) |
+| 66553083 | contract: **LEAN COMPILED** | work COMPLETED; exit 1 from the byte test only |
+| 66553105 | contract: determinism probe | work COMPLETED; exit 1 from the byte test only |
 
-**THREE FAILED t2s ATTEMPTS, each a different defect of MINE, none of which spent anything:**
-* **66552508** — the boundary guard conflated a CORRECT ANSWER with a leaked key. On a correct episode
-  the actor's own answer IS the ground-truth string, so a string scan refuses exactly the episodes the
-  success analyst needs. Now a PROVENANCE guard: a key is a violation only if the permitted corpus
-  cannot explain it. Verified on the real 48: **0 violations, 7 explained hits.**
-* **66552741** — `chat_optimizer` is a ROUTER whose default is **Azure**; the config does not reach it
-  without `set_optimizer_backend` + `configure_openai_compatible`. 48 calls raised, 0 paid. The
-  preflight had the same defect hours earlier and I failed to carry the fix across.
-* The dry run reported healthy both times because it short-circuited before configuring. It now
-  configures too, and the stage refuses to proceed if the guard fires.
+**READ JOB STATUS CAREFULLY HERE: three jobs are marked FAILED whose substantive steps all SUCCEEDED**,
+exiting 1 only because the body runs the test suite at the end and one byte-reproduction test is pinned
+as expected-to-change. Check `job.log` before concluding a stage did not run.
 
 **Bundles — NEVER rebuild one while its jobs are queued or running (bash reads the body lazily):**
 * `oqa_base_20261121b` commit `a8f80fa` — the LIVE bundle for s0 and the four epochs.
@@ -125,6 +117,46 @@ before the code change; job 66552984 measures them.
 diagnosis on a later record, a successful/recovered control, and Lean compiled against the C-1 facts.
 Lean is at `/nfs/turbo/umms-csriram/yaojm/lean/elan/bin/lean`; `OqaContracts.lean` ALREADY contains
 `unknownBindingNeverViolates`, which is exactly C-1's soundness condition.
+
+### LEAN IS COMPILED, AND WHAT IT COVERS IS NARROW
+Job 66553083: `OqaConnected.lean` over the delivered facts — **50 evidence examples, 0 skipped, lean
+returncode 0, "all statements accepted"** (Lean 4.20.0); `OqaContracts.lean` compiled clean.
+**OQA_LEAN_BIN must be the TOOLCHAIN binary**, `lean/elan/toolchains/leanprover--lean4---v4.20.0/bin/lean`
+— `elan/bin/lean` is a shim with no configured toolchain and fails with "no default toolchain".
+It verifies the **resolution algebra** (an UNKNOWN binding can never yield VIOLATED; a discharge needs
+its binding) — NOT that the extraction is correct or that the occurrence binding picks the right cell.
+
+### AMENDMENTS C-1, C-2, C-3 — the chain of repairs and what each measured
+* **C-1** refuses to select a source cell by numeric equality. 566 -> 102 selections; the old tie-break
+  was choosing on numeric equality alone in **82%** of its selections.
+* **C-2** repaired C-1's two defects. Ledger sizes became **identical at 2,025** in both arms (its
+  sharpest prediction, held); selections 102 -> 257; 39.9% of "ties" were one cell seen twice.
+* **C-3** — an unknown year was becoming an ACCUSATION through `(year or -1)` in an inequality. **55 of
+  69 accusations were false by construction.** Fixed; the stage-diagnosis-group count returned to its
+  historical 14 from C-2's 17, which is independent support. **THE DEFECT PREDATES THE GATE: the old
+  arm carries 186 of the same class, so every prior VIOLATED count in this project — including the
+  three-arm campaign's delivered reports — is inflated by it.**
+* **C-2's accusations are NOT claimed**, per its own prediction 5.
+
+### TWO CLAIMS OF MINE WITHDRAWN, AND ONE DEFECT STILL OPEN
+* **WITHDRAWN:** that C-2 made UID0014's report byte-identical to the historical one. Report generation
+  is **DETERMINISTIC** (16 runs, job 66553105) and UID0014's digest `51f046e063a7` has differed from the
+  historical `8b90446cecdc` continuously since C-1. I had inferred "bytes identical" from a test NAME
+  without reading its assertion — the assertion that failed was the stage-group count, 17 against 14.
+  UID0019's report matches historical **16 of 16**.
+* **OPEN, not mine, not fixed:** `test_four_concurrent_processes_cannot_spend_more_than_the_one_shared_cap`
+  failed once with *"four processes spent 24 against a cap of 23"* — a real violation of `spent <= cap`
+  in the shared spend ledger. **Intermittent, not deterministic: 10 repeats, 10 passes.** Immaterial for
+  this campaign (~$2 of $15) but it is the invariant that protects the authorization.
+
+### TRACE2SKILL'S FIRST COMPLETE RUN WAS DEGRADED — read this before using its skill
+Job 66553058 produced a skill (18,590 bytes, `8af6ca6c6fdb`) but **its consolidation failed**: both
+level-2 merges and the verify step truncated at exactly `completion_tokens=16384` from ~77,000-character
+prompts, so the skill was assembled by a mechanical coalesce with `conflicts_unresolved: true` and 77
+items, and there was no verification. Trace2Skill is NAMED for conflict-free hierarchical consolidation.
+Repaired for job 66553156: merge batches 8 -> 3, levels 4 -> 6, verification chunked at 12 items,
+truncation detected at the call, and the cache key now covers `max_tokens` with a migration that reuses
+good legacy entries and refuses truncated ones.
 
 ### NEXT ACTIONS
 1. Monitor the chains. On a TIMEOUT, resubmit the same stage (see resume note above).
