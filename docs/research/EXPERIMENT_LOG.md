@@ -2050,3 +2050,65 @@ resolve differences finer than 1/12.
 Upstream's strict-improvement rule was preserved, so this is the framework's own behaviour and not an
 artefact of a weakened gate. The held-out measurement will be the test of whether that one-question
 validation gain transfers.
+
+---
+
+## OQA-LN-1 — the learned source-to-calculation contract (2026-11-21)
+
+**Authorization.** 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor calls, 0 GPUs, as
+sublimits inside the phase ceilings of 50 h / 400 calls / $20. **Consumed: CPU 4.50 requested job-hours
+(0.23 elapsed) over 14 jobs; DeepSeek 6 attempts / $0.029476; actor 0; GPUs 0.**
+
+**Deployment.** Bundles `oqa_ln_20261121` … `j`; the final verification ran from `j`, commit
+`abe2984`. Body `research/cluster/oqa_ln_body.sh`, phases `ledger|freeze|learn|restage|lean|rehearse`.
+Output root `runs/20261121-officeqa-learner/{v1_freeze,v2_learn,v2b_restage,v3_lean,v4_rehearse}`,
+pulled to `~/dev/lean_skillopt/runs/20261121-officeqa-learner/` (26 files).
+
+**Evidence set, frozen before any learner call.** The 48 fixed-S0 trajectories of job 66552421 over
+the twelve frozen OQA-SEL-4 TRAINING questions. 676 binary calculations, 1,352 operands, 82 chained
+statements out of scope. Task-separated 6/6 by `sha256("OQA-LN-1|"+uid)`: learn UID0028/0026/0079/
+0014/0034/0033 (1,214 operands, 28 sourced), check UID0085/0031/0063/0065/0017/0030 (138 operands, 26
+sourced). Three recovery-shaped attempts found by trajectory SHAPE, not by score: p2/UID0026 (learn),
+p4/UID0063 and p4/UID0085 (check, therefore prospective). Labelled REUSED DEVELOPMENT RECORDS.
+Not read: `ground_truth`, `soft`, the provider's alternate reasoning field, `hard`.
+
+**Vocabulary.** Amendment D-1, bundle label v10, digest `464b1cae6c65aa36`, in its own namespace so
+`oqa.cc.model.v1` is byte-identical in behaviour. Two entities added (`operand`, `answer`), thirteen
+predicates, one obligation (`source_traced`). Exactly one learnable conclusion: `operand_sourced`.
+Model bank declared empty at its initial state.
+
+**Learner result (job 66581071, 4 paid calls).** Both repetitions proposed
+`operand_positions(operand,1) AND operand_source_tool(operand,grep) ⇒ operand_sourced`, from the
+identical prompt digest `47064dac` with different replies (812 and 783 chars). Models `1231f2817c476aae`
+and `d81e2383f0a502f2`.
+
+| set | operands | applies | confirmations | counterexamples | silent | precision |
+|---|---|---|---|---|---|---|
+| learning (6 questions) | 1,214 | 28 | 27 | 1 | 1,186 | 0.964 |
+| checking (6 unseen) | 138 | 26 | 26 | **0** | 112 | **1.000** |
+
+Predictions were written and digested before any verdict was read (content digests, clock excluded).
+The one counterexample (`14` in `14 * 1935.5 = 27,097`, p1/UID0014) is in-sample. **Both repetitions
+declined to repair**, correctly: its feature vector is identical to four operands the resolver called
+sourced. No condition was invented.
+
+**Stage obligations over 25 checked attempts (after the restage correction).**
+
+| obligation | DISCHARGED | OUTSTANDING | VIOLATED | UNKNOWN |
+|---|---|---|---|---|
+| lookup_observed | 16 | — | — | 9 |
+| answer_traced | 9 | — | 7 | 9 |
+| arith_recorded | 9 | — | — | 16 |
+| source_traced | 3 | 6 | — | 16 |
+
+**Lean.** 4.20.0, source `a1cc5340807f652b` (17,777 bytes), **rc 0, 0 errors, 0 warnings, 86 examples**
+(36 operand + 50 obligation), job 66588304. The FIRST compile (66587986) returned rc 1 and refuted the
+Python side; following it withdrew two false accusations.
+
+**Paired rehearsal (job 66588323, 2 paid calls).** p1/UID0063, skill S0 `9d377d1c2906981b`, edit budget
+4, through `run_error_analyst_minibatch`. Trajectory text 16,179 vs 19,338 chars — the difference is the
+3,129-byte report plus its 30-char heading exactly. Report `afd740186c0395e0` ← model `d81e2383f0a502f2`
+← Lean `a1cc5340807f652b`. Two edits each. **Neither applied; no validation; held-out sealed.**
+
+**Verification.** Job 66588746 against the finished code: suite **2,557 passed / 0 failed**, 9 skipped,
+368 subtests; ledger all five checks PASS, 12/12 races at exactly 23, over-grant interleaving refused.

@@ -1884,3 +1884,72 @@ until access returns. That is the first action recorded in the state note.
 Memories written: `configured-is-not-effective` (five settings that were set and not in force) and
 `read-the-assertion-not-the-test-name`. `fail-closed-api-endpoints` was updated, because it had already
 warned about the exact defect I repeated — reading a note is not the same as applying it.
+
+---
+
+## 2026-11-21 (evening) — the learned source-to-calculation contract, rule OQA-LN-1
+
+Full report: `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md`. Fourteen jobs, **CPU 4.50 of 8
+requested job-hours, DeepSeek 6 of 24 attempts and $0.029476 of $3.00, zero actor calls, zero GPUs.**
+The two-baseline comparison was not touched and the held-out scores were not opened.
+
+**Accounting is rebuilt, and it was the attempt counts that were right and the dollars that were
+wrong.** Two sources — the per-job backend call logs and the shared ledger — cover 17 (job, role) rows
+with **zero gaps** and exactly one overlap, which agrees to the cent. Actor 3,462 attempts / $1.4378
+(provider's own figure $1.1151); optimizer 206 / $1.9788 (the provider reports no cost for that role,
+so it is recorded as *unavailable* and never as zero). The previously reported $1.87 and $2.06 were
+overstated. The three held-out jobs genuinely have no actor call log: the body deployed at `c35df7e`
+exports the path at the s0 and t2s branches only, **read from the deployed script** rather than
+concluded from the file's absence.
+
+**The cap failure had a mechanism and later passing runs never meant anything.** The claim file NAME
+carries the amount, so two callers at one sequence number with different amounts write different names
+and the `O_EXCL` never fires; they diverge because `granted` was assembled from two directory listings.
+Reproduced deterministically — `000012-target-attempts-1.json` AND `-2.json`, net 24 against a cap of
+23. `_write_release` had the same defect. Three guards (one lock across grant and release, an
+amount-free sequence token, releases read before claims), verified on `/nfs/turbo`: the interleaving
+now fails closed, and twelve four-process races each totalled **exactly 23** — the cap reachable to its
+last unit and never exceeded. Plus a phase-wide single-payer token, because a fix verified once is not
+a reason to run four payers at a 24-attempt allowance.
+
+**Four fail-closed stops fired and every one cost nothing** — an un-importable ledger probe under
+`python -I`, the wrong credential variable, `retries=0` sending no request at all, and (earlier) a
+stage submitted against a bundle that predated it. The ledger shows 35 optimizer attempts before and
+after the `retries=0` job.
+
+**The learner declined to repair, and was right.** Two independent repetitions converged on
+`operand_positions=1 AND operand_source_tool=grep ⇒ operand_sourced`; on six questions it had never
+seen, **26 of 26 predictions were confirmed and none refuted**. The single counterexample is in-sample,
+and both repetitions answered that no available predicate separates it — which is true, because its
+feature vector is identical to four operands the resolver did call sourced, and a test now enumerates
+every single-condition narrowing and proves it. **No empirical repair is claimed**; the repair
+machinery is exercised by clearly-labelled constructed fixtures instead. The learner had also predicted
+this failure in its own `expected_failures`, including the reason.
+
+**Lean failed first, and that was the useful part.** `decide` refuted `sourceTraced false false 0 =
+unknown`: the model took an attempt with nothing to trace to a DISCHARGE. Following the disagreement
+found a defect in `recovery_shape` that marked `answer_traced` VIOLATED on two attempts whose single
+written calculation **did** support their committed answer — a false accusation against an actor that
+did the right thing. Rebuilt free from the frozen models into a new directory: 6 obligations move, **2
+accusations withdrawn**, superseded reports preserved.
+
+**The paired rehearsal ran through the real analyst entry point** with inputs identical to the byte
+except the report (16,179 against 19,338 characters — the 3,129-byte report plus its 30-character
+heading, exactly). Mixed verdict: the report **added a supported diagnosis** (it localised the
+unresolved operand, which the ordinary arm never identified) but its `answer_traced HOLDS` was read by
+the assisted analyst as "the correct numeric answer", which the report does not say. Neither patch was
+applied; no validation ran; the held-out set stays sealed.
+
+**Three defects of my own, recorded because each was invisible until something re-derived an artifact.**
+A digest that hashed its own `written_utc` — twice, in two modules, so re-freezing one record set gave
+two digests. A repair trigger that looked only at prospective counterexamples and would have reported
+"no contradiction" with one sitting in the learning records. And a report whose first draft had four
+figures read off the *superseded* stage reports instead of the restaged ones. The compaction sweep
+found a fourth: the report said thirteen jobs when there were fourteen, and the CPU tally was short by
+one 0:15 job.
+
+**A claim about C-3 is withdrawn.** It did not return the stage-group count to 14; the count is 17, and
+a probe shows why 17 is correct — the three largest UNKNOWN groups are the exact triple C-2's defect-A
+repair emits for one withdrawn binding.
+
+Memories written: `a-digest-must-not-hash-the-clock`, `lean-refuted-the-python-side`.

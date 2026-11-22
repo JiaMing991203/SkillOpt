@@ -144,3 +144,17 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66553250	2026-11-21T04:21	oqa-base-ho-S0	COMPLETED	00:29:39	01:30:00	4	Held-out S0 9d377d1c2906: 30/30 both passes; PROVENANCE.json written; SCORES SEALED
 66553251	2026-11-21T04:21	oqa-base-ho-original_skillopt	COMPLETED	00:32:45	01:30:00	4	Held-out Original SkillOpt e35673d87cb7: 30/30 both passes; PROVENANCE.json written; SCORES SEALED
 66553363	2026-11-21T04:33	oqa-base-ho-trace2skill	COMPLETED	00:22:57	01:30:00	4	Held-out Trace2Skill 03d6564f1d10: 30/30 both passes; PROVENANCE.json written; SCORES SEALED
+66580310	2026-11-21T19:13	oqa-ln-ledger	COMPLETED	00:02:23	00:25:00	2	OQA-LN-1 FREE: ledger race fix verified on /nfs/turbo (mechanism refused fail-closed, 12/12 races at exactly 23); suite 2529 passed / 1 FAILED (the stale expected-to-change pin)
+66580311	2026-11-21T19:13	oqa-ln-freeze	COMPLETED	00:00:02	00:10:00	2	OQA-LN-1 FREE: first evidence freeze, 48 attempts, 676 calculations, 1352 operands, 6/6 task split
+66580469	2026-11-21T19:21	oqa-ln-ledger	COMPLETED	00:05:55	00:25:00	2	OQA-LN-1 FREE: suite 2531 passed / 0 failed after the test correction; groups probe shows 17 groups (9 UNKNOWN) and why 17 is right
+66580714	2026-11-21T19:26	oqa-ln-learn	FAILED	00:00:02	00:30:00	2	OQA-LN-1 PAID phase, ZERO paid calls: python -I ignores PYTHONPATH so the ledger probe could not import skillopt; fail-closed refused to load a key
+66580801	2026-11-21T19:28	oqa-ln-learn	FAILED	00:00:05	00:30:00	2	OQA-LN-1 PAID phase, ZERO paid calls: credential file defines DEEPSEEK_API_KEY, body read the backend variable name and found it empty
+66580895	2026-11-21T19:30	oqa-ln-learn	FAILED	00:00:10	00:30:00	2	OQA-LN-1 PAID phase, ZERO paid calls: retries=0 is zero ATTEMPTS in the backend loop, so nothing was sent; route and key both verified correct
+66581070	2026-11-21T19:32	oqa-ln-freeze	COMPLETED	00:00:09	00:10:00	2	OQA-LN-1 FREE: evidence + vocabulary v10 464b1cae6c65aa36 + occurrence audit (54 supported bindings, 5 of them a numeral inside a label)
+66581071	2026-11-21T19:32	oqa-ln-learn	COMPLETED	00:00:46	00:15:00	2	OQA-LN-1 PAID, 4 calls $0.0089: two repetitions converge on positions=1 AND tool=grep; check 26/26 confirmations 0 refutations; both DECLINE to repair the one in-sample counterexample, correctly
+66587986	2026-11-21T21:17	oqa-ln-lean	FAILED	00:00:06	00:15:00	2	OQA-LN-1 FREE: Lean rc 1 - REFUTED the Python side, sourceTraced had no hasSupporting; following it found a false accusation in recovery_shape
+66588253	2026-11-21T21:21	oqa-ln-restage	COMPLETED	00:00:03	00:10:00	2	OQA-LN-1 FREE, 0 paid: stage reports rebuilt from the frozen models; 6 obligations move, 2 ACCUSATIONS WITHDRAWN (p2/p3 UID0063); superseded reports preserved
+66588268	2026-11-21T21:22	oqa-ln-lean	COMPLETED	00:00:07	00:15:00	2	OQA-LN-1 FREE: Lean rc 0 over the restaged reports, 86 examples; one linter warning on a vacuous theorem, since replaced
+66588304	2026-11-21T21:23	oqa-ln-lean	COMPLETED	00:00:03	00:15:00	2	OQA-LN-1 FREE: Lean 4.20.0 rc 0, 0 errors 0 warnings, 86 examples (36 operand + 50 obligation), source a1cc5340807f652b
+66588323	2026-11-21T21:24	oqa-ln-rehearse	COMPLETED	00:01:55	00:15:00	2	OQA-LN-1 PAID, 2 calls: paired analyst rehearsal on p1/UID0063 through the real entry point; inputs identical except the 3129-byte report; 2 edits each; neither applied
+66588746	2026-11-21T21:31	oqa-ln-ledger	COMPLETED	00:02:09	00:25:00	2	OQA-LN-1 FREE: final verification of the finished code - suite 2557 passed / 0 failed, ledger all five checks PASS, 12/12 races at exactly 23

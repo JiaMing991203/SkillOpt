@@ -1,6 +1,6 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 21:35 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+**Last update: 2026-11-21 23:55 EST, compaction sweep. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
 NOT pushed. NO OfficeQA JOB RUNNING OR QUEUED. The learned-contract follow-up is COMPLETE.**
 
 ## START HERE -> `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md`
@@ -37,7 +37,8 @@ validation, no new document structure.
   3,129-byte report. Mixed verdict, evidence saved for your and Codex's judgment.
 
 ### BUNDLES AND PHASES
-`oqa_ln_20261121` … `oqa_ln_20261121i`; the newest, `i`, commit `21c126c`, is the one to reuse.
+`oqa_ln_20261121` … `oqa_ln_20261121j`; the newest, **`j`, commit `abe2984`**, is the one to reuse —
+it is the bundle the final verification (job 66588746) ran from.
 `OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|restage|lean|rehearse`.
 Output root `runs/20261121-officeqa-learner/{v1_freeze,v2_learn,v2b_restage,v3_lean,v4_rehearse}`,
 pulled locally to `~/dev/lean_skillopt/runs/20261121-officeqa-learner/` (26 files).
@@ -45,7 +46,8 @@ pulled locally to `~/dev/lean_skillopt/runs/20261121-officeqa-learner/` (26 file
 
 ### ALLOWANCE
 This follow-up: 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor calls, 0 GPUs.
-**Used: CPU 4.25 of 8; DeepSeek 6 of 24 and $0.029476 of $3.00; actor 0; GPUs 0.**
+**Used: CPU 4.50 of 8 requested job-hours across 14 jobs (0.23 elapsed); DeepSeek 6 of 24
+attempts and $0.029476 of $3.00; actor 0; GPUs 0.**
 Phase ceilings after the campaign: optimizer 194 of 400 attempts and $18.0212 of $20 left; actor
 16,538 attempts and $13.5622 left. The lower limit governs; it was the sublimit throughout.
 

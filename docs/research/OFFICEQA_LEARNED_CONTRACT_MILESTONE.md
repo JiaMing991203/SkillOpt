@@ -21,7 +21,7 @@ added.
 
 ## 1. What actually ran, and what it cost
 
-Thirteen Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121j`, output root
+Fourteen Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121j`, output root
 `runs/20261121-officeqa-learner/`.
 
 | job | phase | state | elapsed | what it established |
@@ -36,7 +36,8 @@ Thirteen Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121j`, output ro
 | 66581071 | **learn (paid)** | COMPLETED | 0:46 | two learner repetitions, **4 paid calls** |
 | 66587986 | lean | FAILED | 0:06 | **Lean refuted the Python side** — see §9 |
 | 66588253 | restage | COMPLETED | 0:03 | stage reports rebuilt free; **2 false accusations withdrawn** |
-| 66588304 | lean | COMPLETED | 0:03 | Lean 4.20.0, return code 0 |
+| 66588268 | lean | COMPLETED | 0:07 | Lean rc 0 over the RESTAGED reports; one linter warning on a vacuous theorem |
+| 66588304 | lean | COMPLETED | 0:03 | Lean 4.20.0, **return code 0, 0 errors, 0 warnings** |
 | 66588323 | **rehearse (paid)** | COMPLETED | 1:55 | the paired analyst rehearsal, **2 paid calls** |
 | 66588746 | ledger | COMPLETED | 3:22 | final verification of the finished code: **2,557 passed / 0 failed**, ledger PASS |
 
@@ -45,8 +46,8 @@ AND $3, zero actor calls, zero GPUs.
 
 | resource | authorized for this follow-up | used | remaining |
 |---|---|---|---|
-| CPU, requested job-hours | 8 | **4.25** | 3.75 |
-| CPU, elapsed hours | — | 0.19 | — |
+| CPU, requested job-hours | 8 | **4.50** | 3.50 |
+| CPU, elapsed hours | — | 0.23 | — |
 | DeepSeek attempts | 24 | **6** (4 learner + 2 rehearsal) | **18** |
 | DeepSeek USD | $3.00 | **$0.029476** | **$2.970524** |
 | Actor calls | 0 | **0** | — |
