@@ -1,5 +1,17 @@
 # Research Development State
 
+## TRACK POINTERS — read the one you are resuming
+
+* **OfficeQA (branch `officeqa-contracts`, worktree `SkillOpt-officeqa`)** → **`OFFICEQA_STATE.md`
+  at the repository root**, not this file. It carries the live cluster state, the sealed
+  two-baseline comparison, the bundles and phases, the allowance and the next actions.
+  Latest: **`docs/research/OFFICEQA_D2_AUDIT_PACKET.md`** (2026-11-22, also mirrored to
+  `HANDOFF_LATEST.md`) — the D-2..D-5 audit of the learned-contract milestone. Headline: the
+  checker's thirteen accusing states were all its own parser's artifacts, and a 2×2 ablation shows
+  **no demonstrated increment from the learned rule**.
+* **ALFWorld / Experiment 3 and the other tracks** — the dated sections below.
+
+
 ## 2026-11-18 — ALFWORLD CONTEXT-CHECKING STUDY: DONE -> `ALFWORLD_CONTEXT_PACKET.md`
 
 **Rule AWC-1. Offline, 0 API calls, 0 GPUs, 0 gameplay, 0.6 of 2 authorized CPU job-hours. Jobs
