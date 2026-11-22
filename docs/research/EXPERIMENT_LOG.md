@@ -2112,3 +2112,94 @@ Python side; following it withdrew two false accusations.
 
 **Verification.** Job 66588746 against the finished code: suite **2,557 passed / 0 failed**, 9 skipped,
 368 subtests; ledger all five checks PASS, 12/12 races at exactly 23, over-grant interleaving refused.
+
+---
+
+## OQA-D2 — 2026-11-22. Amendments D-2..D-5 replayed over the frozen learned-contract evidence
+
+**Authorization.** Offline analysis, bounded internal corrections, regression checks and Lean
+compilation within the verified remainder of the eight-hour follow-up CPU allowance. **Zero new
+provider, learner, optimizer or actor requests. Zero GPUs.** The 18 remaining teacher attempts were
+not authorized and were not spent.
+
+**Design.** The same 48 S0 training trajectories of job 66552421, the same 6/6 learn/check question
+partition, the same two frozen learned models (r1 `1231f2817c476aae`, r2 `d81e2383f0a502f2`), the
+same contract `operand.sourced@v1`, the same vocabulary bundle v10 `464b1cae6c65aa36`. **Nothing was
+retrained.** All 48 trace digests re-verified against the freeze before any replay.
+
+**Freeze witness, reconciled.** The digest `ba3ab77882193c84` that every downstream artifact cites is
+clock-dependent: the content-digest fix landed at commit 857ede6 (21:17 EST 2026-11-21) and the
+artifact was written by commit 4580459 at 00:32:48Z. The reproducible content digest of the identical
+records is `f9c774bc6d3da46f`, now recorded beside it in `v5_d2/D2_FREEZE.json`.
+
+### D-2, the extraction/label correction
+
+| field class | occurrence-producing matches |
+|---|---|
+| a numeric cell (kept) | 2,002 |
+| label text (dropped) | 1,464 |
+| several numerals, not a value plus footnotes (dropped) | 48 |
+| a second numeral inside a kept cell (dropped) | 34 |
+| **before / after** | **3,548 / 2,002, −43.6%** |
+
+Operand verdicts changed: **11 of 1,352**, all on UID0014. Supported bindings **54 → 49**: exactly
+the five measured label matches, with **zero gained**. Parse unchanged — identical operand counts,
+statements and arithmetic verdicts, asserted per role by a test.
+
+Both frozen models rescored, no retraining: learning records 28 → 23 applications, 27 → 23
+confirmations, **1 → 0 counterexamples**, precision 0.9643 → 1.0000, questions applied
+{UID0014, UID0079} → {UID0079}. Checking records unchanged at 26/26. **This is an extraction
+correction, not learner repair:** the counterexample's operand (`14` matching `Unnamed: 14_level_2`)
+lost its only position, so the rule became silent on it.
+
+### D-3/D-4/D-5, and ten withdrawn accusations
+
+38 of 676 statements are fragments of a larger expression and account for **38 of the 50**
+arithmetically inconsistent ones. Eight of 48 attempts commit an answer that is not one number. All
+four UID0065 attempts write their arithmetic with absolute-value bars.
+
+| attempt | obligation | was → now | cause |
+|---|---|---|---|
+| p1/p3/p4 UID0017 | answer_traced | VIOLATED → UNKNOWN | D-5a, a two-element list answer |
+| p1..p4 UID0065 | answer_traced | VIOLATED → UNKNOWN | D-5b, `\|2.0 − 0.2\| = 1.8` |
+| p1/p2/p3 UID0063 | source_traced | OUTSTANDING → UNKNOWN | D-3, ambiguous not absent |
+| p4/UID0063 | source_traced | **DISCHARGED → UNKNOWN** | D-3, an identity restatement |
+| p4/UID0030 | lookup_observed | DISCHARGED → UNKNOWN | D-2, its observations were labels |
+
+**12 obligations move; 10 accusations withdrawn, 0 added.** Pooled over the 25 attempts: actionable
+execution diagnoses **7 → 0**; a new, separate unresolved-provenance count 0 → 7.
+
+### The 2×2: does the learned rule add anything?
+
+Conditions: extraction (superseded | D-2) × learned rule (applied | absent). Rule-absent returns
+"not evaluable", never false, so nothing the observations establish is removed. **All four cells give
+identical obligation states, identical operand classes and identical diagnosis counts**, for both
+models. Attempts where removing the rule changed any state: **0 of 25**. 50 of 50 attempt-level
+effects classify ALREADY_SUPPLIED. The only textual difference is the block naming the rule. The
+rehearsal's unresolved-operand warning is byte-identical with the rule removed.
+
+**Verdict: NO DEMONSTRATED LEARNED INCREMENT.**
+
+### Ancestry and recovery
+
+| attempt | abandoned | consumed ancestors | same result | replacement demonstrated |
+|---|---|---|---|---|
+| p2/UID0026 (learn) | **16** | 0 | 17 | yes |
+| p4/UID0063 (check) | 0 | 2 | 0 | **no** |
+| p4/UID0085 (check) | 0 | 2 | 4 | **no** |
+| p1/UID0063 (rehearsal item) | 0 | 0 | 1 | **no** |
+
+p4/UID0063's `source_traced DISCHARGED` rested on `86,000 - 0 = 86,000`. p4/UID0085's two ancestors
+are D-4 fragments whose arithmetic is out of scope, and both of its supporting operands have two
+candidate producers each — an ambiguity created in part by the `max(0.5, …)` tolerance, which is
+flagged and not changed.
+
+### Resources
+
+CPU_BLOCK
+
+**Artifacts.** `runs/20261121-officeqa-learner/v5_d2/` — `D2_FREEZE.json`, `D2_CELLS.json`,
+`D2_RULE_r1.json`, `D2_RULE_r2.json`, `D2_ANCESTRY.json`, `D2_STAGE_MOVES.json`,
+`D2_OPTIMIZER_EVIDENCE.json`, `r1/r2_stage_reports.json`, `reports_regenerated/`, `D2_RUN.json`;
+and `v5_lean/` for the compile. The superseded `v2_learn`, `v2b_restage`, `v3_lean` and `v4_rehearse`
+artifacts are preserved unmodified.

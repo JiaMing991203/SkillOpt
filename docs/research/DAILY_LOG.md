@@ -1953,3 +1953,71 @@ a probe shows why 17 is correct — the three largest UNKNOWN groups are the exa
 repair emits for one withdrawn binding.
 
 Memories written: `a-digest-must-not-hash-the-clock`, `lean-refuted-the-python-side`.
+
+---
+
+## 2026-11-22 — OfficeQA D-2..D-5: the checker's accusations were all its own, and the learned layer adds nothing
+
+**Offline follow-up to the learned-contract milestone. Zero provider calls, zero GPUs, no skill edit
+applied, held-out sealed.** Packet: `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`. The whole audit ran
+on the workstation from the locally retrieved artifacts — all 48 frozen trace digests match the local
+mirror — so an SSH interruption could not have stopped it. One short cluster job was needed only to
+compile Lean and run the authoritative suite.
+
+**Four amendments, recorded before or during their code and before any result that uses them.**
+
+* **D-2.** A numeral inside label text is not a numeric data cell. The milestone measured 5 of 54
+  *supported* bindings as label matches; counting every occurrence-producing match across the 48
+  attempts, **1,546 of 3,548 (43.6%) were never cells** — a column heading carrying a year and
+  `Unnamed: 14_level_2` occupied positions exactly as data did. The correction is a whole-field
+  numeral test that retains every format the parser already read, including `684 $` and `1,089 6/ 7/`,
+  and leaves dates and collapsed renderings **unknown** rather than wrong.
+* **D-3.** Four meanings the report ran together — provenance traced, arithmetic checked, task
+  requirements satisfied, benchmark correctness — now stated beside every obligation. Unresolved
+  provenance stopped being counted as an actor execution diagnosis. `SOLE_IN_ROW`, which `oqa_occ`
+  rejects as support, stopped being printed beside the two it accepts. "Superseded" split into
+  abandoned work and ancestors the answer still consumes.
+* **D-4.** `(472,027,235 / 3,564,583,961) × 100 = 13.24…` was parsed as the binary statement
+  `3564583961 * 100 = 13.24213093`, which of course does not hold — and the milestone repeated that
+  as a fact about the agent. **38 of 676 statements are fragments of a larger expression, and they are
+  38 of the 50 arithmetically inconsistent ones: 76% of every "the arithmetic does not hold" finding
+  in this evidence is an extraction artifact.**
+* **D-5.** `<answer>[10102000000, 4.73]</answer>` became 101,020,000,004.73 and `March 3, 1977` became
+  31,977.0; and `|2.0% − 0.2%| = 1.8%` — work the agent plainly wrote — matched no statement at all.
+
+**The result: 10 accusations withdrawn, 0 added, 0 remaining.** Over the 25-attempt stage set, pooled
+"actionable execution diagnoses" went 7 → 0. Six of the ten become UNKNOWN, which is the honest state,
+not a clearance. One moved the other way: p4/UID0063's `source_traced` DISCHARGED → UNKNOWN, because
+the only thing establishing its operand's origin was the identity `86,000 - 0 = 86,000`.
+
+**And the learner adds nothing that can be demonstrated.** A deterministic 2×2 — extraction
+(superseded | D-2) × learned rule (applied | absent), everything else fixed, both frozen models, all
+25 attempts — gives **identical obligation states, identical operand classes and identical diagnosis
+counts in all four cells**. 50 of 50 attempt-level effects classify ALREADY_SUPPLIED. The only
+difference in the generated report is the block that names the rule. The specific warning the paired
+rehearsal carried is byte-identical with the rule removed, because `classify_operand` reads the
+supplied resolver's label directly; the rule could only ever *suppress* it. **The structural reason
+generalises: the learned predicate IS the resolver's own label, so the best it can do is agree.**
+
+**Two of the three "recovery controls" are not recoveries.** p4/UID0063 and p4/UID0085 have **zero**
+abandoned alternatives — every earlier calculation is an intermediate the committed answer consumes,
+which is true of any multi-step computation. The milestone printed `5,541,720 - 5,459,946 = 81,774`
+under "WORK THAT WAS REPLACED", and 81,774 is an operand of the calculation that supports the answer.
+Only p2/UID0026, on the learning side, is a genuine replacement — on a question that states no
+arithmetic requirement at all.
+
+**A defect found and deliberately not fixed:** numeric equality uses `max(0.5, |x|·1e-6)`, so for a
+committed answer below 0.5 the tolerance exceeds the value — on p4/UID0085, 0.000678 and 0.0678 both
+count as "equal" to 0.068. Changing it would move `recovery_shape` and make this comparison
+incomparable, so it is flagged and named as the first prerequisite for the next step.
+
+**Also recorded:** the freeze digest every downstream artifact cites as the witness that the record set
+was fixed before any learner call is *still* clock-dependent. The milestone says the defect was fixed;
+the fix reached the code at 21:17 EST and the artifact was written at 19:32 EST. The content digest of
+the identical records, `f9c774bc6d3da46f`, is now recorded beside it.
+
+**The next thing to learn, and why not another repetition.** Predict from a prefix whether a
+calculation will be **abandoned** — a label computed from the *suffix*, which no prefix-only function
+computes, so a rule predicting it makes a claim about what the agent does next rather than
+approximating a label the pipeline already has. Natural counterexamples are already in the checking
+set.
