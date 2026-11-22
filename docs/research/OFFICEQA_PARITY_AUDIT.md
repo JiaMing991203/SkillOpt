@@ -29,7 +29,7 @@ per-file in `OFFICEQA_TRANSFER_MANIFEST.json` with each source's sha256, and the
 generations written locally on top of it.
 
 That is not, by itself, a defect. The question is whether the **behaviour** is equivalent, and for the
-2026-11-16 generation it largely is. I verified the reference has not moved by comparing all eight reference
+2026-11-16 generation it largely is. I verified the reference has not moved by comparing all nine reference
 copies in `research/officeqa/transferred/` against the live ALFWorld files, byte for byte [MEASURED]:
 
 | module | `transferred/` | live ALFWorld | |
