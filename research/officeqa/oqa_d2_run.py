@@ -30,6 +30,7 @@ import oqa_d2_rule as RULE  # noqa: E402
 import oqa_ln_check as CK  # noqa: E402
 import oqa_ln_evidence as EV  # noqa: E402
 import oqa_ln_learn as LN  # noqa: E402
+import oqa_ln_run as RUN  # noqa: E402
 import oqa_ln_vocab as V  # noqa: E402
 
 SCHEMA = "lso.officeqa_d2_run.v1"
@@ -219,6 +220,8 @@ def main(argv=None) -> int:
     ap.add_argument("--rehearse-root", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--lean", default="", help="an LN_LEAN.json to quote in regenerated reports")
+    ap.add_argument("--compare-stage-root", default="",
+                    help="the superseded stage reports to diff against, e.g. v2b_restage")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
     os.makedirs(os.path.join(a.out, "reports_regenerated"), exist_ok=True)
@@ -267,6 +270,39 @@ def main(argv=None) -> int:
     written["D2_OPTIMIZER_EVIDENCE.json"] = _write(
         os.path.join(a.out, "D2_OPTIMIZER_EVIDENCE.json"), ev)
 
+    # ── the corrected stage reports, written fresh, with the move from the superseded ones ──
+    stage_moves = []
+    for tag, contract, _sha in models:
+        info = RUN.stage_reports(freeze_doc, contract, a.out, tag)
+        old_path = os.path.join(a.compare_stage_root, f"{tag}_stage_reports.json")
+        diff = None
+        if a.compare_stage_root and os.path.exists(old_path):
+            with open(old_path, encoding="utf-8") as f:
+                old = json.load(f)
+            with open(os.path.join(a.out, f"{tag}_stage_reports.json"), encoding="utf-8") as f:
+                new = json.load(f)
+            o = {r["attempt_id"]: {x["obligation"]: x["state"] for x in r["obligations"]}
+                 for r in old["reports"]}
+            n = {r["attempt_id"]: {x["obligation"]: x["state"] for x in r["obligations"]}
+                 for r in new["reports"]}
+            moved = [{"attempt_id": aid, "obligation": ob, "was": o.get(aid, {}).get(ob), "now": st}
+                     for aid, obs in sorted(n.items()) for ob, st in sorted(obs.items())
+                     if o.get(aid, {}).get(ob) != st]
+            diff = {"n_obligations_moved": len(moved), "moved": moved,
+                    "accusations_withdrawn": [m for m in moved
+                                              if m["was"] in ("VIOLATED", "OUTSTANDING")
+                                              and m["now"] not in ("VIOLATED", "OUTSTANDING")],
+                    "accusations_added": [m for m in moved
+                                          if m["now"] in ("VIOLATED", "OUTSTANDING")
+                                          and m["was"] not in ("VIOLATED", "OUTSTANDING")]}
+        stage_moves.append({"tag": tag, "stage_reports": info,
+                            "difference_from": a.compare_stage_root or None,
+                            "difference": diff})
+    written["D2_STAGE_MOVES.json"] = _write(
+        os.path.join(a.out, "D2_STAGE_MOVES.json"),
+        {"schema": SCHEMA + ".stage_moves", "written_utc": _utc(), "results": stage_moves,
+         "note": "the superseded reports are preserved where they are and are not modified"})
+
     # regenerated reports, labelled as such
     banner = REGENERATED_BANNER.format(utc=_utc())
     tag, contract, model_sha = models[-1]
@@ -289,6 +325,7 @@ def main(argv=None) -> int:
         "models": [{"tag": t, "model_sha256": s} for t, _c, s in models],
         "files": written,
         "regenerated_reports": regen,
+        "stage_moves": stage_moves,
         "regenerated_not_delivered": True,
         "headline": {
             "supported_bindings_before": cells_doc["replay"]["roles"]["learn"]["sourced_before"]

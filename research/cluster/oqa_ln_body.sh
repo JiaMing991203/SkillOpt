@@ -32,7 +32,7 @@
 set -uo pipefail
 B="${OQA_BUNDLE:?OQA_BUNDLE must be set}"
 PHASE="${PHASE:-freeze}"
-case "$PHASE" in ledger|freeze|learn|restage|lean|rehearse) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
+case "$PHASE" in ledger|freeze|learn|restage|lean|rehearse|d2) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
 
 if [ "${SLURM_RESTART_COUNT:-0}" != "0" ]; then
     echo "REFUSING: SLURM_RESTART_COUNT=${SLURM_RESTART_COUNT}; a requeue would re-spend." >&2; exit 6
@@ -254,6 +254,29 @@ lean)
         --freeze "$OUT/v1_freeze/LN_FREEZE.json" --out "$V" --lean-bin "$OQA_LEAN_BIN" \
         >> "$OUTDIR/job.log" 2>&1 || status=1
     cp "$V"/*.json "$V"/*.lean "$OUTDIR/" 2>/dev/null || true
+    ;;
+
+d2)
+    drop_all_keys
+    # FREE, and it CANNOT spend: none of the oqa_d2_* modules imports the model layer, and a test
+    # asserts that. Amendments D-2..D-5, replayed over the SAME frozen records with the SAME frozen
+    # models - nothing is retrained and nothing is sent.
+    : "${OQA_LEAN_BIN:?settings.env must name the Lean toolchain binary, not the elan shim}"
+    V="$OUT/v5_d2"; mkdir -p "$V" || exit 3
+    "$OQA_PY" -I "$RES/oqa_d2_run.py" --freeze "$OUT/v1_freeze/LN_FREEZE.json"         --learn-root "$OUT/v2_learn" --rehearse-root "$OUT/v4_rehearse"         --compare-stage-root "$OUT/v2b_restage" --lean "$OUT/v3_lean/LN_LEAN.json"         --out "$V" >> "$OUTDIR/job.log" 2>&1 || status=1
+    # Lean over the CORRECTED stage reports, in its own versioned directory. The superseded Lean
+    # source and receipt stay in v3_lean, unmodified.
+    L="$OUT/v5_lean"; mkdir -p "$L" || exit 3
+    "$OQA_PY" -I "$RES/oqa_ln_lean.py" --learn-root "$V"         --freeze "$OUT/v1_freeze/LN_FREEZE.json" --out "$L" --lean-bin "$OQA_LEAN_BIN"         >> "$OUTDIR/job.log" 2>&1 || status=1
+    log "running the full test suite against the corrected code"
+    export OQA_LN_FREEZE="$OUT/v1_freeze/LN_FREEZE.json"
+    export OQA_CAMPAIGN_ROOT
+    "$OQA_PY" -I -m pytest -q -p no:cacheprovider --tb=long -rf tests/         > "$OUTDIR/pytest.txt" 2>&1 || true
+    tail -40 "$OUTDIR/pytest.txt" >> "$OUTDIR/job.log"
+    "$OQA_PY" -I -m pytest -q -p no:cacheprovider --tb=no -rf tests/ 2>&1         | tail -30 > "$OUTDIR/pytest_summary.txt" || true
+    cp "$V"/*.json "$OUTDIR/" 2>/dev/null || true
+    cp "$L"/*.json "$L"/*.lean "$OUTDIR/" 2>/dev/null || true
+    mkdir -p "$OUTDIR/reports_regenerated" && cp "$V"/reports_regenerated/*.md         "$OUTDIR/reports_regenerated/" 2>/dev/null || true
     ;;
 
 rehearse)
