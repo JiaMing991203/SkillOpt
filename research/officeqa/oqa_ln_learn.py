@@ -59,7 +59,8 @@ def _utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def rows_for(freeze_doc: dict, role: str) -> list:
+def rows_for(freeze_doc: dict, role: str, *,
+             numeric_cells_only: bool = EV.NUMERIC_CELLS_ONLY) -> list:
     """Every operand of every attempt in `role`, with its prefix-only features and the verdict.
 
     The verdict is carried in its own key so a caller can build a prediction file from `features` alone
@@ -69,13 +70,13 @@ def rows_for(freeze_doc: dict, role: str) -> list:
     for a in freeze_doc["attempts"]:
         if a["role"] != role:
             continue
-        pdir = os.path.join(freeze_doc["source_root"], "train_p%d" % a["pass"], "predictions")
+        pdir = os.path.join(EV.source_root(freeze_doc), "train_p%d" % a["pass"], "predictions")
         att = EV.read_attempt(pdir, a["item"])
         if att["trace_sha256"] != a["trace_sha256"]:
             raise SystemExit(f"{a['attempt_id']}: the trace digest does not match the freeze; "
                              f"the record set has changed since it was frozen")
-        ex = EV.extract(att)
-        vd = EV.verdicts(att, ex)
+        ex = EV.extract(att, numeric_cells_only=numeric_cells_only)
+        vd = EV.verdicts(att, ex, numeric_cells_only=numeric_cells_only)
         for ci, calc in enumerate(ex["calculations"]):
             for oi, operand in enumerate(calc["operands"]):
                 key = f"{ci}/{oi}"

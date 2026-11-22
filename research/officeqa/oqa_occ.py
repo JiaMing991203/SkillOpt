@@ -66,6 +66,51 @@ _WORD = re.compile(r"[A-Za-z]{4,}")
 _PATH = re.compile(r"path=['\"]([^'\"]+)['\"]")
 _PATTERN = re.compile(r"pattern=['\"]([^'\"]+)['\"]")
 
+# ── amendment D-2: a numeral inside label text is not a numeric data cell ─────
+#
+# `observed_occurrences` used to emit an occurrence for EVERY numeral anywhere in ANY field, so a
+# column heading carrying a year ("Receipts Carriers' Taxing Act of 1937") and a pandas rendering
+# artifact ("Unnamed: 14_level_2") occupied a (document, line, field) position exactly as a data cell
+# does. Measured over the 48 frozen OQA-LN-1 attempts, 1,546 of 3,548 occurrence-producing matches
+# (43.6%) came from fields that are not numeric cells at all.
+#
+# A field is a NUMERIC CELL when the WHOLE field is one numeral in a form this module's own `_NUM`
+# already reads, optionally wrapped in the parentheses `parse_value` already treats as a negative,
+# optionally carrying a currency or percent marker, and optionally followed by footnote references of
+# the form "6/ 7/". Nothing is added to the set of numeric formats the parser supports; what changes
+# is only WHERE a numeral is allowed to sit.
+#
+# Everything else - a field containing a letter, a date such as 8/21/91, a collapsed multi-value
+# rendering such as "2.861 2.807 2.860 2.893", a bare footnote marker such as "5/" - yields no
+# occurrence. It is NOT asserted to be wrong; it is left unknown, which is what an ambiguous match
+# should be.
+#
+# WHAT IS NOT FIXED. A year standing alone in its own heading cell - "| 1987 | 1988 |" - is a bare
+# numeral and remains indistinguishable from a data cell in this rendering. Telling them apart needs a
+# header-row detector, which is a different and much larger change.
+#
+# LABEL TEXT IS STILL READ. `line_tokens` is taken from the whole line body either way, so the
+# ROW_LABEL corroboration and every piece of context are unchanged. The correction removes label
+# text's ability to be a POSITION, not its ability to be EVIDENCE.
+_CELL = re.compile(r"""
+    ^\s*\(?\s*
+    (?:-?\$?\s?\d(?:[\d,]*\d)?(?:\.\d+)?%?)   # exactly _NUM's own numeral
+    \s*\)?\s*(?:\$|%)?\s*                       # a trailing currency or percent marker
+    (?:\d+/\s*)*                                 # footnote references: "6/", "6/ 7/"
+    $""", re.X)
+
+LEGACY_ANY_MATCH = "legacy_any_match"
+BARE_NUMERAL_CELLS = "bare_numeral_cells"
+
+
+def is_numeric_cell(field: str) -> bool:
+    """Is this whole field one numeral, rather than a number sitting inside label text?"""
+    text = str(field or "").strip()
+    if not text:
+        return False
+    return bool(_CELL.match(text))
+
+
 # Words too common in both a financial table and an agent's prose to corroborate anything.
 STOPWORDS = frozenset({
     "total", "year", "month", "fiscal", "calendar", "this", "that", "from", "with", "which",
@@ -128,11 +173,16 @@ def normalize(items: list) -> list:
     return out
 
 
-def observed_occurrences(items: list) -> list:
+def observed_occurrences(items: list, *, numeric_cells_only: bool = False) -> list:
     """Every numeric cell the actor actually OBSERVED, with its position and its line's evidence.
 
     Only line-numbered, pipe-delimited observation lines qualify. An observation without line numbers
     carries no position, so it yields nothing rather than a guess.
+
+    `numeric_cells_only` is amendment D-2. It DEFAULTS TO FALSE, the superseded behaviour, so every
+    caller that has not been reviewed against the amendment - including the historical report path,
+    whose artifacts are pinned by digest - is byte-identical. The learned-contract pipeline passes
+    True. Both sides of the D-2 comparison therefore come from this one code path.
     """
     out: list = []
     for entry in normalize(items):
@@ -153,18 +203,28 @@ def observed_occurrences(items: list) -> list:
             if "|" not in body:
                 continue
             fields = [f.strip() for f in body.split("|")]
-            values_on_line = [v for f in fields for v in
-                              (parse_value(n.group(0)) for n in _NUM.finditer(f)) if v is not None]
-            line_tokens = tokens(body)
+
+            def _values(field: str) -> list:
+                """The values this field contributes, under the mode in force."""
+                found = [v for v in (parse_value(n.group(0)) for n in _NUM.finditer(field))
+                         if v is not None]
+                if not numeric_cells_only:
+                    return found
+                # A cell carries ONE value - its leading numeral. "1,089 6/ 7/" is 1,089, and the
+                # 6 and the 7 are footnote references, not cells.
+                return found[:1] if (found and is_numeric_cell(field)) else []
+
+            # `sole_in_row` counts what sits on the line, so under D-2 it counts CELLS. A year inside
+            # a heading no longer makes a data value non-sole.
+            values_on_line = [v for f in fields for v in _values(f)]
+            line_tokens = tokens(body)          # the WHOLE body: label text is still evidence
             for field_index, field in enumerate(fields):
-                for num in _NUM.finditer(field):
-                    value = parse_value(num.group(0))
-                    if value is None:
-                        continue
+                for value in _values(field):
                     out.append({
                         "document": document, "line": line_no, "field": field_index,
                         "value": value, "line_tokens": sorted(line_tokens),
                         "pattern_tokens": sorted(pattern_tokens),
+                        "field_text": field,
                         "sole_in_row": values_on_line.count(value) == 1,
                     })
     return out
@@ -203,9 +263,9 @@ def corroborations(occurrence: dict, message_tokens: set) -> list:
     return found
 
 
-def bind(items: list) -> dict:
+def bind(items: list, *, numeric_cells_only: bool = False) -> dict:
     """Bind every number the actor wrote to an observed occurrence, or say why it cannot be bound."""
-    occurrences = observed_occurrences(items)
+    occurrences = observed_occurrences(items, numeric_cells_only=numeric_cells_only)
     written = actor_written(items)
     by_value: dict = collections.defaultdict(list)
     for occurrence in occurrences:
@@ -226,7 +286,9 @@ def bind(items: list) -> dict:
                              "why": f"the value occurs at {len(positions)} observed positions; a "
                                     f"numeric match cannot choose between them",
                              "corroborations": [], "n_positions": len(positions),
-                             "positions": [list(k) for k in sorted(positions)][:8]})
+                             "positions": [list(k) for k in sorted(positions)][:8],
+                             "position_field_texts": [positions[k].get("field_text")
+                                                      for k in sorted(positions)][:8]})
             continue
         key, occurrence = next(iter(positions.items()))
         found = corroborations(occurrence, written[value])
@@ -240,6 +302,9 @@ def bind(items: list) -> dict:
                    "match is not an established source binding",
             "corroborations": found, "supporting": supporting,
             "position": {"document": key[0], "line": key[1], "field": key[2]},
+            # The field AS IT WAS RENDERED, so a reader can see whether the match sat in a data cell
+            # or inside label text without re-reading the trajectory. Amendment D-2.
+            "field_text": occurrence.get("field_text"),
             "n_positions": 1,
         })
     return {
@@ -340,11 +405,11 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-def support_index(items: list) -> dict:
+def support_index(items: list, *, numeric_cells_only: bool = False) -> dict:
     """value -> its occurrence binding, for a consumer that must decide whether a source is established.
 
     This is the interface `oqa_lc_chain` uses under amendment C-1. It deliberately returns the WHOLE
     record rather than a boolean, so the consumer can report WHY a selection was refused and which
     rival positions existed, instead of only that it was refused.
     """
-    return {b["value"]: b for b in bind(items)["bindings"]}
+    return {b["value"]: b for b in bind(items, numeric_cells_only=numeric_cells_only)["bindings"]}

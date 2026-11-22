@@ -60,6 +60,65 @@ _ANSWER = re.compile(r"<answer>\s*(.*?)\s*</answer>", re.S)
 _NUM_IN = re.compile(r"(?<![\d.,])-?\d[\d,]*(?:\.\d+)?")
 _WORD = re.compile(r"[A-Za-z]{4,}")
 
+# ── amendment D-5: two more shapes the parser cannot represent ───────────────
+#
+# (a) A COMMITTED ANSWER THAT IS NOT ONE NUMBER. `<answer>[10102000000, 4.73]</answer>` and
+#     `<answer>March 3, 1977</answer>` were pushed through a numeric strip and became 101020000004.73
+#     and 31977.0 - values no calculation could ever yield, so `answer_traced` was VIOLATED and the
+#     actor was accused. Eight of the 48 frozen attempts commit an answer of this kind.
+# (b) ARITHMETIC WRITTEN WITH ABSOLUTE-VALUE BARS. `|2.0% - 0.2%| = 1.8%` is work the actor DID write
+#     down; the binary-statement regex cannot match across the bars, so the attempt reported no
+#     written calculation at all. All four UID0065 attempts are of this kind.
+#
+# Both are OUT OF SCOPE, not false. A value the parser cannot represent yields UNKNOWN.
+_SINGLE_ANSWER = re.compile(r"^\s*\$?\s*-?\d[\d,]*(?:\.\d+)?\s*%?\s*$")
+_ABS_STATEMENT = re.compile(
+    r"\|\s*-?\$?\d[\d,]*(?:\.\d+)?\s*%?\s*[-+*/x\u00d7\u00f7]\s*"
+    r"-?\$?\d[\d,]*(?:\.\d+)?\s*%?\s*\|\s*=")
+
+
+def committed_value(raw):
+    """The committed answer as ONE number, or None with the reason it cannot be read as one."""
+    if raw is None:
+        return None, "no <answer> block was written"
+    if _SINGLE_ANSWER.match(raw):
+        return num(re.sub(r"[^\d.,-]", "", raw)), ""
+    return None, ("the committed answer is not a single number this parser can represent "
+                  f"({raw!r}), so nothing about its provenance can be checked")
+
+
+# ── amendment D-4: a binary match inside a larger expression is not a statement ─
+#
+# `_CHAINED` counts `a OP b OP c =` and declares it out of scope. It does not fire when the larger
+# expression contains a parenthesis, so `(472,027,235 / 3,564,583,961) x 100 = 13.2421309` leaks
+# through `_CALC` as the BINARY statement `3,564,583,961 x 100 = 13.2421309` - the divisor read as a
+# left operand, the numerator dropped - which then "does not hold as written". The actor's arithmetic
+# was right; the parse was wrong, and the milestone report repeated the parse as an actor error.
+#
+# A match is a FRAGMENT when the first non-space character before it is an operator or a closing
+# parenthesis that is itself preceded by a digit, a closing parenthesis or a percent sign - that is,
+# when the match continues an expression that started earlier. A markdown bullet "- 100 - 50 = 50" is
+# not a fragment, because the "-" is preceded by a line break rather than by a value.
+#
+# A fragment is kept in the record and FLAGGED, not deleted: deleting it would change the frozen
+# operand counts and make every earlier number incomparable. What changes is how it is READ - an
+# out-of-scope expression is unknown, never false.
+_FRAG_OPS = frozenset("/*+-x\u00d7\u00f7")
+_FRAG_BEFORE = frozenset(")%")
+
+
+def is_fragment(text: str, start: int) -> bool:
+    """Does the binary match at `start` continue an expression that began earlier in `text`?"""
+    i = start - 1
+    while i >= 0 and text[i] in " \t":
+        i -= 1
+    if i < 0 or (text[i] not in _FRAG_OPS and text[i] != ")"):
+        return False
+    j = i - 1
+    while j >= 0 and text[j] in " \t":
+        j -= 1
+    return j >= 0 and (text[j].isdigit() or text[j] in _FRAG_BEFORE)
+
 
 def _utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -84,6 +143,24 @@ def _is_power_of_ten(v) -> bool:
 
 
 # ── reading one attempt ───────────────────────────────────────────────────────
+
+# AMENDMENT D-2 IS THE DEFAULT IN THIS PIPELINE. `oqa_occ` keeps the superseded behaviour as ITS
+# default so the pinned historical report path cannot move; the learned-contract pipeline asks for the
+# corrected one, and every function below takes the switch so one code path produces both sides of the
+# comparison.
+NUMERIC_CELLS_ONLY = True
+
+
+def source_root(freeze_doc: dict) -> str:
+    """The frozen source root, or a local mirror of it named by `OQA_LN_SOURCE_ROOT`.
+
+    The freeze records the CLUSTER path and its digest covers that string, so the path cannot be
+    rewritten without changing the digest that witnesses the frozen set. The override names a
+    different COPY of the same records, and every consumer verifies each attempt's `trace_sha256`
+    against the freeze, so a mirror that is not byte-identical is refused rather than used.
+    """
+    return os.environ.get("OQA_LN_SOURCE_ROOT") or freeze_doc["source_root"]
+
 
 def read_attempt(pred_dir: str, item: str) -> dict:
     """The permitted record of one attempt: the saved conversation and the saved prompts. Nothing else."""
@@ -122,15 +199,15 @@ def _flat(items: list) -> list:
     return out
 
 
-def _positions_in_prefix(prefix_items: list) -> dict:
+def _positions_in_prefix(prefix_items: list, numeric_cells_only: bool) -> dict:
     """value -> the observed occurrences of it in the prefix, from `oqa_occ`'s own extractor."""
     by_value: dict = {}
-    for occ in OCC.observed_occurrences(prefix_items):
+    for occ in OCC.observed_occurrences(prefix_items, numeric_cells_only=numeric_cells_only):
         by_value.setdefault(occ["value"], []).append(occ)
     return by_value
 
 
-def extract(attempt: dict) -> dict:
+def extract(attempt: dict, *, numeric_cells_only: bool = NUMERIC_CELLS_ONLY) -> dict:
     """Every written binary calculation, its operands, their prefix-only features and the verdict.
 
     The verdict is computed LAST and kept in its own field, so a prediction file written from the
@@ -150,7 +227,7 @@ def extract(attempt: dict) -> dict:
         chained_skipped += len(_CHAINED.findall(text))
         prefix_items = items[:idx]
         prefix_flat = flat[:pos]
-        positions = _positions_in_prefix(prefix_items)
+        positions = _positions_in_prefix(prefix_items, numeric_cells_only)
         msg_words = {w.lower() for w in _WORD.findall(text)} - OCC.STOPWORDS
         quotes_question_term = bool(msg_words & q_words)
         for m in _CALC.finditer(text):
@@ -190,6 +267,7 @@ def extract(attempt: dict) -> dict:
                         "prefix_n_observations": sum(1 for e in prefix_flat if e[1] == "tool"),
                     },
                 })
+            fragment = is_fragment(text, m.start())
             calcs.append({
                 "message_item_index": idx,
                 "message_order": pos,
@@ -198,6 +276,10 @@ def extract(attempt: dict) -> dict:
                 "result": r,
                 "result_as_written": r_raw,
                 "arithmetic_consistent": consistent,          # MATH, not learned
+                # D-4: this match continues a larger expression, so the three numbers above are not
+                # the statement the actor wrote. Its arithmetic is OUT OF SCOPE, not false.
+                "fragment_of_larger_expression": fragment,
+                "arithmetic_in_scope": not fragment,
                 "operands": operands,
             })
             earlier_results.append(r)
@@ -206,7 +288,11 @@ def extract(attempt: dict) -> dict:
     answers = [mm.group(1).strip() for (_i, k, _c, _o, t) in flat if k == "message"
                for mm in _ANSWER.finditer(t)]
     committed = answers[-1] if answers else None
-    committed_value = num(re.sub(r"[^\d.,-]", "", committed)) if committed else None
+    committed_val, committed_why = committed_value(committed)
+    message_text = "\n".join(t for (_i, k, _c, _o, t) in flat if k == "message" and t)
+    n_unrepresented = (len(_ABS_STATEMENT.findall(message_text))
+                       + chained_skipped
+                       + sum(1 for c in calcs if c["fragment_of_larger_expression"]))
 
     return {
         "item": attempt["item"],
@@ -218,19 +304,26 @@ def extract(attempt: dict) -> dict:
         "n_messages": sum(1 for e in flat if e[1] == "message"),
         "calculations": calcs,
         "chained_statements_out_of_scope": chained_skipped,
+        "numeric_cells_only": numeric_cells_only,
         "committed_answer_raw": committed,
-        "committed_answer_value": committed_value,
+        "committed_answer_value": committed_val,
+        "committed_answer_unreadable_reason": committed_why,
+        # D-5: arithmetic the actor wrote and this parser cannot represent - absolute-value bars,
+        # chained expressions, and binary matches that are fragments of a larger expression.
+        "n_unrepresented_arithmetic": n_unrepresented,
+        "n_absolute_value_statements": len(_ABS_STATEMENT.findall(message_text)),
     }
 
 
-def verdicts(attempt: dict, extracted: dict) -> dict:
+def verdicts(attempt: dict, extracted: dict, *,
+             numeric_cells_only: bool = NUMERIC_CELLS_ONLY) -> dict:
     """The resolver's verdict per (calculation, operand), computed from items[0:k+1]. Computed SEPARATELY
     from `extract` so that a prediction built on the features can be frozen before any verdict exists."""
     items = attempt["items"]
     out = {}
     for ci, calc in enumerate(extracted["calculations"]):
         upto = items[: calc["message_item_index"] + 1]
-        index = OCC.support_index(upto)
+        index = OCC.support_index(upto, numeric_cells_only=numeric_cells_only)
         for oi, operand in enumerate(calc["operands"]):
             b = index.get(operand["value"])
             out[f"{ci}/{oi}"] = {
@@ -242,8 +335,116 @@ def verdicts(attempt: dict, extracted: dict) -> dict:
                 "supporting": (b or {}).get("supporting", []),
                 "n_positions": (b or {}).get("n_positions", 0),
                 "position": (b or {}).get("position"),
+                "field_text": (b or {}).get("field_text"),
                 "why": (b or {}).get("why", "the operand was not written in any actor message"),
             }
+    return out
+
+
+# ── amendment D-3e: occurrence-level dependencies between written calculations ─
+#
+# "Superseded" used to mean "an earlier calculation whose result is not the committed answer", and the
+# report printed every one of them under WORK THAT WAS REPLACED. That conflates two different things.
+# In p4/UID0063 the statement `5,541,720 - 5,459,946 = 81,774` was printed as replaced, and 81,774 is
+# an OPERAND of the calculation that supports the committed answer: the final answer consumes its
+# result. It was not abandoned; it is an ancestor.
+#
+# WHAT THIS DOES NOT DO. A dependency is proposed by numeric equality and nothing else, because the
+# records carry nothing else - so a value that several earlier calculations could have produced keeps
+# ALL of them as candidates and is reported AMBIGUOUS rather than resolved to one. An identity such as
+# `86,000 - 0 = 86,000` is marked as a RESTATEMENT: it reproduces its own operand and establishes no
+# origin at all, so following the edge only moves the same question one step back.
+
+_CLOSE = 1e-6
+
+
+def _near(x, y) -> bool:
+    if x is None or y is None:
+        return False
+    return abs(x - y) <= max(0.5, abs(y) * _CLOSE)
+
+
+def _is_identity(calc: dict) -> bool:
+    """Does this statement merely restate one of its own operands?  x-0=x, x+0=x, x*1=x, x/1=x."""
+    a, b = (o["value"] for o in calc["operands"])
+    r = calc["result"]
+    if calc["op"] in ("-", "+") and (_near(b, 0.0) and _near(r, a)):
+        return True
+    if calc["op"] in ("+",) and (_near(a, 0.0) and _near(r, b)):
+        return True
+    if calc["op"] in ("*", "x", "\u00d7") and ((_near(b, 1.0) and _near(r, a))
+                                            or (_near(a, 1.0) and _near(r, b))):
+        return True
+    if calc["op"] in ("/", "\u00f7") and _near(b, 1.0) and _near(r, a):
+        return True
+    return False
+
+
+def dependencies(extracted: dict) -> dict:
+    """For every operand of every calculation, which EARLIER calculations could have produced it.
+
+    Returns {calc_index: {operand_index: {"candidates": [j...], "edge": CLASS}}} with CLASS one of
+    `no_earlier_producer`, `one_earlier_producer`, `several_earlier_producers`. Nothing here decides
+    that an edge IS the origin; `several_earlier_producers` is kept as an ambiguity.
+    """
+    calcs = extracted["calculations"]
+    out: dict = {}
+    for i, c in enumerate(calcs):
+        row = {}
+        for oi, operand in enumerate(c["operands"]):
+            cands = [j for j in range(i) if _near(calcs[j]["result"], operand["value"])]
+            row[oi] = {
+                "value": operand["value"], "as_written": operand["as_written"],
+                "candidates": cands,
+                "edge": ("no_earlier_producer" if not cands else
+                         "one_earlier_producer" if len(cands) == 1 else
+                         "several_earlier_producers"),
+                "candidate_statements": [calcs[j]["statement"] for j in cands][:8],
+                "candidates_are_identities": [j for j in cands if _is_identity(calcs[j])],
+            }
+        out[i] = row
+    return out
+
+
+def consumed_by(extracted: dict, target: int) -> dict:
+    """Every earlier calculation whose result could reach `target`, with the path's ambiguity kept.
+
+    A calculation is CONSUMED when the target's own operands, or the operands of something the target
+    consumes, could have come from it. "Could" is the honest word: the edge is numeric equality, so a
+    consumed set may be larger than the truth, and that is the safe direction - it stops a live
+    ancestor being reported as abandoned work.
+    """
+    deps = dependencies(extracted)
+    reached, frontier = set(), [target]
+    while frontier:
+        i = frontier.pop()
+        for _oi, e in deps.get(i, {}).items():
+            for j in e["candidates"]:
+                if j not in reached:
+                    reached.add(j)
+                    frontier.append(j)
+    return {"target": target, "consumed": sorted(reached), "dependencies": deps}
+
+
+def classify_earlier(extracted: dict, supporting: int, superseded: list) -> list:
+    """Split the calculations the shape test called superseded into abandoned work and live ancestors."""
+    if supporting is None:
+        return []
+    consumed = set(consumed_by(extracted, supporting)["consumed"])
+    calcs = extracted["calculations"]
+    out = []
+    for i in superseded:
+        out.append({
+            "index": i, "statement": calcs[i]["statement"], "result": calcs[i]["result"],
+            "still_recorded": True,
+            "supports_the_answer": False,
+            "dependency_class": ("CONSUMED_ANCESTOR" if i in consumed else "ABANDONED_ALTERNATIVE"),
+            "why": ("its result could still reach the calculation that supports the committed answer, "
+                    "so it was not replaced - the answer consumes it"
+                    if i in consumed else
+                    "no later calculation on the path to the committed answer uses its result"),
+            "is_identity_restatement": _is_identity(calcs[i]),
+        })
     return out
 
 

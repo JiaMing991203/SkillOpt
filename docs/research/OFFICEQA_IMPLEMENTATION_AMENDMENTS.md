@@ -887,3 +887,233 @@ body and are stronger than before: the model digest, the trace digest, the actio
 "unavailable" provenance fields, and a new test asserting the frozen campaign's own records and
 prediction files are still there and still say what they said. A pin may be re-set deliberately; those
 may not be re-set at all.
+
+---
+
+## D-2 — 2026-11-22. A numeral inside label text is not a numeric data cell
+
+**Recorded before implementation.** Nothing in this section had been coded when it was written; the
+measurements quoted are read-only probes over the already-frozen record set.
+
+**The defect.** `oqa_occ.observed_occurrences` splits a line-numbered, pipe-delimited observation into
+fields and emits an occurrence for **every** numeral it finds **anywhere in any field**. A column
+heading that contains a year, and a pandas rendering artifact such as `Unnamed: 14_level_2`, therefore
+occupy a `(document, line, field)` position exactly as a data cell does, and can be matched, counted,
+corroborated and reported as the source of a number the actor wrote.
+
+**It is much larger than the five cases already reported.** The earlier measurement
+(`oqa_ln_audit.bare_number_measurement`, milestone §6) counted **5 of 54 SUPPORTED bindings** whose
+matched field was a numeral inside a label. That is the tail of the distribution, not its size. Over
+the same 48 frozen attempts, counting every numeral match that produces an occurrence at all:
+
+| field class | matches | example |
+|---|---|---|
+| a numeric cell | 2,002 | `81774`, `-74`, `684 $`, `1,089 6/ 7/` |
+| **label text** | **1,464** | `Receipts Carriers' Taxing Act of 1937`, `Unnamed: 14_level_2` |
+| several numerals, not a value plus footnotes | 78 | `8/21/91`, `2.861 2.807 2.860 2.893`, `2 -148,086` |
+| decoration only | 4 | `5/`, `16/` |
+| **total before the correction** | **3,548** | |
+
+So **1,546 of 3,548 occurrence-producing matches (43.6%) are not numeric cells.** Position counts,
+not only supported bindings, are affected.
+
+**The correction, and its limit.** A field counts as a numeric cell only when the whole field is one
+numeral in a form the parser already supports, optionally followed by footnote references:
+
+```
+^ \(? <numeral> \)? (currency or percent marker)? ( <digits>/ )* $
+```
+
+with `<numeral>` exactly `oqa_occ._NUM`'s own form, so every sign, separator, decimal, parenthesised
+negative, leading `$` and trailing `%` the parser already reads is retained. A cell yields its
+**leading** numeral only, so `1,089 6/ 7/` yields 1,089 and not 6 or 7. Everything else — any field
+containing a letter, a date, a collapsed multi-value rendering, a bare footnote marker — yields no
+occurrence and therefore stays **unknown**; it is not asserted to be wrong.
+
+**Label text is still read.** `line_tokens` is computed from the whole line body, so the `ROW_LABEL`
+corroboration and the report's context are unchanged. What the correction removes is label text's
+ability to be a *position*, not its ability to be *evidence*.
+
+**What is deliberately NOT fixed, and stays ambiguous.** A year standing alone in its own heading cell
+— `| 1987 | 1988 |` — is a bare numeral and remains indistinguishable from a data cell in this
+rendering. Deciding it would need a header-row detector, which is the broad table-parser rewrite this
+amendment is forbidden to attempt. It is reported as a residual, named limitation.
+
+**Scope.** `oqa_occ` gains the mode and **defaults to the superseded behaviour**, so every existing
+caller — including `oqa_lc_chain` and `oqa_report_det`, whose historical reports are pinned by digest —
+is byte-identical. The learned-contract pipeline (`oqa_ln_evidence`, `oqa_ln_check`, `oqa_ln_audit`)
+defaults to the **corrected** mode and can be asked for the superseded one, which is how the replay
+produces both sides of one comparison from one code path.
+
+**Predicted before implementation, so the measurement can contradict it.**
+1. Among the 54 supported bindings, about 5 disappear — the already-measured label matches.
+2. **The net change in supported bindings will not be −5**, because removing label matches also
+   *reduces* position counts: operands that were `SEVERAL_POSITIONS` because one of their positions was
+   a label can become `UNIQUE_POSITION` and then acquire a corroboration. The net may be smaller than
+   5 and may even be positive.
+3. Far more operands change their `n_positions_in_prefix` **feature** than change their resolver
+   verdict, so the learned rule's **applicability** (28 operands on the learning records, 26 on the
+   checking records) will change by more than the binding counts do.
+4. The single counterexample — operand `14` in `14 * 1935.5 = 27,097`, p1/UID0014 — matches
+   `Unnamed: 14_level_2`. Under the correction it has no occurrence at all, so the rule becomes
+   **silent** on it rather than refuted by it, and precision-where-it-applies on the learning records
+   rises from 0.964 to 1.000. **That is an extraction correction and not learner repair.** The
+   hypothesis class is no more separable than before; one unseparable case stopped being presented to
+   it.
+5. `source_traced` will move in **both** directions: an operand that loses its only position becomes
+   `UNRESOLVED` (more OUTSTANDING), and an operand that gains a unique corroborated position becomes
+   `SOURCED` (more DISCHARGED).
+
+**What this does not establish.** A bare-numeral match still says only *which cell*, never that the
+cell carries the requested measure, period or column. That question is untouched.
+
+---
+
+## D-3 — 2026-11-22. Four meanings the report conflated, and a count that accused an actor
+
+**Recorded before implementation**, from an audit of `oqa_ln_check` against the report it actually
+delivered in the paired rehearsal (`v4_rehearse/DELIVERED_REPORT.md`).
+
+**D-3a. `source_traced OUTSTANDING` was counted as an actor execution diagnosis.** The branch that
+reports unresolved operands passes `actor_execution_diagnosis=True`, and `_pack` turns that into the
+report's `COUNTS actionable execution diagnoses 1`. Missing provenance is **not** an actor error: the
+records may simply not settle where a number came from. The flag is removed from that branch, the
+count is renamed to separate *actionable execution diagnoses* from *unresolved provenance*, and
+`OUTSTANDING` is stated in the report as "not settled by the records", never as a demonstrated
+violation.
+
+**D-3b. A direct lookup was required to have a calculation.** When no written calculation yields the
+committed answer, `answer_traced` is set **VIOLATED** with an execution diagnosis. For a question whose
+task requirement is a single cited value — no arithmetic at all — committing an answer with no
+calculation is correct behaviour, and the accusation is false. The state becomes **UNKNOWN** with the
+reason stated when the derived task requirement needs no arithmetic, and stays VIOLATED only when the
+question requires an operation over two or more quantities.
+
+**D-3c. `answer_traced HOLDS` reads as a correctness claim, and in the rehearsal it was read as one.**
+The assisted analyst wrote "reached the **correct** numeric answer". The obligation means only that the
+committed answer is the result of a statement the actor wrote. Each obligation now carries a one-line
+statement of what it does and does not establish, and the report's header separates four things that
+were previously run together: **provenance traced**, **arithmetic checked**, **task requirements
+satisfied**, and **benchmark correctness** — the last of which this report never reads.
+
+**D-3d. `SOLE_IN_ROW` was printed in the corroboration list after being rejected as support.**
+`oqa_occ.corroborations` returns it, `bind` excludes it from `supporting`, and nothing in any decision
+reads it — verified by code path, not by assertion: `binding` is `SUPPORTED if supporting else
+UNKNOWN`, and `supporting` filters on `SUPPORTING = ("ROW_LABEL", "QUERY")`. So its appearance in
+`corroborated by ROW_LABEL, QUERY, SOLE_IN_ROW` is **display only**, and the display is misleading
+because it presents a rejected criterion beside two accepted ones. The report prints the supporting
+corroborations, and names the non-supporting ones separately as *observed, not counted as support*.
+
+**D-3e. "Superseded" conflated an abandoned alternative with a live ancestor.**
+`oqa_ln_evidence.recovery_shape` marks **every** earlier calculation whose result differs from the
+committed answer as superseded, and the report prints them under "WORK THAT WAS REPLACED". In
+p4/UID0063 one of the two so-marked statements is `5,541,720 - 5,459,946 = 81,774`, and 81,774 is an
+**operand of the supporting calculation** — the final answer consumes its result. It was not replaced;
+it is an ancestor. Occurrence-level dependency classes are introduced for this
+(`research/officeqa/oqa_d2_ancestry.py`), and the report distinguishes work that was abandoned from
+work that is still consumed.
+
+**Predicted before implementation.**
+1. The rehearsal report regenerated after D-3 loses its `actionable execution diagnoses 1` line in that
+   form; the same fact appears as unresolved provenance.
+2. At least one of the seven `answer_traced VIOLATED` states in the post-restage table is a question
+   that needs no arithmetic, and becomes UNKNOWN.
+3. At least one calculation currently printed as replaced is an ancestor of the committed answer.
+4. No decision anywhere changes because of D-3d; only text changes.
+
+---
+
+## D-4 — 2026-11-22. A binary match inside a larger expression was reported as false arithmetic
+
+**Order of events, recorded honestly.** D-2 and D-3 were written before their code. This one was not:
+I found the defect while inspecting the "false ancestor" §5 of the follow-up instruction asked me to
+check, implemented the detector to see how large it was, and am recording the amendment now — before
+any result that uses it is reported, but after the change. The inspection that motivated it is quoted
+below and was read-only.
+
+**The defect.** `oqa_ln_evidence._CHAINED` counts `a OP b OP c =` and declares it out of scope.
+It does not fire when the larger expression contains a parenthesis. In p4/UID0085 the actor wrote,
+verbatim:
+
+```
+- California percentage = 472,027,235 / 3,564,583,961 × 100
+- California percentage = 0.1324213... × 100 = 13.24213...%
+```
+
+and `_CALC` extracted from it the binary statement `3564583961 * 100 = 13.24213093` — the **divisor**
+read as a left operand and the numerator dropped — which of course does not hold. The milestone report
+(§8) repeated that as a fact about the actor: "one such earlier statement … does not hold as written."
+**The actor's arithmetic is correct. The parse is wrong.**
+
+**How large it is.** Over the 48 frozen attempts: 676 binary statements, **38 are fragments of a
+larger expression**, and those 38 are **38 of the 50** statements that are arithmetically inconsistent
+as parsed — **76% of every "the arithmetic does not hold" finding in this evidence set is an extraction
+artifact.**
+
+**The correction.** A match is a fragment when the first non-space character before it is an operator
+or a closing parenthesis that is itself preceded by a digit, a closing parenthesis or a percent sign —
+that is, when the match continues an expression that began earlier. A markdown bullet such as
+`- 100 - 50 = 50` is not a fragment, because the `-` is preceded by a line break rather than by a
+value.
+
+**A fragment is flagged, not deleted.** Deleting it would change the frozen 676 calculations and 1,352
+operands and make every earlier number incomparable. What changes is how it is READ: `arith_recorded`
+is **UNKNOWN** for a fragment, never VIOLATED, and the ancestry audit reports it as out of scope rather
+than as an arithmetic error. This is what the instruction asks for in as many words — "keep chained or
+unsupported expressions outside scope rather than treating them as false".
+
+**What it does not fix.** The fragment's operands still exist in the record and still carry features
+and verdicts, so the learner's row counts are unchanged by design. A fragment is evidence that the
+parser saw something it cannot represent, not evidence about the actor either way.
+
+---
+
+## D-5 — 2026-11-22. Seven accusations, and neither of them was about the actor
+
+**Recorded during implementation, before any result that uses it is reported**, like D-4 and for the
+same reason: the defect was found by inspecting the attempts the checker accused, which §6 of the
+follow-up instruction asks for in as many words — "a direct lookup need not have a calculation stage;
+absence of a parsed calculation must not automatically accuse an actor".
+
+**The finding.** Of the 25 attempts in the stage set, **seven** carried `answer_traced VIOLATED` with
+`actor_execution_diagnosis=True` — the checker's strongest accusation. **All seven are false, and
+they fall into exactly two extraction classes.**
+
+**(a) A committed answer that is not one number.** `<answer>[10102000000, 4.73]</answer>` (UID0017, a
+two-part question) was pushed through `num(re.sub(r"[^\d.,-]", "", raw))` and became
+**101,020,000,004.73**; `<answer>March 3, 1977</answer>` (UID0033) became **31,977.0**. No calculation
+can yield a value like that, so the chain reported "the committed answer is the result of no written
+calculation" and blamed the actor. **Eight of the 48 frozen attempts commit an answer of this kind.**
+The committed answer is now read only when it is a single numeral; otherwise it is UNKNOWN with the
+raw text quoted, because a value this parser cannot represent supports no claim in either direction.
+
+**(b) Arithmetic written with absolute-value bars.** All four UID0065 attempts wrote, verbatim:
+
+```
+- |2.0% - 0.2%| = 1.8%
+```
+
+The binary-statement regex cannot match across the bars, so the attempt reported **no written
+calculation at all** and the actor was accused of committing 1.8 with no work behind it. The work is
+on the page. When no calculation the parser can read yields the committed answer **and** the attempt
+contains arithmetic the parser cannot represent — absolute-value bars, a chained expression, or a
+fragment of one (D-4) — `answer_traced` is **UNKNOWN**, with the count of unrepresented expressions
+stated.
+
+**Measured effect on the stage set**, same 25 attempts, same two frozen models, nothing retrained:
+
+| | before D-3/D-4/D-5 | after |
+|---|---|---|
+| `answer_traced` VIOLATED | **7** | **0** |
+| `answer_traced` UNKNOWN | 9 | 16 |
+| actionable execution diagnoses, pooled | **7** | **0** |
+| unresolved provenance (a new, separate count) | — | 7 |
+
+**What this does not establish.** Nothing here says the actor was right. Six of the seven withdrawn
+accusations become UNKNOWN because the records cannot settle the question, which is the honest state,
+not a clearance. Whether UID0017 read the right cell, and whether 1.8 is the right difference, are
+untouched — and this checker never reads a score, so it cannot say.
+
+**A conclusion that follows for the whole method.** Every accusation this checker made on 25 attempts
+was an artifact of its own parser. That is the strongest available evidence that a contract report's
+value depends far more on extraction fidelity than on the learned layer above it.
