@@ -2166,8 +2166,17 @@ four UID0065 attempts write their arithmetic with absolute-value bars.
 | p4/UID0063 | source_traced | **DISCHARGED → UNKNOWN** | D-3, an identity restatement |
 | p4/UID0030 | lookup_observed | DISCHARGED → UNKNOWN | D-2, its observations were labels |
 
-**12 obligations move; 10 accusations withdrawn, 0 added.** Pooled over the 25 attempts: actionable
-execution diagnoses **7 → 0**; a new, separate unresolved-provenance count 0 → 7.
+**12 obligations move; 10 accusations withdrawn by a change of state, 0 added.** Pooled over the 25
+attempts, from the reports' own `diagnosis_counts`:
+
+| code and extraction | confirmations | execution diagnoses | unresolved provenance | unknowns |
+|---|---|---|---|---|
+| superseded (`v2b_restage`) | 37 | **13** | — | 50 |
+| D-3/D-4/D-5, superseded extraction | 36 | **0** | 7 | 57 |
+| D-3/D-4/D-5, D-2 extraction | 35 | **0** | 7 | 58 |
+
+The thirteen are 7 `answer_traced` VIOLATED and 6 `source_traced` OUTSTANDING. Ten change state; the
+other three stay OUTSTANDING and stop being counted as an actor error.
 
 ### The 2×2: does the learned rule add anything?
 

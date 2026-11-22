@@ -1985,9 +1985,11 @@ compile Lean and run the authoritative suite.
 * **D-5.** `<answer>[10102000000, 4.73]</answer>` became 101,020,000,004.73 and `March 3, 1977` became
   31,977.0; and `|2.0% − 0.2%| = 1.8%` — work the agent plainly wrote — matched no statement at all.
 
-**The result: 10 accusations withdrawn, 0 added, 0 remaining.** Over the 25-attempt stage set, pooled
-"actionable execution diagnoses" went 7 → 0. Six of the ten become UNKNOWN, which is the honest state,
-not a clearance. One moved the other way: p4/UID0063's `source_traced` DISCHARGED → UNKNOWN, because
+**The result: the checker's pooled "execution diagnoses" went 13 → 0.** The superseded reports carry
+thirteen accusing states over the 25-attempt set — 7 `answer_traced` VIOLATED and 6 `source_traced`
+OUTSTANDING. Ten are withdrawn by a change of state; the other three stay OUTSTANDING and stop being
+counted as an actor error, because unresolved provenance is not one. Nothing was replaced by a
+different accusation, and the withdrawals become UNKNOWN — the honest state, not a clearance. One moved the other way: p4/UID0063's `source_traced` DISCHARGED → UNKNOWN, because
 the only thing establishing its operand's origin was the identity `86,000 - 0 = 86,000`.
 
 **And the learner adds nothing that can be demonstrated.** A deterministic 2×2 — extraction

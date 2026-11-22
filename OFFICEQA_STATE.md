@@ -24,7 +24,8 @@ Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it aud
   matches (43.6%) were never cells.** 11 operand verdicts change, supported bindings 54 -> 49.
 * **D-3/D-4/D-5** the report conflated provenance, arithmetic, task requirements and correctness;
   76% of its "the arithmetic does not hold" findings were parse artifacts; a list answer and
-  absolute-value bars produced false accusations. **10 accusations withdrawn, 0 added, 0 remaining.**
+  absolute-value bars produced false accusations. **The checker's pooled execution diagnoses go
+  13 -> 0**; ten accusing states change, three are reclassified, none is replaced.
 * **The learner adds nothing demonstrable.** A 2x2 (extraction x rule, both frozen models, 25
   attempts) gives identical states, classes and counts in all four cells. **No demonstrated learned
   increment.**
@@ -106,8 +107,8 @@ ledger, and are capped at 8 calls / $1.50 per process. A requeue is refused
 
 ### NEXT ACTIONS
 1. **D-2 is DONE** (2026-11-22) and so are D-3, D-4 and D-5. The result is in
-   `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`. Read §1 first: the checker's ten accusations were all
-   its own artifacts, and the learned layer adds nothing a 2x2 can detect.
+   `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`. Read §1 first: all thirteen of the checker's
+   accusing states were its own artifacts, and the learned layer adds nothing a 2x2 can detect.
 2. **The decision this packet asks for:** given no demonstrated learned increment, whether the
    comparison worth running at all is contract-report versus no-report, with the learner out of it.
 3. **The recommended free next step** — fix the `max(0.5, |x|·1e-6)` numeric tolerance, then learn
