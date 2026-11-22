@@ -1071,7 +1071,8 @@ table-parser rewrite; any actor-interface change; unsealing the held-out results
 NEW, written this task - runs/20261121-officeqa-learner/v5_d2/
   D2_FREEZE.json              the comparison frozen before any semantic change, both freeze digests
   D2_CELLS.json               the occurrence inventory with witnesses, the replay, every changed
-                              binding, the per-question table, both models rescored
+                              binding, the per-question table, both models rescored, the channel
+                              inventory and the abandonment census
   D2_RULE_r1.json             the 2x2 for model r1
   D2_RULE_r2.json             the 2x2 for model r2
   D2_ANCESTRY.json            occurrence-level dependencies for the three controls and the
@@ -1081,7 +1082,7 @@ NEW, written this task - runs/20261121-officeqa-learner/v5_d2/
   r1_stage_reports.json, r2_stage_reports.json     the corrected stage reports
   reports_regenerated/*.md    labelled REGENERATED in their own first line
   D2_RUN.json                 the summary and its digest
-  v5_lean/OqaConnected.lean, v5_lean/LN_LEAN.json  the Lean source (39,984 bytes) and receipt
+  v5_lean/OqaConnected.lean, v5_lean/LN_LEAN.json  the Lean source and receipt
 
 PRESERVED UNMODIFIED - the superseded evidence this audit corrects
   v1_freeze/   v2_learn/   v2b_restage/   v3_lean/   v4_rehearse/
@@ -1096,7 +1097,7 @@ CODE
   research/officeqa/oqa_ln_check.py     the obligation meanings, the ambiguity split, the
                                         direct-lookup guard, the rule-absent path, lean_inputs
   research/officeqa/oqa_ln_lean.py      the corrected definitions and theorems
-  research/officeqa/oqa_d2_cells.py     the replay
+  research/officeqa/oqa_d2_cells.py     the replay, the channel inventory, the abandonment census
   research/officeqa/oqa_d2_rule.py      the 2x2 and the resolver-only reference
   research/officeqa/oqa_d2_ancestry.py  the ancestry audit
   research/officeqa/oqa_d2_run.py       the driver, which imports no model layer
