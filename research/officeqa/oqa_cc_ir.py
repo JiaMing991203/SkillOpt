@@ -56,6 +56,10 @@ TASK, GIVEN, MATH, LEARNED, OBS = "TASK", "GIVEN", "MATH", "LEARNED", "OBS"
 PROVENANCE = (TASK, GIVEN, MATH, LEARNED, OBS)
 
 ENTITIES = ("table", "header", "cell", "value", "calculation")
+# Entities an extension namespace may bind (amendment D-1). Kept here so `repair` widens `binds`
+# correctly for an extended contract without ENTITIES itself changing - the frozen prototype digests
+# ENTITIES into its semantic bundle label.
+_EXTRA_ENTITIES = ("operand", "answer")
 
 # The predicate vocabulary of the prototype, each with the arity, the entities it binds, and the ONLY
 # provenance label it may carry. A learner may not relabel one of these.
@@ -93,20 +97,27 @@ def canon(obj) -> str:
 
 
 def clause(pred: str, args: list, value: bool = True, provenance: str | None = None,
-           evidence: list | None = None) -> dict:
-    """One clause of a condition or a conclusion, with its provenance fixed by its predicate."""
-    spec = PREDICATES.get(pred)
+           evidence: list | None = None, vocab: dict | None = None) -> dict:
+    """One clause of a condition or a conclusion, with its provenance fixed by its predicate.
+
+    `vocab` (amendment D-1) lets a separate namespace supply additional predicates without extending
+    this module's own dict, which the 2026-11-17 learner enumerates into its prompt. Omitted, nothing
+    changes.
+    """
+    spec = (vocab or PREDICATES).get(pred)
     return {"pred": pred, "args": list(args), "value": bool(value),
             "provenance": provenance or (spec or {}).get("provenance") or OBS,
             "evidence": list(evidence or [])}
 
 
 def contract(cid: str, conclusion: dict, conditions: list, *, version: int = 1,
-             witnesses: str | None = None, reason: str = "", source: str = "") -> dict:
+             witnesses: str | None = None, reason: str = "", source: str = "",
+             entities: tuple | None = None) -> dict:
+    ents = entities or ENTITIES
     return {
         "id": cid, "version": version, "status": "active", "kind": "binding",
         "binds": sorted({a for c in [conclusion] + list(conditions) for a in c["args"]
-                         if a in ENTITIES}),
+                         if a in ents}),
         "conclusion": conclusion, "conditions": list(conditions),
         "witnesses_obligation": witnesses, "reason": reason, "source": source,
         "parent": None, "repair_reason": None,
@@ -114,37 +125,46 @@ def contract(cid: str, conclusion: dict, conditions: list, *, version: int = 1,
     }
 
 
-def validate(c: dict) -> list:
-    """Every reason this contract may not be admitted. An empty list means it is well formed."""
+def validate(c: dict, vocab: dict | None = None, entities: tuple | None = None,
+             obligations: tuple | None = None) -> list:
+    """Every reason this contract may not be admitted. An empty list means it is well formed.
+
+    The three optional arguments (amendment D-1) let an extension namespace validate against its own
+    vocabulary with exactly this logic. Called with none of them, behaviour is unchanged.
+    """
+    PRED = vocab or PREDICATES
+    ENTS = entities or ENTITIES
+    OBLS = obligations or STAGE_OBLIGATIONS
+    not_learnable = tuple(p for p, sp in PRED.items() if sp["provenance"] in (MATH, GIVEN))
     problems = []
     conc = c.get("conclusion") or {}
-    if conc.get("pred") not in PREDICATES:
+    if conc.get("pred") not in PRED:
         problems.append(f"unknown conclusion predicate {conc.get('pred')!r}")
-    elif PREDICATES[conc["pred"]]["provenance"] in (MATH, GIVEN):
-        problems.append(f"{conc['pred']} is {PREDICATES[conc['pred']]['provenance']}: a definition or a "
+    elif PRED[conc["pred"]]["provenance"] in (MATH, GIVEN):
+        problems.append(f"{conc['pred']} is {PRED[conc['pred']]['provenance']}: a definition or a "
                         f"supplied structure cannot be the CONCLUSION of a learned contract")
     for cl in c.get("conditions") or []:
         p = cl.get("pred")
-        if p not in PREDICATES:
+        if p not in PRED:
             problems.append(f"unknown condition predicate {p!r}")
             continue
-        want = PREDICATES[p]["provenance"]
+        want = PRED[p]["provenance"]
         if cl.get("provenance") != want:
             problems.append(f"{p} must be labelled {want}, not {cl.get('provenance')!r}")
-        if cl.get("provenance") == LEARNED and p in NOT_LEARNABLE:
+        if cl.get("provenance") == LEARNED and p in not_learnable:
             problems.append(f"{p} cannot be LEARNED: it is a definition or supplied structure")
-        if len(cl.get("args") or []) != len(PREDICATES[p]["args"]):
-            problems.append(f"{p} takes {len(PREDICATES[p]['args'])} argument(s), "
+        if len(cl.get("args") or []) != len(PRED[p]["args"]):
+            problems.append(f"{p} takes {len(PRED[p]['args'])} argument(s), "
                             f"got {len(cl.get('args') or [])}")
     if not (c.get("conditions") or []):
         problems.append("a connected contract must state an applicability condition; an unconditional "
                         "claim is what the restricted learner already does")
-    if c.get("witnesses_obligation") and c["witnesses_obligation"] not in STAGE_OBLIGATIONS:
+    if c.get("witnesses_obligation") and c["witnesses_obligation"] not in OBLS:
         problems.append(f"unknown stage obligation {c['witnesses_obligation']!r}")
     bound = set(c.get("binds") or [])
     for cl in [conc] + list(c.get("conditions") or []):
         for a in cl.get("args") or []:
-            if a in ENTITIES and a not in bound:
+            if a in ENTS and a not in bound:
                 problems.append(f"{cl.get('pred')} mentions unbound entity {a!r}")
     return sorted(set(problems))
 
@@ -179,7 +199,8 @@ def repair(c: dict, extra_condition: dict, reason: str, counterexamples: list) -
     new["conditions"] = list(c["conditions"]) + [extra_condition]
     new["evidence"] = {"supporting": [], "counterexamples": list(counterexamples), "unknown": [],
                        "conflicting": []}
-    new["binds"] = sorted(set(new["binds"]) | {a for a in extra_condition["args"] if a in ENTITIES})
+    new["binds"] = sorted(set(new["binds"]) | {a for a in extra_condition["args"]
+                                              if a in ENTITIES or a in _EXTRA_ENTITIES})
     return old, new
 
 

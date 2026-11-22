@@ -221,6 +221,86 @@ def fail_closed(root: str) -> dict:
     return {"checks": checks, "problems": problems, "verdict": "PASS" if not problems else "FAIL"}
 
 
+# ── the MECHANISM, on this filesystem ────────────────────────────────────────
+
+_MECHANISM = r"""
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("sl", %r)
+L = importlib.util.module_from_spec(spec); spec.loader.exec_module(L)
+d = os.environ["SKILLOPT_SPEND_LEDGER_DIR"]
+CAP, BLOCK = 23, 2
+claims = os.path.join(d, "claims")
+for i in range(1, 12):
+    with open(os.path.join(claims, "%%06d-target-attempts-2.json" %% i), "w") as f:
+        json.dump({"amount": 2}, f)
+stale = sorted(os.listdir(claims))
+got_a = L._grant("target", "attempts", BLOCK, CAP, note="A")
+with open(os.path.join(d, "release", "000001-target-attempts-1.json"), "w") as f:
+    json.dump({"amount": 1}, f)
+real = os.listdir
+def staged(path):
+    return list(stale) if os.path.abspath(path) == os.path.abspath(claims) else real(path)
+os.listdir = staged
+outcome, got_b = "granted", None
+try:
+    got_b = L._grant("target", "attempts", BLOCK, CAP, note="B")
+except L.LedgerUnusable as exc:
+    outcome, got_b = "refused_fail_closed", str(exc)[:200]
+except L.BudgetExhausted:
+    outcome = "refused_budget"
+finally:
+    os.listdir = real
+net = L._granted().get(("target", "attempts"), 0)
+print(json.dumps({"grant_a": got_a, "outcome": outcome, "grant_b": got_b, "net_granted": net, "cap": CAP}))
+""" % (os.path.join(REPO, "skillopt", "model", "spend_ledger.py"),)
+
+
+def mechanism(root: str) -> dict:
+    """Reproduce the exact over-grant interleaving ON THIS FILESYSTEM, and require it to be refused.
+
+    The four-process race is the wrong evidence on its own: it failed once (24 against a cap of 23) and
+    then passed ten times running. This case is single-threaded and deterministic - it constructs the
+    stale-claims-view-plus-fresh-release-view state directly - so it answers the question the race
+    cannot: is the defect still reachable at all?
+    """
+    ledger = os.path.join(root, "mechanism")
+    shutil.rmtree(ledger, ignore_errors=True)
+    for sub in ("claims", "spend", "release"):
+        os.makedirs(os.path.join(ledger, sub), exist_ok=True)
+    env = {**os.environ, **_env(ledger, CAP), "SLURM_JOB_ID": "ledgercheck"}
+    run = subprocess.run([sys.executable, "-I", "-c", _MECHANISM], capture_output=True, text=True, env=env)
+    problems = []
+    data = {}
+    try:
+        data = json.loads(run.stdout.strip().splitlines()[-1])
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"could not read the mechanism probe: {exc}; stderr={run.stderr[-300:]}")
+        return {"problems": problems, "verdict": "FAIL", "stdout": run.stdout[-500:],
+                "stderr": run.stderr[-500:]}
+    if data.get("net_granted", 0) > data.get("cap", CAP):
+        problems.append(f"THE OVER-GRANT IS STILL REACHABLE: net {data['net_granted']} against a cap "
+                        f"of {data['cap']}")
+    if data.get("outcome") == "granted":
+        problems.append("the racer with a stale claims view was GRANTED a block; it must fail closed")
+    return {**data, "filesystem": _fstype(ledger), "problems": problems,
+            "verdict": "PASS" if not problems else "FAIL",
+            "what_this_shows": "the interleaving that produced '24 against a cap of 23' is constructed "
+                               "directly on this filesystem and must be refused"}
+
+
+def concurrency_repeated(root: str, n: int) -> dict:
+    """The four-process race, n times. One pass means nothing; n passes bound the flake rate."""
+    runs = []
+    for i in range(n):
+        r = concurrency(os.path.join(root, "rep%02d" % i))
+        runs.append({"i": i, "total": r["total"], "per_process": r["per_process"],
+                     "verdict": r["verdict"], "problems": r["problems"]})
+    bad = [r for r in runs if r["verdict"] != "PASS"]
+    return {"repeats": n, "failures": len(bad), "runs": runs,
+            "problems": [f"run {r['i']}: {p}" for r in bad for p in r["problems"]],
+            "verdict": "PASS" if not bad else "FAIL"}
+
+
 def _fstype(path: str) -> str:
     try:
         out = subprocess.run(["stat", "-f", "-c", "%T", path], capture_output=True, text=True, timeout=20)
@@ -233,9 +313,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, help="a directory on the filesystem the campaign ledger will use")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--repeats", type=int, default=12,
+                    help="how many times to re-run the four-process race; one pass proves little")
     args = ap.parse_args()
     os.makedirs(args.root, exist_ok=True)
-    checks = {"concurrency": concurrency(args.root), "restart": restart(args.root),
+    checks = {"mechanism": mechanism(args.root),
+              "concurrency": concurrency(args.root),
+              "concurrency_repeated": concurrency_repeated(args.root, args.repeats),
+              "restart": restart(args.root),
               "fail_closed": fail_closed(args.root)}
     problems = [f"{name}: {p}" for name, c in checks.items() for p in c["problems"]]
     out = {

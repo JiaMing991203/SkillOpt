@@ -1,0 +1,566 @@
+{
+ "opening_balance": {
+  "optimizer": {
+   "cap_attempts": 400,
+   "cap_usd": 20.0,
+   "opening_balance_attempts_consumed": 206,
+   "opening_balance_usd_consumed": 1.97883,
+   "provider_reported_usd": "unavailable",
+   "reconstructed_attempts": 206,
+   "reconstructed_charged_usd": 1.97883,
+   "remaining_attempts": 194,
+   "remaining_usd": 18.02117,
+   "uncovered_allowance_attempts": 0,
+   "uncovered_allowance_usd": 0,
+   "unresolved_requests": 0,
+   "unresolved_reserve_usd": 0.0
+  },
+  "target": {
+   "cap_attempts": 20000,
+   "cap_usd": 15.0,
+   "opening_balance_attempts_consumed": 3462,
+   "opening_balance_usd_consumed": 1.437754,
+   "provider_reported_usd": 1.115146,
+   "reconstructed_attempts": 3462,
+   "reconstructed_charged_usd": 1.437754,
+   "remaining_attempts": 16538,
+   "remaining_usd": 13.562246,
+   "uncovered_allowance_attempts": 0,
+   "uncovered_allowance_usd": 0,
+   "unresolved_requests": 0,
+   "unresolved_reserve_usd": 0.0
+  }
+ },
+ "outstanding_reservations": {
+  "optimizer/attempts": {
+   "claimed": 36,
+   "invariant_spent_le_claimed": "HOLDS",
+   "n_claims": 9,
+   "n_releases": 1,
+   "net_claimed": 35,
+   "note": "the ledger only ever saw the jobs from 66553248 on, so `net_claimed` describes those jobs alone and is NOT this phase's consumption",
+   "released": 1,
+   "spent_within_ledger_coverage": 35,
+   "still_reserved_but_unspent": 0,
+   "units": "attempts"
+  },
+  "optimizer/usdmicro": {
+   "claimed": 500000,
+   "invariant_spent_le_claimed": "HOLDS",
+   "n_claims": 5,
+   "n_releases": 1,
+   "net_claimed": 312134,
+   "note": "the ledger only ever saw the jobs from 66553248 on, so `net_claimed` describes those jobs alone and is NOT this phase's consumption",
+   "released": 187866,
+   "spent_within_ledger_coverage": 312134,
+   "still_reserved_but_unspent": 0,
+   "units": "micro-USD, integer, as the ledger itself charges"
+  },
+  "target/attempts": {
+   "claimed": 1550,
+   "invariant_spent_le_claimed": "HOLDS",
+   "n_claims": 31,
+   "n_releases": 6,
+   "net_claimed": 1403,
+   "note": "the ledger only ever saw the jobs from 66553248 on, so `net_claimed` describes those jobs alone and is NOT this phase's consumption",
+   "released": 147,
+   "spent_within_ledger_coverage": 1403,
+   "still_reserved_but_unspent": 0,
+   "units": "attempts"
+  },
+  "target/usdmicro": {
+   "claimed": 1100000,
+   "invariant_spent_le_claimed": "HOLDS",
+   "n_claims": 22,
+   "n_releases": 6,
+   "net_claimed": 808093,
+   "note": "the ledger only ever saw the jobs from 66553248 on, so `net_claimed` describes those jobs alone and is NOT this phase's consumption",
+   "released": 291907,
+   "spent_within_ledger_coverage": 808092,
+   "still_reserved_but_unspent": 1,
+   "units": "micro-USD, integer, as the ledger itself charges"
+  }
+ },
+ "overlap": {
+  "both_sources": [
+   [
+    "66553248",
+    "optimizer"
+   ]
+  ],
+  "call_log_only": [
+   [
+    "66552421",
+    "target"
+   ],
+   [
+    "66552422",
+    "optimizer"
+   ],
+   [
+    "66552422",
+    "target"
+   ],
+   [
+    "66552423",
+    "optimizer"
+   ],
+   [
+    "66552423",
+    "target"
+   ],
+   [
+    "66552424",
+    "optimizer"
+   ],
+   [
+    "66552424",
+    "target"
+   ],
+   [
+    "66552425",
+    "optimizer"
+   ],
+   [
+    "66552425",
+    "target"
+   ],
+   [
+    "66552763",
+    "optimizer"
+   ],
+   [
+    "66552979",
+    "optimizer"
+   ],
+   [
+    "66553058",
+    "optimizer"
+   ],
+   [
+    "66553156",
+    "optimizer"
+   ]
+  ],
+  "ledger_only": [
+   [
+    "66553250",
+    "target"
+   ],
+   [
+    "66553251",
+    "target"
+   ],
+   [
+    "66553363",
+    "target"
+   ]
+  ],
+  "rule": "where both exist the call log is counted and the ledger is used only to check it"
+ },
+ "per_job": [
+  {
+   "attempts": 679,
+   "cached_tokens": 7286400,
+   "completion_tokens": 261806,
+   "computed_usd": 0.201875,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552421",
+   "prompt_tokens": 8231924,
+   "provider_cost_calls": 679,
+   "provider_cost_usd": 0.201875,
+   "retries": 0,
+   "role": "target",
+   "stage": "s0"
+  },
+  {
+   "attempts": 3,
+   "cached_tokens": 1280,
+   "completion_tokens": 8225,
+   "computed_usd": 0.068206,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552422",
+   "prompt_tokens": 195709,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "arm_e1"
+  },
+  {
+   "attempts": 73,
+   "cached_tokens": 727584,
+   "completion_tokens": 45347,
+   "computed_usd": 0.024724,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552422",
+   "prompt_tokens": 902532,
+   "provider_cost_calls": 73,
+   "provider_cost_usd": 0.024724,
+   "retries": 0,
+   "role": "target",
+   "stage": "arm_e1"
+  },
+  {
+   "attempts": 6,
+   "cached_tokens": 3072,
+   "completion_tokens": 16073,
+   "computed_usd": 0.175928,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552423",
+   "prompt_tokens": 525146,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "arm_e2"
+  },
+  {
+   "attempts": 514,
+   "cached_tokens": 4595712,
+   "completion_tokens": 218049,
+   "computed_usd": 0.141087,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552423",
+   "prompt_tokens": 5443438,
+   "provider_cost_calls": 514,
+   "provider_cost_usd": 0.141087,
+   "retries": 0,
+   "role": "target",
+   "stage": "arm_e2"
+  },
+  {
+   "attempts": 7,
+   "cached_tokens": 2944,
+   "completion_tokens": 29688,
+   "computed_usd": 0.186133,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552424",
+   "prompt_tokens": 504575,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "arm_e3"
+  },
+  {
+   "attempts": 413,
+   "cached_tokens": 4171200,
+   "completion_tokens": 199860,
+   "computed_usd": 0.12697,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552424",
+   "prompt_tokens": 4910086,
+   "provider_cost_calls": 413,
+   "provider_cost_usd": 0.12697,
+   "retries": 0,
+   "role": "target",
+   "stage": "arm_e3"
+  },
+  {
+   "attempts": 6,
+   "cached_tokens": 8320,
+   "completion_tokens": 35810,
+   "computed_usd": 0.196062,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552425",
+   "prompt_tokens": 518453,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "arm_e4"
+  },
+  {
+   "attempts": 380,
+   "cached_tokens": 4579872,
+   "completion_tokens": 206703,
+   "computed_usd": 0.134993,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552425",
+   "prompt_tokens": 5303037,
+   "provider_cost_calls": 380,
+   "provider_cost_usd": 0.134993,
+   "retries": 0,
+   "role": "target",
+   "stage": "arm_e4"
+  },
+  {
+   "attempts": 48,
+   "cached_tokens": 154368,
+   "completion_tokens": 234440,
+   "computed_usd": 0.433849,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552763",
+   "prompt_tokens": 659685,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "t2s"
+  },
+  {
+   "attempts": 46,
+   "cached_tokens": 16896,
+   "completion_tokens": 57784,
+   "computed_usd": 0.083894,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66552979",
+   "prompt_tokens": 65070,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "t2s"
+  },
+  {
+   "attempts": 13,
+   "cached_tokens": 18304,
+   "completion_tokens": 125670,
+   "computed_usd": 0.171844,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66553058",
+   "prompt_tokens": 88071,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "t2s"
+  },
+  {
+   "attempts": 42,
+   "cached_tokens": 50048,
+   "completion_tokens": 260865,
+   "computed_usd": 0.350781,
+   "counted_from": "call_log",
+   "coverage": "call_log_only",
+   "in_call_log": true,
+   "in_ledger": false,
+   "job": "66553156",
+   "prompt_tokens": 174858,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "t2s"
+  },
+  {
+   "attempts": 35,
+   "cached_tokens": 31742,
+   "completion_tokens": 238271,
+   "computed_usd": 0.312133,
+   "counted_from": "call_log",
+   "coverage": "both",
+   "cross_check": "the two independent sources AGREE on this (job, role)",
+   "disagreement": {
+    "attempts_call_log": 35,
+    "attempts_delta": 0,
+    "attempts_ledger": 35,
+    "computed_usd_call_log": 0.312133,
+    "computed_usd_ledger": 0.312133
+   },
+   "in_call_log": true,
+   "in_ledger": true,
+   "job": "66553248",
+   "prompt_tokens": 118466,
+   "provider_cost_calls": 0,
+   "provider_cost_usd": 0.0,
+   "refusals": 0,
+   "retries": 0,
+   "role": "optimizer",
+   "stage": "t2s",
+   "unresolved_requests": 0
+  },
+  {
+   "attempts": 556,
+   "cached_tokens": 0,
+   "completion_tokens": 276809,
+   "computed_usd": 0.2805,
+   "counted_from": "ledger",
+   "coverage": "ledger_only",
+   "in_call_log": false,
+   "in_ledger": true,
+   "job": "66553250",
+   "prompt_tokens": 6528066,
+   "provider_cost_calls": 556,
+   "provider_cost_usd": 0.169915,
+   "refusals": 0,
+   "retries": "unavailable_in_ledger",
+   "role": "target",
+   "stage": "heldout_S0",
+   "unresolved_requests": 0
+  },
+  {
+   "attempts": 567,
+   "cached_tokens": 0,
+   "completion_tokens": 287047,
+   "computed_usd": 0.348739,
+   "counted_from": "ledger",
+   "coverage": "ledger_only",
+   "in_call_log": false,
+   "in_ledger": true,
+   "job": "66553251",
+   "prompt_tokens": 8216162,
+   "provider_cost_calls": 567,
+   "provider_cost_usd": 0.205039,
+   "refusals": 0,
+   "retries": "unavailable_in_ledger",
+   "role": "target",
+   "stage": "heldout_original_skillopt",
+   "unresolved_requests": 0
+  },
+  {
+   "attempts": 280,
+   "cached_tokens": 0,
+   "completion_tokens": 221543,
+   "computed_usd": 0.178866,
+   "counted_from": "ledger",
+   "coverage": "ledger_only",
+   "in_call_log": false,
+   "in_ledger": true,
+   "job": "66553363",
+   "prompt_tokens": 4083956,
+   "provider_cost_calls": 280,
+   "provider_cost_usd": 0.110543,
+   "refusals": 0,
+   "retries": "unavailable_in_ledger",
+   "role": "target",
+   "stage": "heldout_trace2skill",
+   "unresolved_requests": 0
+  }
+ ],
+ "schema": "lso.oqa_phase_accounting.v1",
+ "self_sha256": "5f00c073eeec9377bf676b560f8587526a373c777b549e701b81608b70dd3100",
+ "sources": {
+  "call_logs": {
+   "covers": "one line per HTTP attempt incl. retries, with the provider's own per-call cost_usd",
+   "n_log_files": 14,
+   "root": "/Users/yaojiaming/dev/lean_skillopt/runs/20261121-officeqa-jobdirs"
+  },
+  "ledger": {
+   "covers": "jobs from 66553248 onward only; before that SKILLOPT_SPEND_LEDGER_DIR was unset and spend_ledger.py was inert",
+   "n_processes": 7,
+   "root": "/Users/yaojiaming/dev/lean_skillopt/runs/20261121-officeqa-two-baselines/ledger"
+  },
+  "provider_statement": {
+   "available": false,
+   "note": "no account statement is reachable offline; 'provider accounting' here means the per-call cost_usd the provider returned inside the call log and the ledger usage records"
+  }
+ },
+ "spending_the_catalogue_did_not_expect": [],
+ "totals": {
+  "optimizer": {
+   "attempts": 206,
+   "cached_tokens": 286974,
+   "charged_usd_upper": 1.97883,
+   "completion_tokens": 1006826,
+   "computed_usd": 1.97883,
+   "jobs_both": [
+    "66553248"
+   ],
+   "jobs_call_log_only": [
+    "66552422",
+    "66552423",
+    "66552424",
+    "66552425",
+    "66552763",
+    "66552979",
+    "66553058",
+    "66553156"
+   ],
+   "jobs_ledger_only": [],
+   "prompt_tokens": 2850033,
+   "provider_cost_calls": 0,
+   "provider_cost_note": "no record for this role carried the provider's own cost, so there is no independent figure to compare the computed charge against; this is NOT a report of zero cost",
+   "provider_cost_usd": "unavailable",
+   "retries_known": 0,
+   "unresolved_requests": 0,
+   "unresolved_reserve_usd": 0.0
+  },
+  "target": {
+   "attempts": 3462,
+   "cached_tokens": 21360768,
+   "charged_usd_upper": 1.437754,
+   "completion_tokens": 1717164,
+   "computed_usd": 1.437754,
+   "jobs_both": [],
+   "jobs_call_log_only": [
+    "66552421",
+    "66552422",
+    "66552423",
+    "66552424",
+    "66552425"
+   ],
+   "jobs_ledger_only": [
+    "66553250",
+    "66553251",
+    "66553363"
+   ],
+   "prompt_tokens": 43619201,
+   "provider_cost_calls": 3462,
+   "provider_cost_coverage": "3462 of 3462 attempts",
+   "provider_cost_usd": 1.115146,
+   "provider_vs_computed_ratio": 0.7756,
+   "retries_known": 0,
+   "unresolved_requests": 0,
+   "unresolved_reserve_usd": 0.0
+  }
+ },
+ "uncovered_by_every_source": [],
+ "versus_the_previously_reported_figures": {
+  "optimizer": {
+   "attempts_delta": 0,
+   "now_reconstructed_attempts": 206,
+   "now_reconstructed_usd": 1.97883,
+   "previously_reported_attempts": 206,
+   "previously_reported_usd": 2.06,
+   "usd_delta": -0.08117
+  },
+  "target": {
+   "attempts_delta": 0,
+   "now_reconstructed_attempts": 3462,
+   "now_reconstructed_usd": 1.437754,
+   "previously_reported_attempts": 3462,
+   "previously_reported_usd": 1.87,
+   "usd_delta": -0.432246
+  }
+ },
+ "what_this_is": "a reconstruction of the 2026-11-21 phase's paid consumption and an opening-balance adjustment for the work that follows it. No historical record is modified by this document or by the code that produced it.",
+ "written_utc": "2026-11-22T00:13:22.619442+00:00"
+}

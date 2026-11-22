@@ -17,8 +17,34 @@ WHAT IT GUARANTEES, and how.
         spent  <=  claimed  <=  cap
 
   Concurrency. Claims live in one directory on shared storage and carry their amount IN THE FILE NAME, so
-  granting a block costs one directory listing and one exclusive create. No lock is taken and no file is
-  rewritten, which is what makes this safe on NFS.
+  reading what has been granted costs one directory listing and opens no file, which is what makes
+  READING cheap and safe on NFS. GRANTING is serialized by an exclusive lock - see the next paragraph for
+  why it has to be.
+
+  THE DEFECT THAT MADE THIS NECESSARY, recorded because the first version's reasoning was wrong.
+  The claim was that O_CREAT|O_EXCL under a sequence number stops two processes being granted the same
+  block, because the loser re-reads and re-checks the cap. It does not: the file NAME carries the amount,
+  so two processes that reach the same sequence number with DIFFERENT amounts write DIFFERENT names and
+  both succeed. The exclusive create never fires. They reach different amounts because
+  `give = min(block, cap - granted)` and `granted` came from two separate directory listings - claims,
+  then releases - so a release landing between those two listings lowered one process's `granted` and not
+  the other's. Near the cap one then computed a partial block and the other a full one. Reproduced
+  deterministically: eleven claims of 2 against a cap of 23, one ordinary grant, then one racer with a
+  stale claims view and a fresh release view, gives `000012-target-attempts-1.json` AND
+  `000012-target-attempts-2.json` and a net grant of 24. That is the reported "four processes spent 24
+  against a cap of 23", and the same defect was present in `_write_release`, where two releases at one
+  sequence number would both be subtracted.
+
+  Three changes close it, each sufficient on its own for a different failure shape:
+    * granting and releasing both run under ONE exclusive lock (`grant.lock`), so the read-decide-create
+      sequence cannot interleave with another process's at all;
+    * the sequence number is reserved by an amount-FREE token file (`{seq}-{role}-{resource}.seq`) created
+      with O_CREAT|O_EXCL, so exclusivity no longer depends on two processes choosing the same amount;
+    * `granted` reads RELEASES FIRST and claims second, so anything that lands in between can only make
+      the figure larger, never smaller. A claim missed by a stale listing is the only dangerous
+      direction, and this ordering removes it.
+  A stale listing that persists is treated as a ledger that cannot be trusted: the grant FAILS CLOSED
+  rather than guessing.
 
   Restarts. Claims and the per-attempt record are files. A restarted process re-reads the directory and sees
   every block its predecessor took, so a requeue cannot reset the counter.
@@ -66,6 +92,7 @@ import json
 import os
 import re
 import threading
+import time
 
 SCHEMA = "lso.spend_ledger.v1"
 ROLES = ("target", "optimizer")
@@ -78,6 +105,12 @@ _DEFAULT_BLOCK_USD = {"target": 0.05, "optimizer": 0.05}
 
 _CLAIM_NAME = re.compile(r"^(\d{6})-(target|optimizer)-(attempts|usdmicro)-(\d+)\.json$")
 _RELEASE_NAME = _CLAIM_NAME
+# The amount-FREE sequence token. It carries no amount on purpose: that is what makes the exclusive
+# create actually exclusive. It is deliberately NOT matched by _CLAIM_NAME, so it is never counted as a
+# claim - a token with no claim beside it means a process won the sequence and died before writing, and
+# since `_grant` only returns after the claim is written, such a process never spent anything.
+_SEQ_TOKEN = re.compile(r"^(\d{6})-(target|optimizer)-(attempts|usdmicro)\.seq$")
+_LOCK_NAME = "grant.lock"
 
 _lock = threading.Lock()
 _state: dict[str, dict] = {}
@@ -188,17 +221,11 @@ def _granted() -> dict[tuple[str, str], int]:
     taken, which is what makes this safe and cheap on shared storage.
     """
     totals: dict[tuple[str, str], int] = {}
-    try:
-        names = os.listdir(_claims_dir())
-    except OSError as exc:
-        raise LedgerUnusable(f"cannot read the claim directory {_claims_dir()}: {exc}") from exc
-    for name in names:
-        m = _CLAIM_NAME.match(name)
-        if not m:
-            continue
-        key = (m.group(2), m.group(3))
-        totals[key] = totals.get(key, 0) + int(m.group(4))
-    # Subtract what processes gave back when they exited cleanly.
+    # RELEASES FIRST. A release read here whose claim is read below is always legitimate to subtract,
+    # because a claim is always created before the release that gives part of it back. Reading claims
+    # first instead left the window that produced the over-grant: a release written between the two
+    # listings was subtracted while a claim written in the same window was missed, so `granted` came out
+    # too SMALL - the one direction that lets the cap be exceeded.
     try:
         released = os.listdir(_release_dir())
     except OSError:
@@ -209,48 +236,197 @@ def _granted() -> dict[tuple[str, str], int]:
             continue
         key = (m.group(2), m.group(3))
         totals[key] = totals.get(key, 0) - int(m.group(4))
+    try:
+        names = os.listdir(_claims_dir())
+    except OSError as exc:
+        raise LedgerUnusable(f"cannot read the claim directory {_claims_dir()}: {exc}") from exc
+    for name in names:
+        m = _CLAIM_NAME.match(name)
+        if not m:
+            continue
+        key = (m.group(2), m.group(3))
+        totals[key] = totals.get(key, 0) + int(m.group(4))
     return totals
 
 
-def _next_seq(names: list[str]) -> int:
-    best = 0
+def orphan_seq_tokens() -> list[str]:
+    """Sequence tokens with no claim beside them: a process won a sequence and died before claiming.
+
+    It spent nothing - `_grant` returns only after the claim file exists - but the token is evidence of
+    an interrupted grant, so it is reported rather than silently ignored.
+    """
+    try:
+        names = os.listdir(_claims_dir())
+    except OSError:
+        return []
+    claimed = set()
     for name in names:
         m = _CLAIM_NAME.match(name)
+        if m:
+            claimed.add((m.group(1), m.group(2), m.group(3)))
+    out = []
+    for name in sorted(names):
+        m = _SEQ_TOKEN.match(name)
+        if m and (m.group(1), m.group(2), m.group(3)) not in claimed:
+            out.append(name)
+    return out
+
+
+def _next_seq(names: list[str]) -> int:
+    """The next free sequence number, counting BOTH claims and bare sequence tokens.
+
+    A token must advance the sequence even when its claim was never written, or a crashed grant would
+    make every later caller collide on the same number for ever.
+    """
+    best = 0
+    for name in names:
+        m = _CLAIM_NAME.match(name) or _SEQ_TOKEN.match(name)
         if m:
             best = max(best, int(m.group(1)))
     return best + 1
 
 
+# ── the grant lock: one writer at a time ─────────────────────────────────────
+
+def _lock_path() -> str:
+    return os.path.join(directory(), _LOCK_NAME)
+
+
+def _acquire_grant_lock(what: str) -> str:
+    """Serialize the whole read-decide-create sequence. O_CREAT|O_EXCL, which is the one atomicity this
+    design already depends on; no fcntl, because fcntl locking over NFS is the part that is unreliable.
+
+    Bounded wait, then a stale lock older than `SKILLOPT_LEDGER_LOCK_STALE_S` is broken and the breaking
+    is RECORDED. Breaking is itself racy, so the exclusive create after it is what decides the winner.
+    """
+    path = _lock_path()
+    wait_s = _env_float("SKILLOPT_LEDGER_LOCK_WAIT_S", 60.0)
+    stale_s = _env_float("SKILLOPT_LEDGER_LOCK_STALE_S", 300.0)
+    deadline = time.monotonic() + wait_s
+    delay = 0.005
+    broke = 0
+    while True:
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            try:
+                age = max(0.0, time.time() - os.stat(path).st_mtime)
+            except OSError:
+                age = 0.0
+            if age > stale_s and broke < 3:
+                broke += 1
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                try:
+                    _record({"schema": SCHEMA, "kind": "lock_broken", "owner": _owner_token(),
+                             "age_s": round(age, 3), "for": what,
+                             "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+                except Exception:  # noqa: BLE001 - never fail a grant because the note could not be written
+                    pass
+                continue
+            if time.monotonic() > deadline:
+                raise LedgerUnusable(
+                    f"the grant lock {path} was held for longer than {wait_s:.0f}s (age {age:.0f}s). "
+                    f"No claim was made and no request was sent.")
+            time.sleep(delay)
+            delay = min(delay * 2, 0.25)
+            continue
+        except OSError as exc:
+            raise LedgerUnusable(f"cannot take the grant lock {path}: {exc}") from exc
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump({"owner": _owner_token(), "pid": os.getpid(), "for": what,
+                           "utc": datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                          f, sort_keys=True)
+        except OSError:
+            pass
+        return path
+
+
+def _release_grant_lock(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def _grant(role: str, resource: str, amount: int, cap_amount: int, note: str) -> int:
     """Claim a block of `amount` for (role, resource). Returns what was granted; 0 means the cap is reached.
 
-    The claim is created with O_CREAT|O_EXCL under a sequence number, so two processes racing for the same
-    sequence cannot both succeed: the loser re-reads the directory and tries the next number, which also means
-    it re-checks the cap against the winner's claim.
+    Runs under the shared grant lock, so the read-decide-create sequence is atomic with respect to every
+    other process's. See the module docstring for the defect this replaced.
+    """
+    lock = _acquire_grant_lock(f"grant {role}/{resource}")
+    try:
+        return _grant_locked(role, resource, amount, cap_amount, note)
+    finally:
+        _release_grant_lock(lock)
+
+
+def _grant_locked(role: str, resource: str, amount: int, cap_amount: int, note: str) -> int:
+    """The body of a grant. The caller holds the lock.
+
+    Two guards beyond the lock, because a lock on shared storage is not the only thing that can go wrong:
+      * the sequence number is reserved by an amount-FREE token, so the exclusive create fires whatever
+        amounts two callers computed;
+      * `granted` reads releases before claims, so a listing that is out of date can only overstate what
+        has been granted, never understate it.
+    If the directory listing keeps failing to show a claim that demonstrably exists, this FAILS CLOSED
+    instead of claiming against a view it cannot trust.
     """
     claims = _claims_dir()
-    for _ in range(500):
-        try:
-            names = os.listdir(claims)
-        except OSError as exc:
-            raise LedgerUnusable(f"cannot read the claim directory {claims}: {exc}") from exc
-        granted = 0
-        for name in names:
-            m = _CLAIM_NAME.match(name)
-            if m and (m.group(2), m.group(3)) == (role, resource):
-                granted += int(m.group(4))
+    stale = 0
+    for _ in range(64):
+        # releases first - the conservative direction
+        released = 0
         try:
             for name in os.listdir(_release_dir()):
                 m = _RELEASE_NAME.match(name)
                 if m and (m.group(2), m.group(3)) == (role, resource):
-                    granted -= int(m.group(4))
+                    released += int(m.group(4))
         except OSError:
             pass
+        try:
+            names = os.listdir(claims)
+        except OSError as exc:
+            raise LedgerUnusable(f"cannot read the claim directory {claims}: {exc}") from exc
+        granted = -released
+        for name in names:
+            m = _CLAIM_NAME.match(name)
+            if m and (m.group(2), m.group(3)) == (role, resource):
+                granted += int(m.group(4))
         room = cap_amount - granted
         if room <= 0:
             return 0
         give = min(amount, room)
         seq = _next_seq(names)
+
+        # Reserve the sequence number with a file whose name does NOT contain the amount. This is the
+        # step the old code got wrong: with the amount in the name, two callers at one sequence number
+        # wrote two different names and both were counted.
+        token = os.path.join(claims, f"{seq:06d}-{role}-{resource}.seq")
+        try:
+            tfd = os.open(token, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            stale += 1
+            if stale > 8:
+                raise LedgerUnusable(
+                    f"sequence {seq:06d} for {role}/{resource} is already taken but the listing of "
+                    f"{claims} does not show it, {stale} times over. The ledger's view of shared "
+                    f"storage cannot be trusted, so nothing was claimed and no request was sent.")
+            time.sleep(0.01)
+            continue
+        except OSError as exc:
+            raise LedgerUnusable(f"cannot reserve a sequence in {claims}: {exc}") from exc
+        try:
+            with os.fdopen(tfd, "w", encoding="utf-8") as f:
+                json.dump({"owner": _owner_token(), "seq": seq, "role": role, "resource": resource}, f,
+                          sort_keys=True)
+        except OSError:
+            pass
+
         path = os.path.join(claims, f"{seq:06d}-{role}-{resource}-{give}.json")
         payload = {
             "schema": SCHEMA, "seq": seq, "role": role, "resource": resource, "amount": give,
@@ -261,7 +437,10 @@ def _grant(role: str, resource: str, amount: int, cap_amount: int, note: str) ->
         try:
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
         except FileExistsError:
-            continue
+            # The token was ours, so this cannot be another process. It is the same sequence and amount
+            # written twice by this one, which would mean the token scheme is broken.
+            raise LedgerUnusable(f"the claim {path} already exists although this process reserved "
+                                 f"sequence {seq:06d}; the ledger is not behaving as designed")
         except OSError as exc:
             raise LedgerUnusable(f"cannot create a claim in {claims}: {exc}") from exc
         try:
@@ -272,7 +451,7 @@ def _grant(role: str, resource: str, amount: int, cap_amount: int, note: str) ->
         except OSError as exc:
             raise LedgerUnusable(f"cannot write the claim {path}: {exc}") from exc
         return give
-    raise LedgerUnusable(f"could not allocate a claim sequence in {claims} after 500 tries")
+    raise LedgerUnusable(f"could not allocate a claim sequence in {claims} after 64 tries")
 
 
 # ── the per-attempt record ────────────────────────────────────────────────────
@@ -466,12 +645,33 @@ def release(reason: str = "clean exit") -> dict:
 
 
 def _write_release(role: str, resource: str, amount: int, reason: str) -> None:
-    """Write one release record. Same atomic-sequence scheme as a claim, in its own directory."""
+    """Write one release record, under the SAME lock as a grant.
+
+    This had the identical defect: the amount was in the name, so two releases at one sequence number
+    wrote two names and both were subtracted - which lowers `granted` and is therefore the direction
+    that lets the cap be exceeded. It is serialized against granting too, not only against other
+    releases, because a release changes the quantity a grant is about to read.
+    """
+    lock = _acquire_grant_lock(f"release {role}/{resource}")
+    try:
+        _write_release_locked(role, resource, amount, reason)
+    finally:
+        _release_grant_lock(lock)
+
+
+def _write_release_locked(role: str, resource: str, amount: int, reason: str) -> None:
     rel = _release_dir()
     os.makedirs(rel, exist_ok=True)
-    for _ in range(500):
+    for _ in range(64):
         names = os.listdir(rel)
         seq = _next_seq(names)
+        token = os.path.join(rel, f"{seq:06d}-{role}-{resource}.seq")
+        try:
+            tfd = os.open(token, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            time.sleep(0.01)
+            continue
+        os.close(tfd)
         path = os.path.join(rel, f"{seq:06d}-{role}-{resource}-{amount}.json")
         try:
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
@@ -484,7 +684,7 @@ def _write_release(role: str, resource: str, amount: int, reason: str) -> None:
             f.flush()
             os.fsync(f.fileno())
         return
-    raise LedgerUnusable(f"could not allocate a release sequence in {rel} after 500 tries")
+    raise LedgerUnusable(f"could not allocate a release sequence in {rel} after 64 tries")
 
 
 _atexit_installed = False
@@ -597,6 +797,14 @@ def report() -> dict:
             problems.append(f"{role}: {o['attempts']} attempts exceeds the cap of {r['cap_attempts']}")
         if o["usd"] > r["cap_usd"]:
             problems.append(f"{role}: ${o['usd']:.4f} exceeds the cap of ${r['cap_usd']:.2f}")
+    # An interrupted grant leaves a sequence token with no claim. It spent nothing, but it is evidence
+    # that a process died inside a grant, so it is reported rather than left to be noticed by accident.
+    orphans = orphan_seq_tokens()
+    snap["orphan_seq_tokens"] = orphans
+    if orphans:
+        snap["notes"] = snap.get("notes", []) + [
+            f"{len(orphans)} sequence token(s) have no claim beside them: a grant was interrupted. "
+            f"Nothing was spent against them - a grant returns only after its claim is written."]
     snap["problems"] = problems
     snap["verdict"] = "PASS" if not problems else "FAIL"
     return snap

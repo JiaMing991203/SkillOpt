@@ -763,3 +763,78 @@ right cell.
 
 **The ledger overspend is INTERMITTENT, not deterministic:** ten repeats, ten passes. It remains a real
 violation of `spent <= cap` that happened once, now characterised rather than explained away.
+
+---
+
+## D-1 — 2026-11-21. A source-to-calculation vocabulary, in its own namespace
+
+**Reason.** C-1, C-2 and C-3 were *software* repairs: they fixed arbitrary source selection, obligations
+that vanished instead of becoming unknown, and a sentinel year that turned an unknown into an accusation.
+None of them is a learner repairing its own hypothesis, and the instruction says so plainly. What is
+missing is a learned contract over the connection
+
+    question requirement -> relevant lookup -> supported value -> calculation -> final answer
+
+and the existing vocabulary cannot express it. `oqa.cc.model.v1` has `table`, `header`, `cell`, `value`
+and `calculation`, and its only LEARNED predicate is `scale_binds` — a claim about units. There is no
+term for an *operand of a written calculation*, none for the committed *answer*, and none for how the
+actor came by a number. The 2026-11-19 binding investigation also established that the column's MEANING
+is not recoverable from the permitted rendering, so a smaller justified scope is required: **occurrence
+identity** rather than column semantics, which is what `oqa_occ` already provides.
+
+**Added, in a NEW namespace `research/officeqa/oqa_ln_vocab.py`, leaving `oqa.cc.model.v1` untouched.**
+The frozen prototype's own prompt enumerates `IR.PREDICATES`, so extending that dict in place would
+silently change the 2026-11-17 learner's prompt. The extension therefore lives beside it and
+`oqa_cc_ir.validate`, `clause` and `contract` take an optional vocabulary argument that defaults to the
+old one. With no argument, every existing caller behaves exactly as before.
+
+| new entity | what it denotes |
+|---|---|
+| `operand` | one number of a written binary arithmetic statement, at the position it was written |
+| `answer` | the value committed under the narrow `committed_answer` policy |
+
+| new predicate | args | provenance | meaning |
+|---|---|---|---|
+| `operand_of` | operand, calculation | GIVEN | the parse put this operand in this statement |
+| `calculation_result` | calculation, value | GIVEN | the result as written |
+| `arithmetic_consistent` | calculation | MATH | `a OP b = c` really holds; a definition, never a discovery |
+| `calculation_supports_answer` | calculation, answer | OBS | the committed answer equals this result |
+| `calculation_superseded` | calculation, calculation | OBS | a later statement in the same attempt yields the committed answer and this one does not |
+| `operand_positions` | operand, count | OBS | how many observed occurrences match it: 0, 1 or many |
+| `operand_source_tool` | operand, tool | OBS | `grep` or `read`, from whether the occurrence carries a query pattern |
+| `operand_written_with_separator` | operand | OBS | written as `1,234,567` |
+| `operand_round_power_of_ten` | operand | OBS | 10, 100, 1000 … — the shape of a conversion factor |
+| `operand_in_question` | operand | TASK | the number appears in the question sentence |
+| `operand_equals_earlier_result` | operand, calculation | OBS | equal to an earlier statement's result |
+| `message_quotes_question_term` | operand | OBS | the message that wrote it quotes a distinctive word of the question |
+| `operand_sourced` | operand | **LEARNED** | the only learnable conclusion: the occurrence resolver will find one corroborated source |
+
+New stage obligation: **`source_traced`** — the operands of the calculation that supports the committed
+answer have identified sources. It joins `unit_match`, `cell_bound`, `period_match`, `arith_recorded`
+and `answer_traced`; the existing five are unchanged.
+
+**What makes `operand_sourced` an empirical claim rather than a definition, and the limit of that.**
+The resolver `oqa_occ` decides SUPPORTED from two corroborations: a token shared between the matched
+line and the actor's own message (`ROW_LABEL`), or a grep pattern whose words appear on that line
+(`QUERY`). **Those two are withheld from the learner.** It sees behavioural correlates instead — how
+many positions matched, which tool returned them, how the number was written, whether the message
+quoted a question term. A rule over those predicts the resolver's verdict and can be wrong: the
+2026-11-19 measurement found 201 unique positions of which only 64 were corroborated, so "a unique
+position is a source" is false about two thirds of the time. **The honest limit:** `operand_source_tool`
+is not fully independent of `QUERY`, because only a grep carries a pattern at all. The claim is a
+correlate of the verdict, not a restatement of it, and that is weaker than independence.
+
+**Not changed.** `oqa.cc.model.v1`, every `oqa_cc_*` and `oqa_lc_*` behaviour, the frozen campaign, the
+C-1/C-2/C-3 chain, and the semantic bundle v9 `3e82a6390357ccac`. The extended vocabulary is digested
+as its own bundle label **v10**, because the guard must keep refusing to let one label mean two digests.
+
+**Predicted before implementation, so the measurement can contradict it.**
+1. A first learned rule will over-claim: it will condition on `operand_positions = 1` and little else,
+   and will therefore be refuted on the checking questions.
+2. The refutations will be concentrated on operands whose only occurrence came from a `read`, because a
+   `read` observation in this corpus often carries no line numbers and never carries a query pattern.
+3. The repair will narrow the condition rather than retire the rule — the operation the restricted
+   20-effect learner could not perform.
+4. The recovery control will NOT be accused: `p4/UID0063` and `p4/UID0085` both replace a calculation
+   and then commit an answer, and `calculation_superseded` must stop the earlier statement supporting
+   the answer without the later one being blamed for it.
