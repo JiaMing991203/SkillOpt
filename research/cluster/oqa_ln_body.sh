@@ -149,7 +149,16 @@ ledger)
     log "ledger check exit $rc; verdict $("$OQA_PY" -I -c "
 import json;print(json.load(open('$OUTDIR/LEDGER_CHECK.json'))['verdict'])" 2>/dev/null || echo unreadable)"
     [ "$rc" = "0" ] || status=1
+    # WHY IS THE STAGE-GROUP COUNT 17 WHERE THE HISTORICAL RECORD READS 14? An amendment claimed C-3
+    # had returned it to 14 and called that support for C-3. The test says `assert 17 == 14`, so the
+    # claim is wrong; this probe decides whether 17 is CORRECT under the current semantics from the
+    # groups themselves, rather than from an argument about them.
+    : "${OQA_CAMPAIGN_ROOT:?settings.env must name the frozen campaign root}"
+    "$OQA_PY" -I "$RES/oqa_groups_probe.py" --campaign "$OQA_CAMPAIGN_ROOT" \
+        --arm C --item UID0014 --epoch 3 --out "$OUTDIR/GROUPS_PROBE.json" \
+        >> "$OUTDIR/job.log" 2>&1 || log "WARNING: the group probe failed"
     log "running the OfficeQA test suite, recording every failing assertion"
+    export OQA_CAMPAIGN_ROOT
     "$OQA_PY" -I -m pytest -q -p no:cacheprovider \
         --tb=long -rf tests/ > "$OUTDIR/pytest.txt" 2>&1 || true
     tail -40 "$OUTDIR/pytest.txt" >> "$OUTDIR/job.log"

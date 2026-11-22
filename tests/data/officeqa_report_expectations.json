@@ -1,0 +1,19 @@
+{
+ "schema": "lso.officeqa_report_expectations.v1",
+ "why_this_file_exists": "These are the EXPECTED-TO-CHANGE observations about regenerating a historical OfficeQA contract report. They are data, not literals in a test, because every amendment that changes the checker legitimately moves some of them - and while they lived in the test body, a successful new stage exited as a failure and the only way to tell a real regression from a stale pin was to read the traceback. Changing a value here is a deliberate, reviewable act: say which amendment did it and why. What must NEVER change is asserted unconditionally in the test and is not in this file: the historical record's own stored fields, the model and trace digests, the action forecasts, and the bytes of the historical artifacts on disk.",
+ "how_to_re_pin": "Run the suite, read the failure (it names the field, both values and this file's key), satisfy yourself the change is intended, then update the value together with `pinned_by` and `reason`. If you cannot say why it moved, it is a regression and not a pin.",
+ "cases": {
+  "B/UID0019/epoch3/LC_ACTION": {
+   "bytes_preserved": true,
+   "n_stage_diagnosis_groups": null,
+   "pinned_by": "A-1, confirmed deterministic by job 66553105 (oqa_report_det.py: 8 runs in one process and 8 across processes with fresh hash seeds, byte-identical to the historical report in all 16)",
+   "reason": "A-1 promised its changes were metadata-only, so this report's TEXT had to stay byte-identical. It has. The null group count is not a pin: an Action-Only report has no stage half, so the field is None by definition."
+  },
+  "C/UID0014/epoch3/LC_STAGE": {
+   "bytes_preserved": false,
+   "n_stage_diagnosis_groups": 17,
+   "pinned_by": "C-1 (the digest), C-2 defect A (the group count, 14 -> 17)",
+   "reason": "C-1's selection gate legitimately changes WHICH source cell is reported, so the regenerated text differs from a historical report produced under the tie-break C-1 refuses; measured as 51f046e063a7f2ce against the historical 8b90446cecdc935c in all 16 determinism runs. The group count rose because C-2 defect A made a WITHDRAWN binding emit cell_bound, period_match and unit_match as UNKNOWN instead of making those requirements vanish - three more obligation classes are three more groups. An earlier amendment claimed C-3 had returned this count to 14 and that the claim supported C-3; that was wrong, and the correction is recorded in the amendments file."
+  }
+ }
+}

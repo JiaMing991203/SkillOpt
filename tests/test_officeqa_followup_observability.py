@@ -391,41 +391,40 @@ def test_the_in_sample_note_tests_the_attempt_when_the_model_records_them():
 
 # ── the regression that matters: no historical report text moves ──────────────
 
+EXPECTATIONS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data",
+                                 "officeqa_report_expectations.json")
+
+
+def _expectations() -> dict:
+    with open(EXPECTATIONS_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
 @pytest.mark.skipif(not CAMPAIGN or not os.path.isdir(CAMPAIGN),
                     reason="needs the frozen campaign directory in OQA_CAMPAIGN_ROOT")
-@pytest.mark.parametrize("arm,item,epoch,condition,bytes_preserved", [
-    # MEASURED, not assumed (job 66553105, oqa_report_det.py, 8 runs within one process and 8 across
-    # processes with fresh hash seeds): report generation is DETERMINISTIC, and UID0019's report is
-    # byte-identical to the historical one in all 16 runs. So this case pins a genuine invariant.
-    ("B", "UID0019", 3, "LC_ACTION", True),
-    # AND THIS ONE GENUINELY MOVES, deterministically: 51f046e063a7f2ce against the historical
-    # 8b90446cecdc935c, the same digest in all 16 runs. C-1's selection gate legitimately changes which
-    # source cell is reported, and the historical report was generated under the tie-break C-1 refuses.
-    #
-    # I BRIEFLY PINNED THIS TO True AND THAT WAS WRONG. I read an earlier job's failure of THIS test as
-    # evidence that C-2 had restored the bytes - but the assertion that failed there was not the digest
-    # one at all, it was "the stage group count keeps its historical value" (17 against 14). I inferred
-    # a fact from a test NAME without reading its assertion. The digest has differed from the
-    # historical one continuously since C-1.
-    #
-    # The stage-group count is the part that tells a story: C-2 took it 14 -> 17 by restoring bindings
-    # that then produced FALSE period accusations, and C-3 returned it to 14 by making an undetermined
-    # year UNKNOWN instead of VIOLATED. That assertion passes again, which is independent support for
-    # C-3 being the right repair.
-    ("C", "UID0014", 3, "LC_STAGE", False),
+@pytest.mark.parametrize("arm,item,epoch,condition", [
+    ("B", "UID0019", 3, "LC_ACTION"),
+    ("C", "UID0014", 3, "LC_STAGE"),
 ])
-def test_regenerating_a_real_historical_report_reproduces_its_bytes(
-        arm, item, epoch, condition, bytes_preserved):
+def test_regenerating_a_real_historical_report(arm, item, epoch, condition):
     """The two worked examples of OQA-FOR-1, regenerated with the amended code.
 
-    Amendment A-1 promised the changes were metadata-only: the report TEXT the optimizer read had to be
-    byte-identical. These are the campaign's only violated action forecast and its only report with
-    violated stage obligations, so if anything moved it would move here - and under C-1 one of them does.
+    TWO KINDS OF ASSERTION, AND THE SEPARATION IS THE POINT. This test used to carry both in its own
+    body, as literals, and the result was that a successful new stage exited 1 whenever an amendment
+    legitimately moved one of them - and the summary line named only the test, so telling a stale pin
+    from a real regression meant reading the traceback. I once read such a failure as evidence that a
+    repair had restored a report's bytes; the assertion that had actually failed was the stage-group
+    count, and I withdrew three claims built on that inference.
 
-    WHAT IS STILL ASSERTED FOR BOTH. The model digest, the trace digest and the action forecasts are
-    unchanged, because C-1 touches only which SOURCE CELL a value is bound to. A change in any of those
-    would mean C-1 had reached further than its amendment claims.
+      BASELINE IMMUTABILITY - asserted here, unconditionally, and never pinned in a file. The
+      historical record's own stored fields, the model digest, the trace digest and the action
+      forecasts. A change in any of those would mean an amendment reached further than it claims.
+
+      EXPECTED-TO-CHANGE OBSERVATIONS - read from tests/data/officeqa_report_expectations.json, where
+      each value names the amendment that set it and why. A mismatch still fails, and the message says
+      which field moved, both values, and where to re-pin it deliberately.
     """
+    exp = _expectations()["cases"][f"{arm}/{item}/epoch{epoch}/{condition}"]
     R = _research("oqa_reports")
     gen = os.path.join(CAMPAIGN, f"arm_{arm}", "stage_reports", "GENERATED.jsonl")
     recs = [json.loads(l) for l in open(gen, encoding="utf-8") if l.strip()]
@@ -440,32 +439,78 @@ def test_regenerating_a_real_historical_report_reproduces_its_bytes(
                     if l.strip() and json.loads(l)["id"] == item)
     text, new_rec = R.build_one_lc(pred, item, question, results, model, condition=condition)
     now = hashlib.sha256(text.encode()).hexdigest()
-    if bytes_preserved:
+
+    # ── expected-to-change: the regenerated report's bytes ──────────────────
+    if exp["bytes_preserved"]:
         assert now == rec["report_sha256"], (
-            f"the rendered report text moved and this case is pinned as UNCHANGED: "
-            f"historical {rec['report_sha256'][:16]}, now {now[:16]}. Either a change reached further "
-            f"than its amendment claims, or this expectation needs re-pinning deliberately.")
+            f"EXPECTED-TO-CHANGE MISMATCH, field `bytes_preserved` for "
+            f"{arm}/{item}/epoch{epoch}/{condition}:\n"
+            f"  expected the regenerated text to be byte-identical to the historical report\n"
+            f"  historical {rec['report_sha256'][:16]}  now {now[:16]}\n"
+            f"  pinned by: {exp['pinned_by']}\n"
+            f"  If this change is intended, set bytes_preserved to false in {EXPECTATIONS_PATH} and "
+            f"say which amendment did it. If you cannot say, it is a regression.")
     else:
         assert now != rec["report_sha256"], (
-            "this case is pinned as CHANGED by amendment C-1, but the bytes are identical, so the "
-            "C-1 selection gate is not reaching the report at all")
+            f"EXPECTED-TO-CHANGE MISMATCH, field `bytes_preserved` for "
+            f"{arm}/{item}/epoch{epoch}/{condition}:\n"
+            f"  this case is pinned as CHANGED, but the bytes are identical, so whatever was supposed "
+            f"to reach the report is not reaching it\n"
+            f"  pinned by: {exp['pinned_by']}")
+
+    # ── baseline immutability: never pinned, never negotiable ───────────────
     assert new_rec["model_sha256"] == rec["model_sha256"]
     assert new_rec["trace_sha256"] == rec["trace_sha256"]
     assert new_rec["action_forecasts"] == rec["action_forecasts"]
-    # and the new fields say what the old constant could not
+    assert new_rec["model_parent_sha256"] == "unavailable", "a historical model has none, and says so"
+    assert new_rec["model_frozen_at_epoch"] == "unavailable"
+    assert new_rec["attempt"]["response_metadata_availability"] == "unavailable"
+
+    # ── the A-1 fields, which say what the old constant could not ──────────
     if condition == "LC_ACTION":
         assert rec["n_distinct_diagnoses"] == 0, "the historical record's constant"
         assert new_rec["diagnosis_counts"]["model_refutations"] == 1, (
             "arm B's one violated forecast is now counted as what it is")
         assert new_rec["diagnosis_counts"]["execution_diagnoses"] == 0
-        assert new_rec["n_stage_diagnosis_groups"] is None
     else:
-        assert new_rec["n_stage_diagnosis_groups"] == rec["n_distinct_diagnoses"], (
-            "the stage group count keeps its historical value, under its own name")
         assert new_rec["diagnosis_counts"]["execution_diagnoses"] > 0
-    assert new_rec["model_parent_sha256"] == "unavailable", "a historical model has none, and says so"
-    assert new_rec["model_frozen_at_epoch"] == "unavailable"
-    assert new_rec["attempt"]["response_metadata_availability"] == "unavailable"
+
+    # ── expected-to-change: the stage-group count ──────────────────────────
+    assert new_rec["n_stage_diagnosis_groups"] == exp["n_stage_diagnosis_groups"], (
+        f"EXPECTED-TO-CHANGE MISMATCH, field `n_stage_diagnosis_groups` for "
+        f"{arm}/{item}/epoch{epoch}/{condition}:\n"
+        f"  expected {exp['n_stage_diagnosis_groups']}, measured "
+        f"{new_rec['n_stage_diagnosis_groups']}  (the historical record read "
+        f"{rec['n_distinct_diagnoses']})\n"
+        f"  pinned by: {exp['pinned_by']}\n"
+        f"  reason: {exp['reason']}\n"
+        f"  Re-pin in {EXPECTATIONS_PATH} only with the amendment that moved it.")
+
+
+@pytest.mark.skipif(not CAMPAIGN or not os.path.isdir(CAMPAIGN),
+                    reason="needs the frozen campaign directory in OQA_CAMPAIGN_ROOT")
+def test_the_historical_artifacts_themselves_are_untouched():
+    """The strongest immutability claim, and the one no pin may ever relax.
+
+    Regenerating a report must not write into the frozen campaign. This reads the historical record
+    line for each pinned case and asserts that its own stored digests are still what the record says
+    they are - so a regeneration that quietly rewrote GENERATED.jsonl would fail here even if every
+    expected-to-change value had been re-pinned.
+    """
+    for key in _expectations()["cases"]:
+        arm, item, epoch_s, condition = key.split("/")
+        epoch = int(epoch_s.replace("epoch", ""))
+        gen = os.path.join(CAMPAIGN, f"arm_{arm}", "stage_reports", "GENERATED.jsonl")
+        recs = [json.loads(l) for l in open(gen, encoding="utf-8") if l.strip()]
+        rec = next(r for r in recs if r["id"] == item
+                   and f"step_{epoch:04d}" in str(r.get("prediction_dir", "")))
+        assert len(rec["report_sha256"]) == 64, key
+        assert rec["condition"] == condition, (
+            f"{key}: the historical record's condition is {rec['condition']!r}; the frozen campaign "
+            f"has been modified")
+        pred = rec["prediction_dir"]
+        for name in ("conversation.json", "target_user_prompt.txt"):
+            assert os.path.exists(os.path.join(pred, item, name)), f"{key}: {name} is gone"
 
 
 # ── OQA-HTTP-1: the conversion defect, and the smallest correction ────────────

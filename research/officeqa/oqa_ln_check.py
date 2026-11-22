@@ -291,3 +291,91 @@ def _pack(attempt_row, att, ex, task, shape, led, channel, operand_rows, contrac
         },
         "contract": f"{contract['id']}@v{contract['version']}",
     }
+
+
+# ── the readable report, generated FROM the checked structure ────────────────
+
+HEADING = "Source and Calculation Report"
+
+_QUALIFICATIONS = """\
+HOW TO READ THIS, AND WHAT IT DOES NOT ESTABLISH.
+- A SOURCE is an observed position (document, line, field) that the value matches uniquely AND an
+  independent corroboration. A unique numeric match on its own is NOT a source and is reported as
+  unresolved, not as an error.
+- UNKNOWN means the records cannot settle it. It is never an accusation.
+- A MODEL REFUTATION means this checker's own learned rule was wrong here. It is not a mistake by the
+  agent and must not be read as one.
+- The learned rule is empirical, fitted to {n_learn} operands of saved training work, and it predicts
+  a resolver verdict. It is not a statement about the document corpus.
+- Nothing here reads the answer key, the score, or any validation or held-out record.
+"""
+
+
+def render_report(stage: dict, *, n_learn_operands: int, contract_rendered: str,
+                  model_sha256: str, lean: dict | None = None) -> str:
+    """The report the optimizer actually reads, built from `stage_report`'s own fields.
+
+    It is generated from the checked structure and from nothing else: every line below is a field of
+    `stage`, so a claim cannot appear in the report that the checker did not make.
+    """
+    L = []
+    L.append(_QUALIFICATIONS.format(n_learn=n_learn_operands))
+    L.append("")
+    L.append("TASK REQUIREMENTS, read from the question sentence only [TASK]")
+    task = stage.get("task_requirements") or {}
+    for line in (OB.describe(task) if task else []):
+        L.append(f"  - {line}")
+    if not task:
+        L.append("  - (the question could not be read into requirements)")
+    L.append("")
+    L.append("THE CHAIN, from the lookup to the committed answer")
+    for o in stage["obligations"]:
+        mark = {DISCHARGED: "HOLDS", VIOLATED: "**VIOLATED**", OUTSTANDING: "OUTSTANDING",
+                UNKNOWN: "UNKNOWN", REOPENED: "REOPENED"}.get(o["state"], o["state"])
+        L.append(f"  [{o['obligation']}] {mark}  ({o['provenance']})")
+        L.append(f"      {o['why']}")
+        for ref in o.get("model_refutations") or []:
+            L.append(f"      REFUTATION of this checker's own rule at operand {ref['operand']}: "
+                     f"{ref['verdict_match']} ({ref['kind']})")
+    L.append("")
+    if stage.get("supporting_operands"):
+        L.append("THE OPERANDS OF THE CALCULATION THAT SUPPORTS THE COMMITTED ANSWER")
+        for o in stage["supporting_operands"]:
+            where = ""
+            if o.get("position"):
+                p = o["position"]
+                where = f"  at {p['document']} line {p['line']} field {p['field']}"
+            L.append(f"  {o['operand']:>14}  {o['class']}{where}")
+            if o.get("corroborations"):
+                L.append(f"                  corroborated by {', '.join(o['corroborations'])}")
+            if o.get("contract_refuted_here"):
+                L.append("                  the learned rule predicted a source here and the resolver "
+                         "did not confirm it")
+        L.append("")
+    if stage.get("superseded_calculations"):
+        L.append("WORK THAT WAS REPLACED. It stays in the record and stops supporting the answer; it is "
+                 "not an accusation.")
+        for s in stage["superseded_calculations"][:8]:
+            L.append(f"  calculation {s['index']}: {s['statement']}  -> replaced")
+        if len(stage["superseded_calculations"]) > 8:
+            L.append(f"  ... and {len(stage['superseded_calculations']) - 8} more, all still recorded")
+        L.append("")
+    L.append("THE LEARNED RULE THIS REPORT APPLIED")
+    for line in contract_rendered.splitlines():
+        L.append(f"  {line}")
+    L.append(f"  model {model_sha256[:16]}")
+    if lean:
+        L.append("")
+        L.append("FORMAL CHECK")
+        L.append(f"  Lean {lean.get('version', '?')} return code {lean.get('returncode')}, "
+                 f"source {str(lean.get('source_sha256', ''))[:16]}, "
+                 f"{lean.get('n_examples', 0)} exported examples")
+        L.append(f"  WHAT IT CHECKS: {lean.get('scope', 'unstated')}")
+        L.append("  WHAT IT DOES NOT: that the extraction found the right cell, that the learned rule "
+                 "is true of the corpus, or that any reported state caused the task outcome.")
+    counts = stage["diagnosis_counts"]
+    L.append("")
+    L.append(f"COUNTS  actionable execution diagnoses {counts['execution_diagnoses']}  |  "
+             f"refutations of this checker {counts['model_refutations']}  |  "
+             f"confirmations {counts['confirmations']}  |  unknowns {counts['unknowns']}")
+    return "\n".join(L) + "\n"
