@@ -155,10 +155,10 @@ _REPAIR = """You proposed this contract and it was frozen:
 
 Your stated reason was: {reason}
 
-It was then checked, PROSPECTIVELY, on attempts at {n_check_q} questions it had never seen. For each
-operand the contract's conditions held, so it predicted `operand_sourced`. On {n_counter} of them the
-resolver found NO corroborated source. Those are counterexamples to your hypothesis, not mistakes by
-the agent: the contract claimed something that is not true of these operands.
+{how_checked} For each operand the contract's conditions held, so it predicted `operand_sourced`. On
+{n_counter} of them the resolver found NO corroborated source. Those are counterexamples to your
+hypothesis, not mistakes by the agent: the contract claimed something that is not true of these
+operands.
 
 Here are the counterexamples, grouped by feature vector. You are NOT being told what the resolver's
 corroborations are, and you are not being given the value it should have produced.
@@ -325,17 +325,49 @@ def score_contract(c: dict, rows: list) -> dict:
     }
 
 
-def build_repair_prompt(c: dict, rows: list, score: dict, n_check_q: int) -> str:
-    counters = [r for r in rows if applies(c, r["features"])[0] and not r["verdict"]["sourced"]]
-    rights = [r for r in rows if applies(c, r["features"])[0] and r["verdict"]["sourced"]]
+PROSPECTIVE = "prospective_on_the_checking_questions"
+IN_SAMPLE = "in_sample_on_the_learning_records"
+
+
+def counterexamples_for_repair(c: dict, check_rows: list, learn_rows: list) -> tuple:
+    """Which counterexamples a repair may be built from, and how strong they are.
+
+    PROSPECTIVE ones come first: the contract predicted a source on a question the learner never saw
+    and the resolver did not confirm it. If there are none, an IN-SAMPLE counterexample is still a
+    genuine contradiction - the rule is wrong about an operand the learner was shown - but repairing
+    from it is fitting the same batch rather than responding to new evidence, and it is labelled that
+    way everywhere it appears. The first version of this only looked at the prospective set and would
+    have reported "no contradiction" while one sat in the learning records.
+    """
+    pro = [r for r in check_rows if applies(c, r["features"])[0] and not r["verdict"]["sourced"]]
+    if pro:
+        return pro, check_rows, PROSPECTIVE
+    ins = [r for r in learn_rows if applies(c, r["features"])[0] and not r["verdict"]["sourced"]]
+    return ins, learn_rows, IN_SAMPLE
+
+
+_HOW_CHECKED = {
+    PROSPECTIVE: ("It was then checked, PROSPECTIVELY, on attempts at {n} questions it had never "
+                  "seen."),
+    IN_SAMPLE: ("It was then checked on the very records you were shown - there was no counterexample "
+                "on the {n} questions it had not seen, so these are operands from the evidence you "
+                "learned from."),
+}
+
+
+def build_repair_prompt(c: dict, counters: list, pool: list, provenance: str, n_check_q: int) -> str:
+    rights = [r for r in pool if applies(c, r["features"])[0] and r["verdict"]["sourced"]]
     def table(rs):
         agg = collections.Counter(_vec(r["features"]) for r in rs)
         return json.dumps([{"features": {k: v for k, v in vec}, "n_operands": n}
                            for vec, n in agg.most_common()], indent=1, sort_keys=True)
     return _REPAIR.format(rendered=V.render(c), reason=c.get("reason", ""),
-                          n_check_q=n_check_q, n_counter=len(counters),
+                          how_checked=_HOW_CHECKED[provenance].format(n=n_check_q),
+                          n_counter=len(counters),
                           counter_table=table(counters), right_table=table(rights) or "  (none)")
 
 
-def repair_call(c: dict, rows: list, score: dict, n_check_q: int, *, cap: int = 4000) -> dict:
-    return _call(_SYSTEM, build_repair_prompt(c, rows, score, n_check_q), "ln_repair", cap)
+def repair_call(c: dict, counters: list, pool: list, provenance: str, n_check_q: int,
+                *, cap: int = 4000) -> dict:
+    return _call(_SYSTEM, build_repair_prompt(c, counters, pool, provenance, n_check_q),
+                 "ln_repair", cap)

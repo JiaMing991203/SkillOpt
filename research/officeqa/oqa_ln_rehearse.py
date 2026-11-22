@@ -54,6 +54,15 @@ def _utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def configure_route(config_path: str) -> dict:
+    """The same router problem as everywhere else: configure it before sending, and fail fast."""
+    import oqa_t2s as T2S
+    effective = T2S.configure_models(config_path, os.environ.get("OPTIMIZER_MODEL", ""))
+    if not effective.get("api_key_present"):
+        raise SystemExit(f"the optimizer route has no API key: {effective}")
+    return effective
+
+
 def permitted_item(freeze_doc: dict, attempt: dict) -> tuple:
     """The item dict the analyst is given, built from PERMITTED fields only."""
     pdir = os.path.join(freeze_doc["source_root"], "train_p%d" % attempt["pass"], "predictions")
@@ -146,8 +155,12 @@ def main(argv=None) -> int:
     ap.add_argument("--freeze", required=True)
     ap.add_argument("--skill", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--config", default="configs/research/officeqa_base2.yaml")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
+    route = configure_route(a.config)
+    print("optimizer route: " + json.dumps({k: v for k, v in route.items()
+                                            if k != "api_key_present"}))
     with open(a.freeze, encoding="utf-8") as f:
         freeze_doc = json.load(f)
     with open(a.skill, encoding="utf-8") as f:
@@ -242,6 +255,7 @@ def main(argv=None) -> int:
             assisted["trajectory_text_chars"] - ordinary["trajectory_text_chars"] >= len(report_text) - 200
             and ordinary["report_heading_present"] is False),
         "paid_calls": 2,
+        "optimizer_route_effective": route,
     }
     body = json.dumps(doc, indent=1, sort_keys=True, default=str)
     doc["self_sha256"] = IR.sha(body)

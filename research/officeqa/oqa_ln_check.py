@@ -75,6 +75,15 @@ def _utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+_NOT_CONTENT = ("written_utc", "self_sha256")
+
+
+def _content_sha(doc: dict) -> str:
+    """A digest of what the document SAYS, with the clock and the digest field itself left out."""
+    return IR.sha(json.dumps({k: v for k, v in doc.items() if k not in _NOT_CONTENT},
+                             sort_keys=True, default=str))
+
+
 # ── step 1: predictions, from the contract and the features only ─────────────
 
 def predict(contract: dict, rows: list) -> dict:
@@ -98,7 +107,11 @@ def predict(contract: dict, rows: list) -> dict:
            "n_operands": len(preds),
            "n_predicted_sourced": sum(1 for p in preds if p["contract_applies"] is True),
            "predictions": preds}
-    doc["self_sha256"] = IR.sha(json.dumps(doc, sort_keys=True))
+    # THE DIGEST IS OVER THE CONTENT, NOT THE CLOCK. The first version hashed the whole document
+    # including `written_utc`, so two identical prediction sets digested differently and the digest
+    # could not witness "the prediction was committed before the verdict was read" at all - it only
+    # witnessed when it was written. A test that changed nothing but the verdict caught it.
+    doc["self_sha256"] = _content_sha(doc)
     return doc
 
 
@@ -132,7 +145,7 @@ def resolve(prediction_doc: dict, rows: list) -> dict:
     doc = {"schema": SCHEMA + ".verdicts", "rule": RULE, "written_utc": _utc(),
            "predictions_sha256": prediction_doc["self_sha256"],
            "counts": dict(counts), "results": out}
-    doc["self_sha256"] = IR.sha(json.dumps(doc, sort_keys=True))
+    doc["self_sha256"] = _content_sha(doc)
     return doc
 
 
