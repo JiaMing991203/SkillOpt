@@ -1,86 +1,70 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 19:40 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
-NOT pushed. Tracked tree clean. THE LEARNED-CONTRACT FOLLOW-UP IS IN PROGRESS — see the next
-section for live jobs.**
+**Last update: 2026-11-21 21:35 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+NOT pushed. NO OfficeQA JOB RUNNING OR QUEUED. The learned-contract follow-up is COMPLETE.**
+
+## START HERE -> `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md`
+One self-contained read of this follow-up: accounting, the cap fix, the evidence set, the occurrence
+audit, the learner, the stage connection, Lean, the paired rehearsal, a readiness table and the single
+recommended next step. The rest of this note is the operational handoff only.
 
 ## CLUSTER ACCESS
-SSH master UP (`ssh -O check gl` → `Master running`). **Great Lakes needs Duo 2FA**, so a session that
-finds `~/.ssh/cm_gl` gone cannot restore it; the user must run `ssh -M -S ~/.ssh/cm_gl -fN gl`.
+SSH master UP. **Great Lakes needs Duo 2FA**, so a session that finds `~/.ssh/cm_gl` gone cannot
+restore it; the user must run `ssh -M -S ~/.ssh/cm_gl -fN gl`.
 
 ## THE COMPLETED TWO-BASELINE COMPARISON IS PRESERVED AND SEALED
-`docs/research/OFFICEQA_BASELINE_LAUNCH.md` is the complete campaign report. Endpoints
-`9d377d1c2906` (S0), `e35673d87cb7` (Original SkillOpt), `03d6564f1d10` (Trace2Skill), all three
-digest-verified locally. **Held-out: 30/30 per endpoint per pass, 180 episodes, SCORES SEALED.** Nothing
-in the follow-up below reads them, reruns a baseline, enlarges validation, or touches the frozen 12/12/30
-split.
+`docs/research/OFFICEQA_BASELINE_LAUNCH.md` is its complete report. Endpoints `9d377d1c2906` (S0),
+`e35673d87cb7` (Original SkillOpt), `03d6564f1d10` (Trace2Skill). **Held-out 30/30 per endpoint per
+pass, 180 episodes, SCORES SEALED — not opened by this follow-up.** No baseline rerun, no enlarged
+validation, no new document structure.
 
-## THE FOLLOW-UP (rule OQA-LN-1, amendment D-1) — WHERE IT STANDS
+### THE FOLLOW-UP IN SIX LINES
+* **Accounting rebuilt**, 0 uncovered (job, role) pairs, the one overlapping pair agreeing exactly:
+  actor **3,462 attempts / $1.4378** (provider $1.1151), optimizer **206 / $1.9788** (provider figure
+  unavailable). Earlier dollar figures were overstated; the attempt counts were right.
+* **The cap failure is reproduced deterministically and fixed** — the amount in the claim filename
+  defeated `O_EXCL`. Verified on `/nfs/turbo`: the interleaving fails closed, 12 of 12 races total
+  exactly 23. Plus a phase-wide single-payer token.
+* **The expected-to-change test is corrected, not disabled** — 2,531 passed / 0 failed. A claim about
+  C-3 is withdrawn; the group count is 17 and 17 is right.
+* **Two learner repetitions converged; 26/26 prospective confirmations on unseen questions; both
+  DECLINED to repair the one counterexample, correctly** — its feature vector is identical to four
+  operands the resolver did call sourced, and a test proves no available narrowing separates them.
+* **Lean rc 0, 86 examples — and its FIRST compile refuted the Python side**, which led to two false
+  accusations being withdrawn.
+* **The paired rehearsal ran through the real analyst**, inputs identical to the byte except the
+  3,129-byte report. Mixed verdict, evidence saved for your and Codex's judgment.
 
-**Bundles** (never rebuild one while its jobs are live; bash reads a body lazily):
-`oqa_ln_20261121` `95e5437`, `oqa_ln_20261121b` `482a2e0`, `oqa_ln_20261121c` `c4ee614`.
-Submit with `OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|lean|rehearse`.
-Output root `runs/20261121-officeqa-learner/{v1_freeze,v2_learn,v3_lean,v4_rehearse}`.
+### BUNDLES AND PHASES
+`oqa_ln_20261121` … `oqa_ln_20261121i`; the newest, `i`, commit `21c126c`, is the one to reuse.
+`OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|restage|lean|rehearse`.
+Output root `runs/20261121-officeqa-learner/{v1_freeze,v2_learn,v2b_restage,v3_lean,v4_rehearse}`,
+pulled locally to `~/dev/lean_skillopt/runs/20261121-officeqa-learner/` (26 files).
+**Never rebuild a bundle while its jobs are live** — bash reads a body lazily.
 
-| job | phase | state | what it established |
-|---|---|---|---|
-| 66580310 | ledger | COMPLETED | ledger PASS on nfs; suite 2,529 passed / **1 failed** (the stale pin) |
-| 66580311 | freeze | COMPLETED | evidence frozen `63c10e469f45930e`, vocabulary v10 `464b1cae6c65aa36` |
-| 66580469 | ledger | COMPLETED | suite **2,531 passed / 0 failed**; group probe: 17 is correct |
-| 66580714 | learn | **PAID, submitted 19:35** | two learner repetitions, ≤2 calls each |
-
-**1. ACCOUNTING IS REBUILT.** `docs/research/OFFICEQA_PHASE_ACCOUNTING.json`, from
-`research/officeqa/oqa_phase_acct{,_run}.py`. Two sources, overlap named not summed: the per-job backend
-call logs and the shared ledger. **Zero uncovered (job, role) pairs, zero unexpected spending**, and the
-one pair both sources cover agrees exactly.
-
-    target     3,462 attempts   charged $1.4378   provider-reported $1.1151   0 retries   0 unresolved
-    optimizer    206 attempts   charged $1.9788   provider figure UNAVAILABLE (no record carries one)
-    remaining    16,538 / $13.5622   and   194 / $18.0212
-
-The actor call log does NOT exist for the three held-out jobs: the deployed body at `c35df7e` has the
-export at the s0 and t2s branches only. Read from the deployed script, not inferred from absence.
-
-**2. THE CAP FAILURE HAS A MECHANISM AND IT IS FIXED.** The claim file NAME carried the amount, so two
-callers at one sequence number with different amounts wrote different names and `O_CREAT|O_EXCL` never
-fired; they got different amounts because `granted` came from two listings (claims, then releases).
-Reproduced deterministically as `000012-target-attempts-1.json` AND `-2.json`, net 24 against a cap of
-23. `_write_release` had the same defect. Three guards: one exclusive lock across grant and release, an
-amount-free sequence token, and releases read before claims. **Verified on /nfs/turbo (job 66580469):
-the interleaving is refused fail-closed, and the four-process race passed 12 of 12 with every run
-totalling exactly 23** — the cap reachable to its last unit and never exceeded.
-Plus a **phase-wide single-payer token** (`mkdir`, atomic on NFS) so two paid jobs cannot spend at once.
-
-**3. THE EXPECTED-TO-CHANGE TEST IS CORRECTED, NOT DISABLED.** The pins moved to
-`tests/data/officeqa_report_expectations.json`, each naming the amendment that set it. The
-baseline-immutability assertions stayed in the test body and got stronger. **A claim is withdrawn:**
-C-3 did NOT return the stage-group count to 14 — it reads 17, and the probe shows why (the three
-largest UNKNOWN groups are `cell_bound`/`period_match`/`unit_match` at n=19 each, the triple C-2's
-defect-A repair emits for one withdrawn binding). 17 is correct; 14 was what a vanishing requirement
-looked like.
-
-**4. THE EVIDENCE SET IS FROZEN** at `63c10e469f45930e`: the 48 fixed-S0 training trajectories of job
-66552421, **676 binary calculations, 1,352 operands**, 82 chained statements declared out of scope.
-Task-separated 6/6 by `sha256("OQA-LN-1|"+uid)` — learn UID0028/0026/0079/0014/0034/0033, check
-UID0085/0031/0063/0065/0017/0030. **Three recovery-shaped attempts found by SHAPE, not by score:**
-p2/UID0026 (learn), **p4/UID0063 and p4/UID0085 (check — so the recovery control is prospective)**.
-Labelled REUSED DEVELOPMENT RECORDS: Trace2Skill already consumed these same 48.
-
-**5. ALLOWANCE FOR THIS FOLLOW-UP.** 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor
-calls, 0 GPUs — sublimits inside the phase ceilings of 50 h / 400 calls / $20, against which the
-campaign already drew 206 calls and $1.9788. **Used so far: CPU 1.42 of 8 requested; optimizer 0 of 24.**
+### ALLOWANCE
+This follow-up: 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor calls, 0 GPUs.
+**Used: CPU 3.83 of 8; DeepSeek 6 of 24 and $0.029476 of $3.00; actor 0; GPUs 0.**
+Phase ceilings after the campaign: optimizer 194 of 400 attempts and $18.0212 of $20 left; actor
+16,538 attempts and $13.5622 left. The lower limit governs; it was the sublimit throughout.
 
 ### RESUME
-Phases are independent and each writes its own versioned directory. `freeze` is deterministic and free.
-`learn` takes the payer token, refuses to start with an inert ledger, and is capped at 8 calls / $1.50
-per process. `lean` and `rehearse` read `v2_learn`. A requeue is refused (`SLURM_RESTART_COUNT != 0`).
+Each phase writes its own versioned directory and they are independent. `freeze`, `restage`, `lean` and
+`ledger` are free. `learn` and `rehearse` take the exclusive payer token, refuse to start with an inert
+ledger, and are capped at 8 calls / $1.50 per process. A requeue is refused
+(`SLURM_RESTART_COUNT != 0`). **Four fail-closed stops fired during this phase and each cost nothing.**
 
 ### NEXT ACTIONS
-1. Read job 66580714's result, then submit `lean` and `rehearse`.
-2. Unseal the three held-out results when the user wants the comparison.
+1. **The one recommended step is free** — amendment D-2: require the matched field to be a bare numeral
+   before a position counts as a cell, then replay over the same frozen set. The prediction to record
+   first is in the milestone report §13.
+2. Unseal the three held-out results when you want the comparison. I have read counts and provenance
+   only.
 3. Decide whether the one-question validation margin justifies a larger validation set.
-4. The historical 44-hour CPU convention decision (core-hours vs requested walltime) is still the
-   user's; it is separate from this phase and does not block it.
+4. The historical 44-hour CPU convention (core-hours vs requested walltime) is still your decision and
+   is separate from this phase.
+5. **Not recommended now:** a broader parser change, an actor-interface change, a third learner
+   repetition, or any contract performance arm.
 
 ---
 
