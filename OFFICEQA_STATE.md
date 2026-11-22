@@ -1,17 +1,39 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 23:55 EST, compaction sweep.** Branch `officeqa-contracts`, worktree
+**Last update: 2026-11-22 01:10 EST, D-2..D-5 offline audit.** Branch `officeqa-contracts`, worktree
 `SkillOpt-officeqa`. The tree is clean, so HEAD is exactly what this note describes — a note that
 records its own commit always lags by one, so read the commit with `git log --oneline -1` instead.
-186+ commits ahead of origin and **NOT pushed** (pushing remains unauthorized).
+190+ commits ahead of origin and **NOT pushed** (pushing remains unauthorized).
 
-**NO OfficeQA JOB RUNNING OR QUEUED** — verified against `squeue`; the six live `e3m-*` jobs are held
-Experiment 3 GPU jobs on another track. **The learned-contract follow-up is COMPLETE.**
+**ONE OfficeQA JOB: 66599377 `oqa-ln-d2`, bundle `oqa_ln_20261122c`** — free, no key loaded, cannot
+spend. It runs the D-2..D-5 replay, recompiles Lean into `v5_lean` and runs the full suite. It has
+been queueing on `AssocGrpCpuLimit`, which is the shared account's CPU limit and not a fault; two
+earlier submissions (66598457, 66599047) were cancelled by me while still PENDING, at zero cost, to
+fix a Lean receipt field and then two Lean proofs. The six live `e3m-*` jobs are held Experiment 3
+GPU jobs on another track.
 
-## START HERE -> `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md`
-One self-contained read of this follow-up: accounting, the cap fix, the evidence set, the occurrence
-audit, the learner, the stage connection, Lean, the paired rehearsal, a readiness table and the single
-recommended next step. The rest of this note is the operational handoff only.
+**THE WHOLE AUDIT ALREADY RAN LOCALLY AND IS COMPLETE** — its results are in
+`runs/20261121-officeqa-learner/v5_d2/` and in the packet below. The cluster job adds only the Lean
+compile and the authoritative test run. If it never lands, say so and deliver the rest; nothing
+depends on it except those two receipts.
+
+## START HERE -> `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`
+Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it audits. In six lines:
+
+* **D-2** a numeral inside label text is not a numeric data cell. **1,546 of 3,548 occurrence-producing
+  matches (43.6%) were never cells.** 11 operand verdicts change, supported bindings 54 -> 49.
+* **D-3/D-4/D-5** the report conflated provenance, arithmetic, task requirements and correctness;
+  76% of its "the arithmetic does not hold" findings were parse artifacts; a list answer and
+  absolute-value bars produced false accusations. **10 accusations withdrawn, 0 added, 0 remaining.**
+* **The learner adds nothing demonstrable.** A 2x2 (extraction x rule, both frozen models, 25
+  attempts) gives identical states, classes and counts in all four cells. **No demonstrated learned
+  increment.**
+* **Two of the three "recovery controls" are not recoveries** — p4/UID0063 and p4/UID0085 have zero
+  abandoned alternatives. p4/UID0063's discharge rested on `86,000 - 0 = 86,000`.
+* **Nothing was applied anywhere**: no skill edit, no validation, no actor call, no GPU, no provider
+  request, held-out still sealed.
+* **Next:** predict ABANDONMENT from a prefix — a suffix-computed label, so not another proxy for a
+  label the pipeline already has. Prerequisite: fix the `max(0.5, …)` numeric tolerance.
 
 ## CLUSTER ACCESS
 SSH master UP. **Great Lakes needs Duo 2FA**, so a session that finds `~/.ssh/cm_gl` gone cannot
@@ -41,17 +63,38 @@ validation, no new document structure.
   3,129-byte report. Mixed verdict, evidence saved for your and Codex's judgment.
 
 ### BUNDLES AND PHASES
-`oqa_ln_20261121` … `oqa_ln_20261121j`; the newest, **`j`, commit `abe2984`**, is the one to reuse —
-it is the bundle the final verification (job 66588746) ran from.
-`OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|restage|lean|rehearse`.
-Output root `runs/20261121-officeqa-learner/{v1_freeze,v2_learn,v2b_restage,v3_lean,v4_rehearse}`,
-pulled locally to `~/dev/lean_skillopt/runs/20261121-officeqa-learner/` (26 files).
-**Never rebuild a bundle while its jobs are live** — bash reads a body lazily.
+`oqa_ln_20261121` … `oqa_ln_20261121j`, then `oqa_ln_20261122a|b|c`. The newest, **`c`, commit
+`90ef7cf`**, is the one to reuse — it is what job 66599377 runs from.
+`OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|restage|lean|rehearse|d2`.
+Output root `runs/20261121-officeqa-learner/{v1_freeze,v2_learn,v2b_restage,v3_lean,v4_rehearse,
+v5_d2,v5_lean}`, pulled locally to `~/dev/lean_skillopt/runs/20261121-officeqa-learner/`.
+**Never rebuild a bundle while its jobs are live** — bash reads a body lazily. `d2` is free, drops
+every key before it starts, and imports no model layer, so it cannot spend.
+
+**The D-2..D-5 audit reproduces entirely on the workstation**, because all 48 frozen trajectories are
+in `runs/20261121-officeqa-two-baselines/s0/train_p{1..4}/predictions/` and every trace digest
+matches the freeze. Use python3.12 (3.9 cannot import `skillopt`, though these modules do not need
+it) and point the source root at the local mirror:
+
+    OQA_LN_SOURCE_ROOT=~/dev/lean_skillopt/runs/20261121-officeqa-two-baselines/s0 \
+    python3.12 research/officeqa/oqa_d2_run.py \
+      --freeze  ~/dev/lean_skillopt/runs/20261121-officeqa-learner/v1_freeze/LN_FREEZE.json \
+      --learn-root ~/dev/lean_skillopt/runs/20261121-officeqa-learner/v2_learn \
+      --rehearse-root ~/dev/lean_skillopt/runs/20261121-officeqa-learner/v4_rehearse \
+      --compare-stage-root ~/dev/lean_skillopt/runs/20261121-officeqa-learner/v2b_restage \
+      --out <a NEW directory>
+
+The override names a different COPY of the frozen records; every consumer re-verifies each attempt's
+`trace_sha256`, so a mirror that is not byte-identical is refused rather than used.
 
 ### ALLOWANCE
 This follow-up: 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor calls, 0 GPUs.
-**Used: CPU 4.50 of 8 requested job-hours across 14 jobs (0.23 elapsed); DeepSeek 6 of 24
-attempts and $0.029476 of $3.00; actor 0; GPUs 0.**
+**Used through 2026-11-21: CPU 4.50 of 8 requested job-hours across 14 jobs (0.23 elapsed);
+DeepSeek 6 of 24 attempts and $0.029476 of $3.00; actor 0; GPUs 0.**
+**The D-2..D-5 task (2026-11-22) authorizes NO provider calls at all** and spends only CPU. The
+instruction states the CPU remainder as 3.75; my corrected figure is 3.50, because the milestone
+first counted 13 jobs where sacct lists 14. The lower governs. Cancelled jobs 66598457 and 66599047
+never started and cost nothing; 66599377 requests 0:25 on one core.
 Phase ceilings after the campaign: optimizer 194 of 400 attempts and $18.0212 of $20 left; actor
 16,538 attempts and $13.5622 left. The lower limit governs; it was the sublimit throughout.
 
@@ -62,15 +105,19 @@ ledger, and are capped at 8 calls / $1.50 per process. A requeue is refused
 (`SLURM_RESTART_COUNT != 0`). **Four fail-closed stops fired during this phase and each cost nothing.**
 
 ### NEXT ACTIONS
-1. **The one recommended step is free** — amendment D-2: require the matched field to be a bare numeral
-   before a position counts as a cell, then replay over the same frozen set. The prediction to record
-   first is in the milestone report §13.
-2. Unseal the three held-out results when you want the comparison. I have read counts and provenance
+1. **D-2 is DONE** (2026-11-22) and so are D-3, D-4 and D-5. The result is in
+   `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`. Read §1 first: the checker's ten accusations were all
+   its own artifacts, and the learned layer adds nothing a 2x2 can detect.
+2. **The decision this packet asks for:** given no demonstrated learned increment, whether the
+   comparison worth running at all is contract-report versus no-report, with the learner out of it.
+3. **The recommended free next step** — fix the `max(0.5, |x|·1e-6)` numeric tolerance, then learn
+   ABANDONMENT from a prefix (packet §14). Record the prediction before replaying.
+4. Unseal the three held-out results when you want the comparison. I have read counts and provenance
    only.
-3. Decide whether the one-question validation margin justifies a larger validation set.
-4. The historical 44-hour CPU convention (core-hours vs requested walltime) is still your decision and
+5. Decide whether the one-question validation margin justifies a larger validation set.
+6. The historical 44-hour CPU convention (core-hours vs requested walltime) is still your decision and
    is separate from this phase.
-5. **Not recommended now:** a broader parser change, an actor-interface change, a third learner
+7. **Not recommended now:** a broader parser change, an actor-interface change, a third learner
    repetition, or any contract performance arm.
 
 ---
