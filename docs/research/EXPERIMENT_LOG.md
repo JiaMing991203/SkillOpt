@@ -2203,9 +2203,36 @@ are D-4 fragments whose arithmetic is out of scope, and both of its supporting o
 candidate producers each — an ambiguity created in part by the `max(0.5, …)` tolerance, which is
 flagged and not changed.
 
+### Lean, and the suite
+
+Job 66599377 (bundle `oqa_ln_20261122c`, commit `90ef7cf`, phase `d2`, free, every API key dropped
+before the phase began), COMPLETED in **00:04:03 of 0:25 requested on one core**.
+
+| | |
+|---|---|
+| compiler | Lean (version 4.20.0, x86_64-unknown-linux-gnu, commit 77cfc4d1a4f6, Release) |
+| source | **`ec5e8ee905465b76`**, 39,984 bytes |
+| return code | **0**, 0 errors, 0 warnings, all statements accepted |
+| examples | **272** = 72 operand (36 classifications + 36 settled-ness) + 200 obligation; 0 skipped |
+| suite | **2,615 passed, 0 failed**, 9 skipped, 368 subtests |
+
+New definitions encode the corrections: `sourceTraced` gains `nAmbiguous` and can never be VIOLATED;
+`answerTraced` gains `needsArithmetic` and `nUnrepresented`; `arithRecorded` gains `fragment`;
+`classify` gains `restatementOnly` and `severalPossibleOrigins`; `replacementDemonstrated` requires
+an abandoned alternative. Unlike the 2026-11-21 compile, this one agreed at the first attempt — a
+weaker cross-check than a disagreement, and it is recorded as such.
+
+**The cluster reproduced the whole replay from the FROZEN cluster records**, not from the local
+mirror, and agrees on every headline figure: 3,548 → 2,002 occurrence matches, 54 → 49 supported
+bindings, 11 changed bindings, 0 paid calls.
+
 ### Resources
 
-CPU_BLOCK
+CPU **0.42 of the 3.50 remaining requested job-hours** (one 0:25 job on one core; two earlier
+submissions, 66598457 and 66599047, were cancelled while PENDING and were never allocated, so they
+cost nothing). **Zero provider, learner, optimizer and actor requests. Zero GPUs.** The 18 remaining
+teacher attempts were not authorized and were not spent. Remaining after this task: **3.08**
+requested CPU job-hours.
 
 **Artifacts.** `runs/20261121-officeqa-learner/v5_d2/` — `D2_FREEZE.json`, `D2_CELLS.json`,
 `D2_RULE_r1.json`, `D2_RULE_r2.json`, `D2_ANCESTRY.json`, `D2_STAGE_MOVES.json`,

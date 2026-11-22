@@ -5,17 +5,15 @@
 records its own commit always lags by one, so read the commit with `git log --oneline -1` instead.
 190+ commits ahead of origin and **NOT pushed** (pushing remains unauthorized).
 
-**ONE OfficeQA JOB: 66599377 `oqa-ln-d2`, bundle `oqa_ln_20261122c`** — free, no key loaded, cannot
-spend. It runs the D-2..D-5 replay, recompiles Lean into `v5_lean` and runs the full suite. It has
-been queueing on `AssocGrpCpuLimit`, which is the shared account's CPU limit and not a fault; two
-earlier submissions (66598457, 66599047) were cancelled by me while still PENDING, at zero cost, to
-fix a Lean receipt field and then two Lean proofs. The six live `e3m-*` jobs are held Experiment 3
-GPU jobs on another track.
+**NO OfficeQA JOB RUNNING OR QUEUED.** Job 66599377 `oqa-ln-d2` COMPLETED in 00:04:03 of 0:25 on one
+core: **Lean 4.20.0 rc 0, 0 errors, 0 warnings, 272 examples, source `ec5e8ee905465b76`; suite 2,615
+passed / 0 failed.** Two earlier submissions (66598457, 66599047) were cancelled while still PENDING,
+at zero cost, to fix a Lean receipt field and then two Lean proofs. The six live `e3m-*` jobs are
+held Experiment 3 GPU jobs on another track, and `lc-rank` 66598895 belongs to the EB-1 track.
 
-**THE WHOLE AUDIT ALREADY RAN LOCALLY AND IS COMPLETE** — its results are in
-`runs/20261121-officeqa-learner/v5_d2/` and in the packet below. The cluster job adds only the Lean
-compile and the authoritative test run. If it never lands, say so and deliver the rest; nothing
-depends on it except those two receipts.
+**THE AUDIT REPRODUCES ON THE WORKSTATION**, and the cluster rebuilt it independently from the FROZEN
+records and agreed on every headline figure. Results in `runs/20261121-officeqa-learner/v5_d2/` and
+`v5_lean/`.
 
 ## START HERE -> `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`
 Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it audits. In six lines:
@@ -92,10 +90,10 @@ The override names a different COPY of the frozen records; every consumer re-ver
 This follow-up: 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor calls, 0 GPUs.
 **Used through 2026-11-21: CPU 4.50 of 8 requested job-hours across 14 jobs (0.23 elapsed);
 DeepSeek 6 of 24 attempts and $0.029476 of $3.00; actor 0; GPUs 0.**
-**The D-2..D-5 task (2026-11-22) authorizes NO provider calls at all** and spends only CPU. The
+**The D-2..D-5 task (2026-11-22) authorized NO provider calls at all** and spent only CPU. The
 instruction states the CPU remainder as 3.75; my corrected figure is 3.50, because the milestone
-first counted 13 jobs where sacct lists 14. The lower governs. Cancelled jobs 66598457 and 66599047
-never started and cost nothing; 66599377 requests 0:25 on one core.
+first counted 13 jobs where sacct lists 14. The lower governs. **Used: 0.42 (job 66599377); cancelled
+jobs 66598457 and 66599047 never started and cost nothing. Remaining: 3.08.**
 Phase ceilings after the campaign: optimizer 194 of 400 attempts and $18.0212 of $20 left; actor
 16,538 attempts and $13.5622 left. The lower limit governs; it was the sublimit throughout.
 

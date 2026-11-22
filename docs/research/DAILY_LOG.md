@@ -2023,3 +2023,14 @@ calculation will be **abandoned** — a label computed from the *suffix*, which 
 computes, so a rule predicting it makes a claim about what the agent does next rather than
 approximating a label the pipeline already has. Natural counterexamples are already in the checking
 set.
+
+**Lean compiled clean and the suite is green.** Job 66599377 (free, every key dropped, 00:04:03 of
+0:25 on one core): Lean 4.20.0 **rc 0, 0 errors, 0 warnings, 272 examples accepted**, source
+`ec5e8ee905465b76`; suite **2,615 passed / 0 failed** — the 2,557 of 2026-11-21 plus this task's 58,
+with the pinned historical report test still passing because `oqa_occ`'s default behaviour did not
+move. Unlike the 2026-11-21 compile this one agreed at the first attempt, which is *weaker* evidence
+than a disagreement and is recorded as such. **The cluster also rebuilt the whole replay from the
+frozen cluster records rather than the local mirror and agreed on every headline figure**, so the two
+are the same evidence in fact and not only by digest. Two earlier submissions were cancelled while
+still PENDING, at zero cost, to fix a Lean receipt field and then two Lean proofs. CPU 0.42 of 3.50;
+3.08 left.
