@@ -1,7 +1,9 @@
 # OfficeQA: state note (resume from here)
 
 **Last update: 2026-11-21 23:55 EST, compaction sweep. Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`, commit `8ae4950`, tree clean, 186 commits ahead of origin and NOT pushed
+`SkillOpt-officeqa`. **The tree is clean, so HEAD is exactly what this note describes** — a note
+that records its own commit always lags by one, so read it with `git log --oneline -1` instead.
+186+ commits ahead of origin and NOT pushed
 (pushing remains unauthorized). NO OfficeQA JOB RUNNING OR QUEUED — verified against `squeue`; the
 six live `e3m-*` jobs are held Experiment 3 GPU jobs on another track. The learned-contract follow-up
 is COMPLETE.**
