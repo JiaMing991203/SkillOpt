@@ -156,6 +156,7 @@ def main(argv=None) -> int:
                              "establishes that a corroborated position is the cell the actor meant."),
         "cases": {k: v for k, v in chosen.items()},
         "counts": {k: len(v) for k, v in chosen.items()},
+        "bare_number_measurement": bare_number_measurement(freeze_doc),
     }
     body = json.dumps(doc, indent=1, sort_keys=True, default=str)
     doc["self_sha256"] = IR.sha(body)
@@ -180,6 +181,87 @@ def main(argv=None) -> int:
                     print(f"       pattern={obs.get('pattern')!r}")
                 print(f"   {c['why_this_is_or_is_not_a_source'][:200]}")
     return 0
+
+
+
+
+# ── a defect the audit itself exposed, MEASURED and not yet acted on ────────
+
+def _fields_of(items, document, line_no):
+    import re
+    for entry in OCC.normalize(items):
+        if entry["kind"] != "tool":
+            continue
+        pm = re.search(r"path=['\"]([^'\"]+)['\"]", entry["cmd"])
+        if not pm or os.path.basename(pm.group(1)) != document:
+            continue
+        for raw in entry["obs"].splitlines():
+            m = OCC._LINE.match(raw)
+            if m and int(m.group(1)) == line_no:
+                return [f.strip() for f in m.group(2).split("|")]
+    return None
+
+
+_BARE = __import__("re").compile(r"^-?\$?\s?\d[\d,]*(?:\.\d+)?%?$")
+
+
+def bare_number_measurement(freeze_doc: dict) -> dict:
+    """Is a SUPPORTED binding's matched field a bare number, or a numeral inside a label?
+
+    WHY THIS IS A MEASUREMENT AND NOT A REPAIR. `oqa_occ.observed_occurrences` treats every numeric
+    token in any pipe-delimited observation line as a cell, header rows included. The first
+    `unambiguous_source` case this audit produced is `1937` in `1937 - 1935.5 = 1.5`, SUPPORTED by a
+    unique position corroborated by ROW_LABEL - at field 2 of a HEADER line, inside the text "Receipts
+    Carriers' Taxing Act of 1937". A year in a column heading is not a value the actor looked up, and
+    that is precisely the failure the instruction warns about.
+
+    So the discriminator is recorded BESIDE the verdict and NOTHING READS IT. The evidence set is
+    frozen and a learner may already have run against this resolver; changing the resolver now would
+    make every earlier number incomparable. The repair belongs to the next amendment, with this
+    measurement as its reason - and the measurement may well show it matters less than the one case
+    suggests, which is the other reason not to repair first.
+    """
+    bare = embedded = unknown = 0
+    examples: list = []
+    for row in sorted(freeze_doc["attempts"], key=lambda d: d["attempt_id"]):
+        pdir = os.path.join(freeze_doc["source_root"], "train_p%d" % row["pass"], "predictions")
+        att = EV.read_attempt(pdir, row["item"])
+        ex = EV.extract(att)
+        vd = EV.verdicts(att, ex)
+        for ci, calc in enumerate(ex["calculations"]):
+            upto = att["items"][: calc["message_item_index"] + 1]
+            for oi, operand in enumerate(calc["operands"]):
+                v = vd[f"{ci}/{oi}"]
+                if not v["sourced"] or not v.get("position"):
+                    continue
+                p = v["position"]
+                fields = _fields_of(upto, p["document"], p["line"])
+                if fields is None or p["field"] >= len(fields):
+                    unknown += 1
+                    continue
+                text = fields[p["field"]]
+                if _BARE.match(text):
+                    bare += 1
+                else:
+                    embedded += 1
+                    if len(examples) < 8:
+                        examples.append({
+                            "attempt_id": row["attempt_id"], "statement": calc["statement"],
+                            "operand": operand["as_written"],
+                            "position": p, "field_text": text[:160],
+                            "corroborations": v["corroborations"]})
+    total = bare + embedded + unknown
+    return {
+        "n_supported_bindings": total,
+        "matched_field_is_a_bare_number": bare,
+        "matched_field_is_a_numeral_inside_a_label": embedded,
+        "could_not_re_read_the_field": unknown,
+        "share_embedded": (round(embedded / total, 4) if total else None),
+        "examples_of_embedded": examples,
+        "status": "MEASURED, NOT ACTED ON. Nothing reads this field; see the docstring for why.",
+        "proposed_next": ("require the matched field to be a bare numeral before a position counts as "
+                          "a cell, as its own amendment, with this measurement as the reason"),
+    }
 
 
 if __name__ == "__main__":

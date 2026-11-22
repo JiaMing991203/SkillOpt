@@ -195,6 +195,10 @@ freeze)
     V="$OUT/v1_freeze"; mkdir -p "$V" || exit 3
     "$OQA_PY" -I "$RES/oqa_ln_evidence.py" --s0-root "$S0" --out "$V/LN_FREEZE.json" \
         >> "$OUTDIR/job.log" 2>&1 || die "the evidence freeze failed"
+    # The hand-checkable audit of a few occurrence bindings, against the observations themselves.
+    "$OQA_PY" -I "$RES/oqa_ln_audit.py" --freeze "$V/LN_FREEZE.json" \
+        --out "$V/LN_AUDIT.json" --per-kind 2 >> "$OUTDIR/job.log" 2>&1 \
+        || log "WARNING: the occurrence audit failed"
     "$OQA_PY" -I -c "
 import json, sys
 sys.path.insert(0, '$RES')
@@ -208,7 +212,7 @@ json.dump({'bundle_label': V.BUNDLE_LABEL, 'digest': V.bundle_digest(),
           open('$V/LN_VOCAB_v10.json', 'w'), indent=1, sort_keys=True)
 print('vocabulary bundle', V.BUNDLE_LABEL, V.bundle_digest()[:16])
 " >> "$OUTDIR/job.log" 2>&1 || die "the vocabulary freeze failed"
-    cp "$V/LN_FREEZE.json" "$V/LN_VOCAB_v10.json" "$OUTDIR/" 2>/dev/null || true
+    cp "$V/LN_FREEZE.json" "$V/LN_VOCAB_v10.json" "$V/LN_AUDIT.json" "$OUTDIR/" 2>/dev/null || true
     log "freeze written to $V"
     ;;
 

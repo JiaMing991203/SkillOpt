@@ -222,7 +222,12 @@ def _call(system: str, prompt: str, stage: str, cap: int) -> dict:
     if root not in sys.path:
         sys.path.insert(0, root)
     from skillopt.model import chat_optimizer
-    text, usage = chat_optimizer(system, prompt, max_completion_tokens=cap, retries=0, stage=stage)
+    # `retries` IS THE NUMBER OF ATTEMPTS, not the number of extra tries: the backend's loop is
+    # `for attempt in range(retries)`. Passing 0 therefore sent NOTHING and raised "failed after 0
+    # retries: None" - job 66580895, zero attempts in the ledger, no call log written. 2 means one
+    # request and one retry if it fails, and the ledger counts each attempt, which is the right
+    # accounting for a 24-attempt allowance.
+    text, usage = chat_optimizer(system, prompt, max_completion_tokens=cap, retries=2, stage=stage)
     raw = str(text or "")
     m = re.search(r"\{.*\}", raw, re.S)
     parsed, problem = None, ""

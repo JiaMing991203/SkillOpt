@@ -5,9 +5,9 @@
 #
 #     ledger    0:25  FREE  the ledger race fix, verified on /nfs/turbo, plus the full test suite
 #     freeze    0:10  FREE  the evidence set, the v10 vocabulary and the accounting, frozen
-#     learn     0:30  PAID  two learner repetitions, at most 2 optimizer calls each
-#     lean      0:20  FREE  generate and compile the Lean file
-#     rehearse  0:20  PAID  the paired analyst rehearsal, exactly 2 optimizer calls
+#     learn     0:15  PAID  two learner repetitions, at most 2 optimizer calls each
+#     lean      0:15  FREE  generate and compile the Lean file
+#     rehearse  0:15  PAID  the paired analyst rehearsal, exactly 2 optimizer calls
 #
 # The two paid phases take a phase-wide exclusive payer token, so they can never spend concurrently.
 set -euo pipefail
@@ -29,9 +29,13 @@ if [ -n "$_accepts" ] && ! printf '%s' "|$_accepts|" | grep -q "|$WHAT|"; then
     echo "  build a NEW bundle from a revision that has it." >&2
     exit 2
 fi
+# SIZED TO MEASURED RUNTIME, not to a comfortable margin. The two-baseline campaign requested 17.50
+# CPU job-hours across seven Trace2Skill submissions that used 44 minutes between them, because every
+# one asked for 2:30. The free phases here have run in 2 and 143 seconds; the paid ones make at most a
+# handful of HTTP calls.
 case "$WHAT" in
-  ledger)   T=00:25:00 ;; freeze) T=00:10:00 ;; learn) T=00:30:00 ;;
-  lean)     T=00:20:00 ;; rehearse) T=00:20:00 ;;
+  ledger)   T=00:25:00 ;; freeze) T=00:10:00 ;; learn) T=00:15:00 ;;
+  lean)     T=00:15:00 ;; rehearse) T=00:15:00 ;;
   *) echo "unknown: $WHAT" >&2; exit 2 ;;
 esac
 if [ "$DRY" = "1" ]; then printf '  %-18s %s  PHASE=%s\n' "oqa-ln-$WHAT" "$T" "$WHAT" >&2; exit 0; fi
