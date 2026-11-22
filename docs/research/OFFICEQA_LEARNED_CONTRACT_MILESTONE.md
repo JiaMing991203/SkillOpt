@@ -21,7 +21,7 @@ added.
 
 ## 1. What actually ran, and what it cost
 
-Eleven Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121i`, output root
+Thirteen Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121i`, output root
 `runs/20261121-officeqa-learner/`.
 
 | job | phase | state | elapsed | what it established |
@@ -38,13 +38,14 @@ Eleven Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121i`, output root
 | 66588253 | restage | COMPLETED | 0:03 | stage reports rebuilt free; **2 false accusations withdrawn** |
 | 66588304 | lean | COMPLETED | 0:03 | Lean 4.20.0, return code 0 |
 | 66588323 | **rehearse (paid)** | COMPLETED | 1:55 | the paired analyst rehearsal, **2 paid calls** |
+| 66588746 | ledger | COMPLETED | 3:22 | final verification of the finished code: **2,557 passed / 0 failed**, ledger PASS |
 
 **Resources.** Sublimits for this follow-up were 8 requested CPU job-hours, 24 DeepSeek HTTP attempts
 AND $3, zero actor calls, zero GPUs.
 
 | resource | authorized for this follow-up | used | remaining |
 |---|---|---|---|
-| CPU, requested job-hours | 8 | **3.83** | 4.17 |
+| CPU, requested job-hours | 8 | **4.25** | 3.75 |
 | CPU, elapsed hours | — | 0.19 | — |
 | DeepSeek attempts | 24 | **6** (4 learner + 2 rehearsal) | **18** |
 | DeepSeek USD | $3.00 | **$0.029476** | **$2.970524** |
@@ -216,7 +217,7 @@ action forecasts, the `"unavailable"` provenance fields, and a **new** test asse
 campaign's own records still say what they said and its prediction files are still there. A pin may be
 re-set deliberately; those may not be re-set at all.
 
-**Suite: 2,531 passed, 0 failed, 9 skipped, 368 subtests** (job 66580469, on the cluster).
+**Suite: 2,531 passed, 0 failed, 9 skipped, 368 subtests** (job 66580469, on the cluster — the run that first had the suite green). Re-run against the FINAL code of this phase, job 66588746: **2,557 passed, 0 failed, 9 skipped, 368 subtests**, the 26 extra being this phase's own new tests. The ledger verification passed again in the same job: all five checks PASS, 12 of 12 races at exactly 23, the over-grant interleaving refused fail-closed.
 
 **A claim of mine is withdrawn.** The C-3 amendment said C-3 had returned the stage-diagnosis group
 count to its historical 14 and called that "independent support for C-3 being the right repair". It
@@ -609,7 +610,7 @@ are saved so the judgment can be made on them rather than on a count.
 | 5 | fix the cap failure and verify the mechanism | **PASSED** — reproduced deterministically, three guards, 12/12 on NFS at exactly 23 |
 | 6 | a proven phase-wide single payment coordinator | **PASSED** — exclusive payer token, used by both paid phases |
 | 7 | every paid request on the active ledger, correct provider/model, reservations, retries, release | **PASSED** — effective route read back from the live backend; four fail-closed stops, each costing nothing |
-| 8 | correct the expected-to-change test without disabling tests | **PASSED** — 2,531 passed / 0 failed; pins are data, immutability assertions are stronger |
+| 8 | correct the expected-to-change test without disabling tests | **PASSED** — 2,557 passed / 0 failed on the final code; pins are data, immutability assertions are stronger |
 | 9 | freeze records, roles, ids, chronology, exposure, vocabulary, extraction, stages, assumptions | **PASSED** — and the freeze digest defect was found and fixed |
 | 10 | task-separated checking where the evidence permits | **PASSED** — 6/6 by digest, disjoint questions |
 | 11 | audit a small set of occurrence bindings against the observations | **PASSED — and it refuted the resolver's strongest verdict** |

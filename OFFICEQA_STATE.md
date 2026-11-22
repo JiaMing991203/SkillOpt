@@ -25,7 +25,8 @@ validation, no new document structure.
 * **The cap failure is reproduced deterministically and fixed** — the amount in the claim filename
   defeated `O_EXCL`. Verified on `/nfs/turbo`: the interleaving fails closed, 12 of 12 races total
   exactly 23. Plus a phase-wide single-payer token.
-* **The expected-to-change test is corrected, not disabled** — 2,531 passed / 0 failed. A claim about
+* **The expected-to-change test is corrected, not disabled** — **2,557 passed / 0 failed** on the
+  final code (job 66588746). A claim about
   C-3 is withdrawn; the group count is 17 and 17 is right.
 * **Two learner repetitions converged; 26/26 prospective confirmations on unseen questions; both
   DECLINED to repair the one counterexample, correctly** — its feature vector is identical to four
@@ -44,7 +45,7 @@ pulled locally to `~/dev/lean_skillopt/runs/20261121-officeqa-learner/` (26 file
 
 ### ALLOWANCE
 This follow-up: 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor calls, 0 GPUs.
-**Used: CPU 3.83 of 8; DeepSeek 6 of 24 and $0.029476 of $3.00; actor 0; GPUs 0.**
+**Used: CPU 4.25 of 8; DeepSeek 6 of 24 and $0.029476 of $3.00; actor 0; GPUs 0.**
 Phase ceilings after the campaign: optimizer 194 of 400 attempts and $18.0212 of $20 left; actor
 16,538 attempts and $13.5622 left. The lower limit governs; it was the sublimit throughout.
 
