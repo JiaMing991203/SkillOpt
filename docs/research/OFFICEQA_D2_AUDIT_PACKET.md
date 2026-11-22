@@ -73,7 +73,7 @@ job-hours. My own corrected figure is 3.50: the milestone first reported 13 jobs
 authorization was consumed, not 4.25. The lower figure governs, as instructed.
 
   resource                      authorized   used by this task   remaining
-  CPU, requested job-hours      3.50         0.00 so far            3.50
+  CPU, requested job-hours      3.50         0.42            3.08
   provider / learner / optimizer HTTP calls  0                   not requested, not spent
   GPUs                          0            0                   -
   teacher attempts              not authorized for spending      18, untouched
@@ -82,7 +82,14 @@ THE WHOLE AUDIT RUNS LOCALLY. Every number in this packet was produced on the wo
 locally retrieved artifacts; the 48 frozen trajectories are present locally and all 48 trace digests
 match the freeze. An SSH interruption could not have stopped any of it. One short cluster job was
 needed for two things the workstation cannot do: compile Lean (no local toolchain) and run the
-authoritative test suite (the local interpreter cannot import skillopt).
+authoritative test suite (the local interpreter cannot import skillopt). Job 66599377 did both, in
+00:04:03 of the 0:25 requested on one core, with every API key dropped before the phase began.
+
+AND THE CLUSTER REPRODUCED THE AUDIT INDEPENDENTLY, which is a better check than I set out to make.
+It rebuilt everything from the FROZEN cluster records rather than from the local mirror, and agrees
+on every headline figure: 3,548 -> 2,002 occurrence matches, 54 -> 49 supported bindings, 11 changed
+bindings, 0 paid calls. So the local mirror and the frozen set are the same evidence in fact, not
+only by digest.
 
 WHAT DID NOT HAPPEN, each one checked rather than asserted:
   * No skill edit was applied. The four edit patches in section 10 are the ones saved in November
@@ -121,7 +128,7 @@ during it and before any result that uses them was reported.
   vocabulary               bundle v10, 464b1cae6c65aa36          unchanged
   extraction               oqa_occ + oqa_ln_evidence, D-1        + D-2, D-4, D-5
   stage and report         oqa_ln_check, D-1                     + D-3
-  Lean                     a1cc5340807f652b, 86 examples, rc 0   272 examples generated; COMPILE PENDING
+  Lean                     a1cc5340807f652b, 86 examples, rc 0   ec5e8ee905465b76, 272 examples, rc 0
   rehearsal as delivered   report afd740186c0395e0, 3,129 bytes  preserved unmodified
 
 A DEFECT IN THE FREEZE WITNESS, FOUND AND RECORDED RATHER THAN QUIETLY FIXED. The milestone reports
@@ -595,16 +602,24 @@ origin) and per exported obligation (source_traced, answer_traced, arith_recorde
 replacement is demonstrated), asserting that the state the Python side recorded is what these
 definitions produce from the same inputs.
 
-THE RECEIPT. **NOT YET OBTAINED.** The generated file carries 272 examples - 36 operand
-classifications plus 36 settled-ness checks, and 200 obligation checks (source_traced, answer_traced,
-arith_recorded and replacementDemonstrated, per attempt, per model). Job 66599377 (bundle
-oqa_ln_20261122c, commit 90ef7cf, phase d2, free, no key loaded) has been queueing on
-AssocGrpCpuLimit since 01:02 EST - the shared account is pinned at its group CPU limit by other
-users, with fourteen jobs waiting on the same thing. It is not a fault and nothing is wrong with the
-job; it has simply not been allocated. THIS IS THE ONE COMPONENT OF THE INSTRUCTION THAT IS NOT
-COMPLETE, and the gap is exactly: the Lean source digest, the compiler's return code and the
-accepted-statement count, plus the authoritative test-suite run. Everything else in this packet was
-produced on the workstation and is reproducible there.
+THE RECEIPT.
+
+  compiler      Lean (version 4.20.0, x86_64-unknown-linux-gnu, commit 77cfc4d1a4f6, Release)
+  source        ec5e8ee905465b76, 39,984 bytes
+  return code   0
+  errors        0        warnings 0        all statements accepted: true
+  examples      272 = 72 operand (36 classifications + 36 settled-ness checks)
+                    + 200 obligation (source_traced, answer_traced, arith_recorded and
+                      replacementDemonstrated, per attempt, for both frozen models)
+  skipped       0 - every exported row is checked, none was dropped as unmappable
+  job           66599377, bundle oqa_ln_20261122c, commit 90ef7cf, phase d2, free, keys dropped
+                before the phase began, 00:04:03 elapsed of 0:25 requested on one core
+
+NO DISAGREEMENT THIS TIME, and that is worth stating rather than passing over. The previous Lean file
+in this family failed on its first compile and the failure was the most useful thing in that section:
+it refuted the Python side and led to two false accusations being withdrawn. This one compiled clean
+at the first attempt, so it contributes a cross-check that AGREED - weaker evidence than a
+disagreement, and it does not establish that either implementation is right about the corpus.
 
 WHAT COMPILING THIS DOES NOT ESTABLISH. That the extraction found the right cell, line or operand -
 that is a TRUSTED input. That the learned rule is true of the corpus - that is empirical and is
@@ -912,10 +927,10 @@ SOFTWARE CORRECTNESS - established.
     comparison.
   * The audit modules cannot spend: a test walks their imports.
   * The information boundary holds: a test walks the syntax tree of every new module.
-  * 58 new tests pass locally under python3.12, together with the 66 existing occurrence and
-    learned-source tests they could have broken. THE AUTHORITATIVE SUITE RUN IS PENDING on job
-    66599377 - the local interpreter cannot import `skillopt`, so the full suite only runs on the
-    cluster.
+  * THE FULL SUITE ON THE CLUSTER: 2,615 passed, 0 failed, 9 skipped, 368 subtests
+    (job 66599377). That is the 2,557 of 2026-11-21 plus this task's 58 new tests, with nothing
+    broken by D-2..D-5 - including the pinned historical report test, which still passes because
+    oqa_occ's default behaviour did not move.
 
 EMPIRICAL LEARNING - NOT established, and now measured as absent.
   * The 2x2 shows no state, class, count or diagnostic line that the learned rule supplies and the
@@ -1066,7 +1081,7 @@ NEW, written this task - runs/20261121-officeqa-learner/v5_d2/
   r1_stage_reports.json, r2_stage_reports.json     the corrected stage reports
   reports_regenerated/*.md    labelled REGENERATED in their own first line
   D2_RUN.json                 the summary and its digest
-  v5_lean/OqaConnected.lean, v5_lean/LN_LEAN.json  the Lean source and receipt
+  v5_lean/OqaConnected.lean, v5_lean/LN_LEAN.json  the Lean source (39,984 bytes) and receipt
 
 PRESERVED UNMODIFIED - the superseded evidence this audit corrects
   v1_freeze/   v2_learn/   v2b_restage/   v3_lean/   v4_rehearse/
@@ -1102,6 +1117,13 @@ REPRODUCTION, entirely on a workstation, no cluster and no network:
   Python 3.9 cannot import skillopt, but none of these modules needs it.
 
 CLUSTER
-  bundle oqa_ln_20261122c, commit 90ef7cf, phase d2, job 66599377 (queued on AssocGrpCpuLimit at the time of writing).
+  bundle oqa_ln_20261122c, commit 90ef7cf, phase d2, job 66599377, COMPLETED, 00:04:03 elapsed of 0:25 requested on one core, exit 0.
   OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh d2
+
+A NOTE ON THE TWO COPIES OF v5_d2. The cluster rebuilt it independently from the FROZEN cluster
+records, not from the local mirror, and agrees with the local run on every headline figure: 3,548 ->
+2,002 occurrence matches, 54 -> 49 supported bindings, 11 changed bindings, 0 paid calls. Its
+D2_CELLS.json digest differs for one reason, stated so it is not mistaken for a disagreement: the
+cluster ran commit 90ef7cf, which predates the channel-inventory and abandonment-census fields that
+section 14 cites. Those two measurements are in the LOCAL copy and reproduce with the command above.
 
