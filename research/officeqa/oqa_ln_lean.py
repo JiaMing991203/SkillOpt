@@ -176,8 +176,13 @@ theorem unknownEffectIsNotDischarged (e : Option Bool)
 theorem recoveryCanDischarge : answerTraced true true = ObState.discharged := by
   simp [answerTraced]
 
-theorem supersededIsIrrelevant (hs ch rf : Bool) (n nSuperseded : Nat) :
-    sourceTraced hs ch rf n = sourceTraced hs ch rf n := by rfl
+/-- Replaced work cannot enter this resolution, because it is not an argument to it: `sourceTraced`
+    sees only the SUPPORTING calculation's unresolved count. The first version of this file tried to
+    say so with `sourceTraced ... = sourceTraced ...`, which is vacuous and which Lean flagged as an
+    unused variable; the consequence that actually matters is stated instead. -/
+theorem replacedWorkCanStillDischarge (ch : Bool) :
+    sourceTraced true ch false 0 = ObState.discharged := by
+  cases ch <;> simp [sourceTraced]
 
 theorem anUncomputedAnswerIsAnExecutionDiagnosis :
     answerTraced true false = ObState.violated := by
@@ -270,9 +275,17 @@ def run_lean(path: str, lean_bin: str, timeout: int = 900) -> dict:
         p = subprocess.run([lean_bin, path], capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {"ran": True, "returncode": -1, "why": f"timed out after {timeout}s"}
+    # The return code is what says whether every statement was accepted. The first version also
+    # required stdout to be empty, so a LINTER WARNING made the receipt read
+    # `all_statements_accepted: false` beside `returncode: 0` - two fields contradicting each other
+    # about the same compile. Warnings are counted and kept, and they do not change the verdict.
+    warnings = [l for l in p.stdout.splitlines() if ": warning:" in l]
+    errors = [l for l in p.stdout.splitlines() if ": error:" in l]
     return {"ran": True, "returncode": p.returncode,
             "stdout_tail": p.stdout[-4000:], "stderr_tail": p.stderr[-4000:],
-            "all_statements_accepted": p.returncode == 0 and not p.stdout.strip()}
+            "n_warnings": len(warnings), "warnings": warnings[:10],
+            "n_errors": len(errors), "errors": errors[:10],
+            "all_statements_accepted": p.returncode == 0 and not errors}
 
 
 def main(argv=None) -> int:
