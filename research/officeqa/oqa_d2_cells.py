@@ -79,6 +79,87 @@ def occurrence_inventory(freeze_doc: dict) -> dict:
             "witnesses": witnesses}
 
 
+def channel_inventory(freeze_doc: dict) -> dict:
+    """Which tool calls put a CITABLE CELL into the record, and which put nothing.
+
+    This is the measurement behind the packet's next-step proposal, and behind the observation that
+    the provenance claim rests on a channel most calls never reach. A call is counted citable when
+    its observation contains at least one line-numbered, pipe-delimited line - exactly the condition
+    `oqa_occ.observed_occurrences` requires.
+
+    NOTE WHAT THE LABEL IS. It comes from the observation the call RETURNS, which is in the suffix
+    relative to the moment the call is issued. No prefix-only function of the record computes it,
+    which is the property the learned `operand_sourced` rule lacked.
+    """
+    by = collections.Counter()
+    for a in freeze_doc["attempts"]:
+        pdir = os.path.join(EV.source_root(freeze_doc), "train_p%d" % a["pass"], "predictions")
+        att = EV.read_attempt(pdir, a["item"])
+        for entry in OCC.normalize(att["items"]):
+            if entry["kind"] != "tool":
+                continue
+            cmd = entry["cmd"].strip()
+            tool = "grep" if cmd.startswith("grep") else "read" if cmd.startswith("read") else "other"
+            numbered = cells = False
+            for line in entry["obs"].splitlines():
+                m = OCC._LINE.match(line)
+                if not m:
+                    continue
+                numbered = True
+                if "|" in m.group(2):
+                    cells = True
+                    break
+            kind = ("a_citable_cell" if cells else
+                    "numbered_but_no_cells" if numbered else "nothing_citable")
+            by[(a["role"], tool, kind)] += 1
+    rows = [{"role": r, "tool": t, "outcome": k, "calls": n}
+            for (r, t, k), n in sorted(by.items())]
+    total = sum(by.values())
+    citable = sum(n for (_r, _t, k), n in by.items() if k == "a_citable_cell")
+    return {"rows": rows, "total_calls": total, "calls_returning_a_citable_cell": citable,
+            "share_citable": round(citable / max(total, 1), 4),
+            "what_the_label_is": "the observation the call returned, which is in the suffix relative "
+                                 "to the moment the call was issued"}
+
+
+def abandonment_census(freeze_doc: dict) -> dict:
+    """How much ABANDONED work this evidence actually contains, per role.
+
+    Recorded because it REFUTES a next-step proposal that otherwise had the right shape: the label
+    is suffix-computed, but there is one positive attempt in the whole set and none on the checking
+    side, so nothing could be checked prospectively.
+    """
+    counts = collections.Counter()
+    attempts_with = collections.Counter()
+    for a in freeze_doc["attempts"]:
+        pdir = os.path.join(EV.source_root(freeze_doc), "train_p%d" % a["pass"], "predictions")
+        att = EV.read_attempt(pdir, a["item"])
+        ex = EV.extract(att)
+        shape = EV.recovery_shape(ex)
+        sup = shape.get("supporting_calculation")
+        if sup is None:
+            counts["attempts_without_a_supporting_calculation"] += 1
+            continue
+        attempts_with[a["role"]] += 1
+        consumed = set(EV.consumed_by(ex, sup)["consumed"])
+        cv = ex["committed_answer_value"]
+        n_ab = 0
+        for i, c in enumerate(ex["calculations"][:sup]):
+            if i in consumed:
+                counts[f"{a['role']}/consumed_ancestor"] += 1
+            elif EV._near(c["result"], cv):
+                counts[f"{a['role']}/an_earlier_statement_of_the_same_result"] += 1
+            else:
+                counts[f"{a['role']}/abandoned"] += 1
+                n_ab += 1
+        if n_ab:
+            counts[f"{a['role']}/attempts_with_abandoned_work"] += 1
+    return {"counts": dict(counts),
+            "attempts_with_a_supporting_calculation": dict(attempts_with),
+            "reading": "one attempt in 48 contains abandoned work and the checking side contains "
+                       "none, so abandonment is not a learnable relationship on this evidence"}
+
+
 def _verdict_view(v: dict) -> dict:
     return {k: v.get(k) for k in _VERDICT_FIELDS}
 

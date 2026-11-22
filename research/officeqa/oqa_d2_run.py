@@ -252,6 +252,8 @@ def main(argv=None) -> int:
     cells_doc = {"schema": CELLS.SCHEMA, "written_utc": _utc(),
                  "freeze_sha256": freeze_doc["self_sha256"],
                  "occurrence_inventory": CELLS.occurrence_inventory(freeze_doc),
+                 "channel_inventory": CELLS.channel_inventory(freeze_doc),
+                 "abandonment_census": CELLS.abandonment_census(freeze_doc),
                  "replay": CELLS.replay(freeze_doc),
                  "model_scores": CELLS.score_models(
                      freeze_doc, [(t, c) for t, c, _s in models])}
