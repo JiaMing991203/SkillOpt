@@ -1,7 +1,10 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 23:55 EST, compaction sweep. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
-NOT pushed. NO OfficeQA JOB RUNNING OR QUEUED. The learned-contract follow-up is COMPLETE.**
+**Last update: 2026-11-21 23:55 EST, compaction sweep. Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`, commit `8ae4950`, tree clean, 186 commits ahead of origin and NOT pushed
+(pushing remains unauthorized). NO OfficeQA JOB RUNNING OR QUEUED — verified against `squeue`; the
+six live `e3m-*` jobs are held Experiment 3 GPU jobs on another track. The learned-contract follow-up
+is COMPLETE.**
 
 ## START HERE -> `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md`
 One self-contained read of this follow-up: accounting, the cap fix, the evidence set, the occurrence
@@ -26,8 +29,7 @@ validation, no new document structure.
   defeated `O_EXCL`. Verified on `/nfs/turbo`: the interleaving fails closed, 12 of 12 races total
   exactly 23. Plus a phase-wide single-payer token.
 * **The expected-to-change test is corrected, not disabled** — **2,557 passed / 0 failed** on the
-  final code (job 66588746). A claim about
-  C-3 is withdrawn; the group count is 17 and 17 is right.
+  final code (job 66588746). A claim about C-3 is withdrawn; the group count is 17 and 17 is right.
 * **Two learner repetitions converged; 26/26 prospective confirmations on unseen questions; both
   DECLINED to repair the one counterexample, correctly** — its feature vector is identical to four
   operands the resolver did call sourced, and a test proves no available narrowing separates them.
