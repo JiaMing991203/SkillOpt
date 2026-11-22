@@ -21,7 +21,7 @@ added.
 
 ## 1. What actually ran, and what it cost
 
-Thirteen Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121i`, output root
+Thirteen Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121j`, output root
 `runs/20261121-officeqa-learner/`.
 
 | job | phase | state | elapsed | what it established |
@@ -34,7 +34,7 @@ Thirteen Slurm jobs, bundles `oqa_ln_20261121` … `oqa_ln_20261121i`, output ro
 | 66580895 | learn | FAILED | 0:10 | `retries=0` sent **nothing**; route and key both verified correct |
 | 66581070 | freeze | COMPLETED | 0:09 | evidence + vocabulary + occurrence audit frozen |
 | 66581071 | **learn (paid)** | COMPLETED | 0:46 | two learner repetitions, **4 paid calls** |
-| 66587986 | lean | FAILED | 0:06 | **Lean refuted the Python side** — see §6 |
+| 66587986 | lean | FAILED | 0:06 | **Lean refuted the Python side** — see §9 |
 | 66588253 | restage | COMPLETED | 0:03 | stage reports rebuilt free; **2 false accusations withdrawn** |
 | 66588304 | lean | COMPLETED | 0:03 | Lean 4.20.0, return code 0 |
 | 66588323 | **rehearse (paid)** | COMPLETED | 1:55 | the paired analyst rehearsal, **2 paid calls** |
@@ -217,7 +217,11 @@ action forecasts, the `"unavailable"` provenance fields, and a **new** test asse
 campaign's own records still say what they said and its prediction files are still there. A pin may be
 re-set deliberately; those may not be re-set at all.
 
-**Suite: 2,531 passed, 0 failed, 9 skipped, 368 subtests** (job 66580469, on the cluster — the run that first had the suite green). Re-run against the FINAL code of this phase, job 66588746: **2,557 passed, 0 failed, 9 skipped, 368 subtests**, the 26 extra being this phase's own new tests. The ledger verification passed again in the same job: all five checks PASS, 12 of 12 races at exactly 23, the over-grant interleaving refused fail-closed.
+**Suite: 2,531 passed, 0 failed, 9 skipped, 368 subtests** (job 66580469 — the run that first had the
+suite green). Re-run against the **final** code of this phase, job 66588746: **2,557 passed, 0 failed,
+9 skipped, 368 subtests**, the 26 extra being this phase's own new tests. The ledger verification
+passed again in that same job: all five checks PASS, 12 of 12 races at exactly 23, the over-grant
+interleaving refused fail-closed.
 
 **A claim of mine is withdrawn.** The C-3 amendment said C-3 had returned the stage-diagnosis group
 count to its historical 14 and called that "independent support for C-3 being the right repair". It
