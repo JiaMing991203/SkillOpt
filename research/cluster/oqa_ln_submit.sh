@@ -41,7 +41,10 @@ case "$WHAT" in
   *) echo "unknown: $WHAT" >&2; exit 2 ;;
 esac
 if [ "$DRY" = "1" ]; then printf '  %-18s %s  PHASE=%s\n' "oqa-ln-$WHAT" "$T" "$WHAT" >&2; exit 0; fi
+# The account's group CPU limit is shared and often saturated, so ask for exactly what the phase
+# uses. Only the paid phases and the suite benefit from a second core, and not by much.
+case "$WHAT" in d2) CPUS=1 ;; *) CPUS=2 ;; esac
 sbatch --parsable --job-name="oqa-ln-$WHAT" --account="$ACCOUNT" --partition="$PARTITION" \
-    --cpus-per-task=2 --mem=8G --time="$T" --no-requeue \
+    --cpus-per-task="$CPUS" --mem=8G --time="$T" --no-requeue \
     --output="$B/oqa-ln-$WHAT-%j.out" --chdir="$B" \
     --export="ALL,OQA_BUNDLE=$B,PHASE=$WHAT" --wrap="bash $BODY"

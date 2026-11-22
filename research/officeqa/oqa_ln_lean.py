@@ -153,7 +153,7 @@ def arithRecorded (hasSupporting fragment consistent : Bool) : ObState :=
     its result reaches the supporting calculation by no path. In a multi-step computation every
     intermediate result differs from the answer while being consumed by it, so "an earlier result
     differs from the answer" is necessary and not sufficient. -/
-def replacementDemonstrated (nAbandoned : Nat) : Bool := nAbandoned ≠ 0
+def replacementDemonstrated (nAbandoned : Nat) : Bool := !(nAbandoned == 0)
 
 /-- An action's effect, where `none` means the records do not say. -/
 def resolveEffect : Option Bool → ObState
@@ -262,11 +262,15 @@ theorem restatementDoesNotSettle (k : Nat) (p q sev : Bool) :
 
 theorem severalPositionsDoNotSettle :
     settled (classify false 0 0 false false true) = false := by
-  simp [classify, settled]
+  decide
 
 -- ── 8. a replacement needs an abandoned alternative ────────────────────────
 theorem consumedAncestorsAloneDoNotDemonstrateReplacement :
     replacementDemonstrated 0 = false := by
+  decide
+
+theorem anyAbandonedWorkDemonstratesReplacement (k : Nat) :
+    replacementDemonstrated (k + 1) = true := by
   simp [replacementDemonstrated]
 
 -- ── a numeric match alone never reaches `sourced` ──────────────────────────
