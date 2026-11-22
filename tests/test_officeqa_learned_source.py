@@ -310,3 +310,122 @@ def test_the_dry_run_configures_the_route_too():
     assert "configure_route(a.config, a.dry_run)" in main
     route = src[src.index("def configure_route("):src.index("def _write(")]
     assert "dry" in route and "configure_models" in route
+
+
+# ── a CONSTRUCTED fixture for the repair machinery ───────────────────────────
+#
+# READ THIS BEFORE READING THE TESTS BELOW. These fixtures are INVENTED. They establish that the
+# repair path works as software: that a counterexample produces a new version, that the old version is
+# kept and marked superseded with its reason, that the parent link is recorded, and that a repair which
+# loses ground is reported as a regression rather than as an improvement.
+#
+# THEY ESTABLISH NOTHING EMPIRICAL. On the natural traces the real learner was asked to repair a real
+# contradiction and DECLINED, in both repetitions, because the counterexample shares its entire feature
+# vector with operands the resolver did call sourced - so no predicate in the vocabulary can separate
+# them. That is the empirical result, it is recorded with the run, and it is not what these fixtures
+# are about. Nothing here is evidence that a learner repaired a hypothesis on real data.
+
+def _synthetic_rows(n_right: int, n_wrong: int):
+    """Rows where the counterexample IS separable, which the natural ones were not."""
+    def row(i, tool, sourced, sep):
+        return {"attempt_id": f"synthetic/{i}", "item": "SYNTHETIC", "pass": 1,
+                "operand_key": f"{i}/0", "as_written": str(i), "value": float(i),
+                "statement": f"{i} + 0 = {i}", "message_item_index": 1,
+                "arithmetic_consistent": True,
+                "features": {"n_positions_in_prefix": 1, "source_tool": tool,
+                             "written_with_separator": sep, "round_power_of_ten": False,
+                             "appears_in_question": False, "equals_earlier_result": False,
+                             "message_quotes_question_term": True},
+                "verdict": {"sourced": sourced, "match": "UNIQUE_POSITION",
+                            "binding": "SUPPORTED" if sourced else "UNKNOWN",
+                            "corroborations": [], "supporting": [], "n_positions": 1,
+                            "position": None, "why": "synthetic"}}
+    rows = [row(i, "grep", True, True) for i in range(n_right)]
+    rows += [row(100 + i, "grep", False, False) for i in range(n_wrong)]
+    return rows
+
+
+def test_constructed_the_repair_path_versions_narrows_and_keeps_the_old_rule():
+    """CONSTRUCTED. Software capability only - see the block comment above."""
+    rows = _synthetic_rows(n_right=6, n_wrong=3)
+    v1 = V.contract("synthetic.sourced", V.clause("operand_sourced", ["operand"]),
+                    [V.clause("operand_source_tool", ["operand", "grep"])],
+                    witnesses="source_traced")
+    before = LN.score_contract(v1, rows)
+    assert before["confirmations"] == 6 and before["counterexamples"] == 3
+
+    counters, pool, provenance = LN.counterexamples_for_repair(v1, [], rows)
+    assert len(counters) == 3
+    assert provenance == LN.IN_SAMPLE
+
+    extra = V.clause("operand_written_with_separator", ["operand"])
+    old, v2 = V.repair(v1, extra, "the three counterexamples are the ones written without a separator",
+                       [c["attempt_id"] for c in counters])
+    assert V.validate(v2) == []
+    assert old["status"] == "superseded", "the old version must be kept, not deleted"
+    assert old["repair_reason"]
+    assert v2["version"] == 2 and v2["status"] == "active"
+    assert v2["parent"] == "synthetic.sourced@v1"
+    assert len(v2["conditions"]) == len(v1["conditions"]) + 1
+
+    after = LN.score_contract(v2, rows)
+    assert after["counterexamples"] == 0, "the repair must remove the counterexamples it was built from"
+    assert after["confirmations"] == 6, "and must not lose a confirmation it already had"
+    lost = set(before["confirmation_keys"]) - set(after["confirmation_keys"])
+    assert not lost
+
+
+def test_constructed_a_repair_that_loses_ground_is_reported_as_a_regression():
+    """CONSTRUCTED. The guard that stops a narrowing being sold as an improvement."""
+    rows = _synthetic_rows(n_right=6, n_wrong=1)
+    # six correct ones are written WITH a separator; make two of them without, so the same narrowing
+    # now costs real coverage
+    rows[0]["features"]["written_with_separator"] = False
+    rows[1]["features"]["written_with_separator"] = False
+    v1 = V.contract("synthetic.sourced", V.clause("operand_sourced", ["operand"]),
+                    [V.clause("operand_source_tool", ["operand", "grep"])])
+    before = LN.score_contract(v1, rows)
+    _old, v2 = V.repair(v1, V.clause("operand_written_with_separator", ["operand"]), "narrowing", [])
+    after = LN.score_contract(v2, rows)
+    lost = sorted(set(before["confirmation_keys"]) - set(after["confirmation_keys"]))
+    assert len(lost) == 2, lost
+    assert after["counterexamples"] == 0
+    assert after["confirmations"] < before["confirmations"], (
+        "this narrowing removes the counterexample AND two confirmations; a report that showed only "
+        "the first number would be selling a retreat as a repair")
+
+
+def test_the_natural_contradiction_was_not_separable_and_that_is_recorded_not_patched():
+    """The empirical result, pinned so it cannot quietly become a success story.
+
+    Both repetitions proposed `operand_positions=1 AND operand_source_tool=grep`, both were given the
+    same single counterexample, and both replied that no available predicate separates it. The reason
+    is checkable from the evidence and is not a matter of the learner's opinion: the counterexample's
+    feature vector is IDENTICAL to that of operands the resolver did call sourced, so no condition over
+    those features can exclude one without excluding the others.
+    """
+    counter = {"n_positions_in_prefix": 1, "source_tool": "grep", "written_with_separator": False,
+               "round_power_of_ten": False, "appears_in_question": False,
+               "equals_earlier_result": False, "message_quotes_question_term": True}
+    twin = dict(counter)          # an operand the resolver DID call sourced, same vector
+    c = V.contract("t", V.clause("operand_sourced", ["operand"]),
+                   [V.clause("operand_positions", ["operand", "1"]),
+                    V.clause("operand_source_tool", ["operand", "grep"])])
+    assert LN.applies(c, counter)[0] is True
+    assert LN.applies(c, twin)[0] is True
+    # every single-condition narrowing over the available features treats them identically
+    for pred in V.LEARNER_CONDITIONS:
+        if pred in ("operand_of",):
+            continue
+        for value in (True, False):
+            args = ["operand"]
+            if pred == "operand_positions":
+                args = ["operand", "1"]
+            elif pred == "operand_source_tool":
+                args = ["operand", "grep"]
+            elif pred == "operand_equals_earlier_result":
+                args = ["operand", "calculation"]
+            narrowed = V.contract("t2", V.clause("operand_sourced", ["operand"]),
+                                  list(c["conditions"]) + [V.clause(pred, args, value)])
+            a, b = LN.applies(narrowed, counter)[0], LN.applies(narrowed, twin)[0]
+            assert a == b, (f"{pred}={value} would separate them, so 'not separable' would be wrong")

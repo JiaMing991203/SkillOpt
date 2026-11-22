@@ -388,8 +388,17 @@ def freeze(s0_root: str, out_path: str) -> dict:
         "exposure": EXPOSURE,
         "observational_assumptions": OBSERVATIONAL_ASSUMPTIONS,
     }
-    body = json.dumps(doc, indent=1, sort_keys=True)
-    doc["self_sha256"] = sha(body)
+    # THE DIGEST IS OVER THE CONTENT, NOT THE CLOCK. The first version hashed the whole document
+    # including `written_utc`, so re-freezing the identical record set produced a different digest
+    # (63c10e469f45930e and ba3ab77882193c84 are the same 48 attempts, the same 6/6 split and the same
+    # 676 calculations, written four minutes apart). A digest that changes with the clock cannot
+    # witness "this record set was fixed before any learner call", which is the only thing it is for.
+    # The same defect was found and fixed in oqa_ln_check.predict by a test that changed only a
+    # verdict; this one was found by two freezes of one record set disagreeing.
+    doc["written_utc"] = _utc()
+    doc["self_sha256"] = sha(json.dumps(
+        {k: v for k, v in doc.items() if k not in ("written_utc", "self_sha256")},
+        indent=1, sort_keys=True))
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1, sort_keys=True)
     return doc
