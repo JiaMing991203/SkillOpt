@@ -1117,3 +1117,37 @@ untouched — and this checker never reads a score, so it cannot say.
 **A conclusion that follows for the whole method.** Every accusation this checker made on 25 attempts
 was an artifact of its own parser. That is the strongest available evidence that a contract report's
 value depends far more on extraction fidelity than on the learned layer above it.
+
+---
+
+## D-6 — 2026-11-22. An implementation-parity audit module, additive and read-only
+
+**Recorded before the module was used for any conclusion.** The follow-up instruction of 2026-11-22
+asks whether the OfficeQA and ALFWorld learned-contract implementations share a core, whether their
+active behaviours are equivalent, and where OfficeQA diverges from the accepted design. That question
+is answered by measurement, not by reading source, so this amendment records one new module.
+
+**What is added.** `research/officeqa/oqa_pa_parity.py`, with two probes and no side effects on any
+existing artifact:
+
+* `callpath(freeze, model)` runs every frozen attempt's stage report **twice** — once with the learned
+  contract and once with it absent — and counts the calls into `oqa_ln_learn.applies` and
+  `oqa_ln_check.classify_operand`, recording which top-level fields of the report differ. The absent
+  condition is the checker's **own** `None` path (`oqa_ln_check._applies`), not a second
+  implementation, so the two sides cannot drift apart.
+* `target(freeze)` measures whether the learned rule's antecedent entails its consequent through
+  supplied code: for every actor-written value with exactly one observed numeric cell, whether the
+  occurrence came from a `grep` and whether `oqa_occ.corroborations` set `QUERY`.
+
+**What is NOT changed.** No existing module's behaviour, no vocabulary, no stage semantics, no
+extraction rule, no Lean definition, no report text, no ALFWorld file. The probes read
+`LN_FREEZE.json`, the saved `conversation.json` records and the two saved models, and write only into
+a new directory, `runs/20261122-officeqa-parity/`. `tests/test_officeqa_pa.py` asserts the module
+names no answer key, no held-out record and no provider field, and imports no `skillopt` module.
+
+**Why a probe instead of a reading of the source.** `oqa_ln_check.stage_report` receives the contract
+and passes it to `_applies`, so the source alone does not say whether a conclusion depends on it. The
+measurement does: over all 48 frozen attempts the contract is consulted 18 times, the origin
+classifier is called 36 times and sees the contract 0 times, and every obligation state and every
+operand class is identical with and without it. That extends the D-2 2x2 — which ran on 25 attempts —
+to the learning side as well.

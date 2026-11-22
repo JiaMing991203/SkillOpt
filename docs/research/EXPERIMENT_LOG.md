@@ -2239,3 +2239,34 @@ requested CPU job-hours.
 `D2_OPTIMIZER_EVIDENCE.json`, `r1/r2_stage_reports.json`, `reports_regenerated/`, `D2_RUN.json`;
 and `v5_lean/` for the compile. The superseded `v2_learn`, `v2b_restage`, `v3_lean` and `v4_rehearse`
 artifacts are preserved unmodified.
+
+---
+
+## PA-1 — implementation-parity audit, 2026-11-22 (offline, zero jobs)
+
+**Scope.** OfficeQA `officeqa-contracts` @ `39a7e33` against the accepted design v0.1 + A1-A5 and the ALFWorld
+reference worktree `contract/learned-contract` @ `4a9914a` (all 70 contract files untracked; digests recorded in
+the audit §2.2). Read-only on the ALFWorld side; nothing there was written or executed.
+
+**Measurements.**
+
+| probe | artifact | result |
+|---|---|---|
+| nine `transferred/` reference copies vs live ALFWorld files | audit §1.1 | all **byte-identical**; reference unmoved since 2026-11-16 |
+| call path of the learned rule over all 48 frozen attempts, rule applied vs absent | `PA1_CALLPATH.json` `55a71d3140fe9d99` | 18 `applies` calls, 36 `classify_operand` calls, **0** of which could see the contract; 48/48 obligation states and operand classes identical; 4 annotation fields differ |
+| is the target entailed by its antecedent through supplied code | `PA2_TARGET.json` `c471e078923342ab` | grep-sourced unique positions: **39/39** fired `QUERY`, **39/39** `SUPPORTED`; read-sourced: 6/19; P(SUPPORTED \| QUERY) = **1.000** |
+| base rates for two candidate targets, 536 tool steps | `PA3_TARGET_BASIS.json` `c8450584d0f4e323` | grep 261 (99 empty, 45 header, **0 scale**); read 192 (0 empty, 50 header, 36 scale, 21 both); glob 76 (61 empty) |
+| `scale_binds` yield, re-read from the saved CC check | `CC_CHECK_descriptive.json` | 113 operands, 50 bindings, **50 UNKNOWN / 0 HOLDS / 0 VIOLATED**; 814 of 814 data cells with no bound header |
+| LC campaign model drift | arm B / arm C epochs 2-4 | arm C identical at all three epochs (`epoch: 1`); arm B retired one contract at epoch 3 then froze |
+
+**Code.** `research/officeqa/oqa_pa_parity.py` (new, additive, read-only on existing artifacts),
+`tests/test_officeqa_pa.py` (7 passed; with `test_officeqa_d2.py`, **63 passed / 2 skipped** locally). Amendment
+**D-6** records the module. No existing behaviour, vocabulary, extraction rule, Lean definition or report text
+changed; no Lean recompile was needed.
+
+**Resources.** 0.00 of the 2.00 authorized CPU job-hours (no job submitted); 0 provider / learner / optimizer /
+actor calls; 0 GPUs; held-out sealed; 18 teacher attempts untouched. OfficeQA CPU remainder unchanged at **3.08**.
+
+**Conclusion.** The generic machinery is substantially equivalent and the OfficeQA LN configuration is
+redundant because of its **target**, not because of a porting bug. The one target-independent code gap is the
+append-only repair interface. Full report: `docs/research/OFFICEQA_PARITY_AUDIT.md`.

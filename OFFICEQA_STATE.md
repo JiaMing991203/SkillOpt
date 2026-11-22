@@ -1,6 +1,7 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-22 01:35 EST, D-2..D-5 offline audit, complete.** Branch
+**Last update: 2026-11-22 03:35 EST, PA-1 implementation-parity audit, complete (D-2..D-5 before
+it).** Branch
 `officeqa-contracts`, worktree `SkillOpt-officeqa`. The tree is clean, so HEAD is exactly what this
 note describes — a note that records its own commit always lags by one, so read the commit with
 `git log --oneline -1`, and the count with
@@ -17,7 +18,29 @@ held Experiment 3 GPU jobs on another track and are not mine to touch.
 records and agreed on every headline figure. Results in `runs/20261121-officeqa-learner/v5_d2/` and
 `v5_lean/`.
 
-## START HERE -> `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`
+## START HERE -> `docs/research/OFFICEQA_PARITY_AUDIT.md` (newest), then the D-2 packet
+
+**PA-1 (2026-11-22) answers why the learned layer is redundant, and it is NOT a porting bug.** Zero
+cluster jobs, zero provider calls; 0.00 of the 2.00 authorized CPU job-hours, so the remainder is
+still 3.08. In five lines:
+
+* **The two branches share no code** — one 2026-11-16 copy, and all nine reference copies in
+  `research/officeqa/transferred/` are still **byte-identical** to the live ALFWorld files, so the
+  port note's reuse table can be trusted.
+* **OfficeQA has three generations and the milestone uses the narrowest.** LC (`oqa_lc_*`) has
+  effects, assumptions and add/revise/**retire** plus assumption drop; CC/LN (`oqa_cc_*`, `oqa_ln_*`)
+  have one kind, two statuses, no assumptions, and a repair that can **only append a condition**.
+  ALFWorld's one successful repair was a **deletion**, which OfficeQA cannot express.
+* **The target is a theorem of the supplied resolver.** A grep returns a line because its pattern is
+  on it, so `QUERY` fires and `SUPPORTED` follows: **39 of 39** grep-sourced bindings, P = 1.000.
+* **New call-path probe:** over all 48 frozen attempts the contract is consulted **18** times,
+  `classify_operand` is called 36 times and **sees it 0 times**, and 48/48 states and classes are
+  identical. Only four annotation fields differ.
+* **Why it happened:** the CC generation's `scale_binds` IS the right shape and yielded **0
+  conclusions on 113 operands** — 50 bindings, all UNKNOWN, because 814 of 814 data cells have no
+  bound header. The LN target was then chosen to be guaranteed evaluable.
+
+## Then -> `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`
 Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it audits. In six lines:
 
 * **D-2** a numeral inside label text is not a numeric data cell. **1,546 of 3,548 occurrence-producing
@@ -95,6 +118,9 @@ The override names a different COPY of the frozen records; every consumer re-ver
 This follow-up: 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor calls, 0 GPUs.
 **Used through 2026-11-21: CPU 4.50 of 8 requested job-hours across 14 jobs (0.23 elapsed);
 DeepSeek 6 of 24 attempts and $0.029476 of $3.00; actor 0; GPUs 0.**
+**PA-1 (2026-11-22) authorized at most 2.00 CPU job-hours and used 0.00** — every measurement ran
+locally; no job was submitted, no provider call was made, nothing was written in either sibling
+worktree. The remainder below is unchanged by it.
 **The D-2..D-5 task (2026-11-22) authorized NO provider calls at all** and spent only CPU. The
 instruction states the CPU remainder as 3.75; my corrected figure is 3.50, because the milestone
 first counted 13 jobs where sacct lists 14. The lower governs. **Used: 0.42 (job 66599377); cancelled
@@ -121,17 +147,27 @@ nothing (66598457 and 66599047 both did).
    accusing states were its own artifacts, and the learned layer adds nothing a 2x2 can detect.
 2. **The decision this packet asks for:** given no demonstrated learned increment, whether the
    comparison worth running at all is contract-report versus no-report, with the learner out of it.
-3. **The recommended free next step** — fix the `max(0.5, |x|·1e-6)` numeric tolerance, then learn
-   whether a TOOL CALL will return a citable cell (packet §14b). Record the prediction before
-   replaying. **Do NOT propose abandonment**: packet §14a measured it and it fails — one attempt in
-   48 contains abandoned work and the checking side contains none.
+3. **The recommended free next step, REVISED by PA-1.** Fix the `max(0.5, |x|·1e-6)` numeric
+   tolerance; then, before any new learning, close the extraction gap PA-1 identified (**P-2**: a
+   data cell's column header is never bound — 814 of 814 — which is why `scale_binds` produced 0
+   conclusions on 113 operands). **D-2 packet §14b is WITHDRAWN**: "will a tool call return a citable
+   cell" conflates formatting with evidence — 0 of 261 greps ever returned a stated money scale while
+   36 of 192 reads did. The two live target options are in `OFFICEQA_PARITY_AUDIT.md` §9: (A) will a
+   call return the context that governs its own rows (needs P-2 first), (B) will a call return
+   anything at all (measurable today: 99 of 261 greps and 61 of 76 globs returned nothing).
+   **Do NOT propose abandonment**: D-2 packet §14a measured it and it fails — one attempt in 48
+   contains abandoned work and the checking side contains none. **Do NOT propose another proxy-label
+   classifier.**
+3b. **The one code change that is needed whatever the target** — `oqa_cc_ir.repair` is append-only;
+   lift `oqa_lc_learn.apply_proposal`'s add/revise/retire/keep plus assumption adopt/drop to the
+   CC/LN form (`OFFICEQA_PARITY_AUDIT.md` §8.3, P-1).
 4. Unseal the three held-out results when you want the comparison. I have read counts and provenance
    only.
 5. Decide whether the one-question validation margin justifies a larger validation set.
 6. The historical 44-hour CPU convention (core-hours vs requested walltime) is still your decision and
    is separate from this phase.
 7. **Not recommended now:** a broader parser change, an actor-interface change, a third learner
-   repetition, or any contract performance arm.
+   repetition, a common library across the two worktrees, or any contract performance arm.
 
 ---
 

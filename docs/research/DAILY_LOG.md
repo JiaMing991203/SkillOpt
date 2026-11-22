@@ -2034,3 +2034,60 @@ frozen cluster records rather than the local mirror and agreed on every headline
 are the same evidence in fact and not only by digest. Two earlier submissions were cancelled while
 still PENDING, at zero cost, to fix a Lean receipt field and then two Lean proofs. CPU 0.42 of 3.50;
 3.08 left.
+
+---
+
+## 2026-11-22, 02:00-03:35 EST — implementation-parity audit: OfficeQA against the accepted design
+
+**Question.** Do the OfficeQA and ALFWorld learned-contract implementations share a core, are their active
+behaviours equivalent, and where does OfficeQA diverge? The instruction warned explicitly not to assume the
+redundant OfficeQA rule proves a porting bug. It does not.
+
+**The branches share no code.** No OfficeQA module imports anything from the ALFWorld tree. The relationship is
+the one-time 2026-11-16 copy. I verified all nine reference copies in `research/officeqa/transferred/` are still
+**byte-identical** to the live ALFWorld files (`ir.py` `7bf531504c8103db`, `learn.py` `dce247e991b35fa5`, and
+seven more), so the reference has not moved since the port and nothing on an execution path imports them.
+
+**OfficeQA has three generations and the milestone uses the narrowest.** LC (`oqa_lc_*`, the 2026-11-16 port)
+has `requires`/`suffices`/`effect`, assumptions, and add/revise/**retire**/keep plus assumption adopt/drop — full
+parity with `learn.py`, and it is the generation wired into the live three-arm campaign. CC (`oqa_cc_*`) and LN
+(`oqa_ln_*`) reduce this to one kind, `conclusion IF conditions`, two statuses, no assumptions, and a repair that
+can **only append a condition**. ALFWorld's one successful repair to date was a **deletion** of a conjunct, which
+OfficeQA cannot express at all. That is the one code gap that matters independently of anything else.
+
+**The real divergence is the learning target, and it is provable rather than arguable.** The LN rule is
+`operand_positions(=1) AND operand_source_tool(grep) -> operand_sourced`. `operand_sourced` is the supplied
+resolver's `SUPPORTED` label; `oqa_occ.corroborations` sets the sufficient corroboration `QUERY` when a grep's
+pattern tokens meet its line tokens — and a grep returns a line **because** its pattern is on it. Measured over
+all 48 frozen attempts: **39 of 39** unique-position bindings from a grep fired `QUERY` and were `SUPPORTED`;
+P(SUPPORTED | QUERY) = 1.000. The rule is a theorem of `oqa_occ`, found by a paid model in a contingency table.
+
+**A new call-path probe says where the rule enters and it is nowhere.** Running every frozen attempt twice —
+with the contract and with it absent, through the checker's own `None` path — the contract is consulted **18
+times across 48 attempts** (9 attempts reach the operand loop at all), `classify_operand` is called 36 times and
+**sees the contract 0 times**, and every obligation state and operand class is identical in all 48. Exactly four
+fields differ, all annotation: the provenance tag LEARNED/OBS, a `witnessed_by` string, a
+`contract_predicted_sourced` column, and the report header. This extends D-2's 25-attempt 2x2 to the learning
+side and adds the mechanism.
+
+**Why the redundancy happened — and it is not carelessness.** The CC generation's `scale_binds` ("a table's
+stated money scale applies to a cell unless a nearer annotation intervenes") is exactly the right shape:
+empirical, refutable, witnesses `unit_match`, computed by no supplied module. It produced **0 conclusions on 113
+operands** — 50 attempted bindings, all UNKNOWN, every one failing the same clause because the cell's column
+header was never observed (814 of 814 data cells have no bound header). The LN target was then chosen to be
+guaranteed evaluable, and the only things this extraction guarantees are the labels the supplied pipeline already
+computes. **The redundancy is a response to the extraction gap.**
+
+**No qualifying OfficeQA example exists.** The LC campaign contracts are `grep.effect.1 -> pattern_in_every_line`
+(true of grep by construction — the same tautology two generations earlier) and two contracts recording the
+extraction's own limitation (`col_path_sound = False`). Arm C's model is identical at epochs 2, 3 and 4.
+
+**Decision recorded: D-2 packet §14b is withdrawn.** "Will a tool call return a citable cell" conflates
+formatting with evidence. Measured today: **0 of 261 greps ever returned a stated money scale** while 36 of 192
+reads did, and 99 greps and 61 globs returned nothing at all. The substantive target is whether a call returns
+the *context that governs its own rows* (needs the extraction fix first), or, measurable today, whether it
+returns anything at all.
+
+**Cost: 0 CPU job-hours of the 2.00 authorized, 0 provider calls, 0 GPUs, nothing written in either sibling
+worktree.** Remaining allowance still 3.08. Report: `docs/research/OFFICEQA_PARITY_AUDIT.md`; probes
+`research/officeqa/oqa_pa_parity.py` with 7 tests; artifacts `runs/20261122-officeqa-parity/`.
