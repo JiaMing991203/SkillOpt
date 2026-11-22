@@ -140,11 +140,17 @@ concurrently while this follow-up's allowance is 24 optimizer attempts."
 }
 
 load_optimizer_key() {
+    # The credential file defines DEEPSEEK_API_KEY, not the backend's own variable name. Job 66580801
+    # died on "the optimizer key is empty" because this read the wrong name - zero paid calls, and
+    # the same mapping oqa_base_body.sh has always done.
     : "${OQA_OPTIMIZER_ENV_FILE:?settings.env must name the optimizer credential file}"
-    [ -f "$OQA_OPTIMIZER_ENV_FILE" ] || die "no optimizer credential file"
+    [ -f "$OQA_OPTIMIZER_ENV_FILE" ] || die "no optimizer credential file at $OQA_OPTIMIZER_ENV_FILE"
     set -a; . "$OQA_OPTIMIZER_ENV_FILE"; set +a
-    [ -n "${OPTIMIZER_OPENAI_COMPATIBLE_API_KEY:-}" ] || die "the optimizer key is empty"
-    log "optimizer credential loaded (value never logged)"
+    [ -n "${DEEPSEEK_API_KEY:-}" ] || die "DEEPSEEK_API_KEY not set by $OQA_OPTIMIZER_ENV_FILE"
+    export OPTIMIZER_OPENAI_COMPATIBLE_API_KEY="$DEEPSEEK_API_KEY"
+    _klen=${#DEEPSEEK_API_KEY}
+    unset DEEPSEEK_API_KEY
+    log "optimizer key loaded (length $_klen; the value is never logged)"
 }
 
 drop_all_keys() {
