@@ -1,15 +1,17 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-22 01:10 EST, D-2..D-5 offline audit.** Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`. The tree is clean, so HEAD is exactly what this note describes — a note that
-records its own commit always lags by one, so read the commit with `git log --oneline -1` instead.
-190+ commits ahead of origin and **NOT pushed** (pushing remains unauthorized).
+**Last update: 2026-11-22 01:35 EST, D-2..D-5 offline audit, complete.** Branch
+`officeqa-contracts`, worktree `SkillOpt-officeqa`. The tree is clean, so HEAD is exactly what this
+note describes — a note that records its own commit always lags by one, so read the commit with
+`git log --oneline -1`, and the count with
+`git log --oneline origin/officeqa-contracts..HEAD | wc -l` (200+). **NOT pushed**; pushing remains
+unauthorized.
 
 **NO OfficeQA JOB RUNNING OR QUEUED.** Job 66599377 `oqa-ln-d2` COMPLETED in 00:04:03 of 0:25 on one
 core: **Lean 4.20.0 rc 0, 0 errors, 0 warnings, 272 examples, source `ec5e8ee905465b76`; suite 2,615
 passed / 0 failed.** Two earlier submissions (66598457, 66599047) were cancelled while still PENDING,
 at zero cost, to fix a Lean receipt field and then two Lean proofs. The six live `e3m-*` jobs are
-held Experiment 3 GPU jobs on another track, and `lc-rank` 66598895 belongs to the EB-1 track.
+held Experiment 3 GPU jobs on another track and are not mine to touch.
 
 **THE AUDIT REPRODUCES ON THE WORKSTATION**, and the cluster rebuilt it independently from the FROZEN
 records and agreed on every headline figure. Results in `runs/20261121-officeqa-learner/v5_d2/` and
@@ -31,8 +33,11 @@ Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it aud
   abandoned alternatives. p4/UID0063's discharge rested on `86,000 - 0 = 86,000`.
 * **Nothing was applied anywhere**: no skill edit, no validation, no actor call, no GPU, no provider
   request, held-out still sealed.
-* **Next:** predict ABANDONMENT from a prefix — a suffix-computed label, so not another proxy for a
-  label the pipeline already has. Prerequisite: fix the `max(0.5, …)` numeric tolerance.
+* **Next:** predict from a prefix whether a TOOL CALL will return a citable cell — 536 calls, 38% of
+  greps positive, both classes on both sides of the split, and the label comes from what the
+  environment returns rather than from a label the pipeline already computes. Packet §14b.
+  **Abandonment was the obvious candidate and the measurement refuted it** (1 of 48 attempts, 0 on
+  the checking side); §14a records why, so it is not proposed again.
 
 ## CLUSTER ACCESS
 SSH master UP. **Great Lakes needs Duo 2FA**, so a session that finds `~/.ssh/cm_gl` gone cannot
@@ -103,6 +108,13 @@ Each phase writes its own versioned directory and they are independent. `freeze`
 ledger, and are capped at 8 calls / $1.50 per process. A requeue is refused
 (`SLURM_RESTART_COUNT != 0`). **Four fail-closed stops fired during this phase and each cost nothing.**
 
+**THE ACCOUNT'S CPU LIMIT IS SHARED AND OFTEN SATURATED.** On 2026-11-22 a 2-core job sat in
+`AssocGrpCpuLimit` for about an hour with 980 CPUs running under `csriram0` and fourteen jobs
+waiting on the same limit. It is not a fault and nothing is wrong with the job. Ask for the cores
+the phase actually uses — `d2` asks for one — and, if a change is needed while a job is still
+PENDING, cancel it before rebuilding the bundle: a submission cancelled before it starts costs
+nothing (66598457 and 66599047 both did).
+
 ### NEXT ACTIONS
 1. **D-2 is DONE** (2026-11-22) and so are D-3, D-4 and D-5. The result is in
    `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`. Read §1 first: all thirteen of the checker's
@@ -110,7 +122,9 @@ ledger, and are capped at 8 calls / $1.50 per process. A requeue is refused
 2. **The decision this packet asks for:** given no demonstrated learned increment, whether the
    comparison worth running at all is contract-report versus no-report, with the learner out of it.
 3. **The recommended free next step** — fix the `max(0.5, |x|·1e-6)` numeric tolerance, then learn
-   ABANDONMENT from a prefix (packet §14). Record the prediction before replaying.
+   whether a TOOL CALL will return a citable cell (packet §14b). Record the prediction before
+   replaying. **Do NOT propose abandonment**: packet §14a measured it and it fails — one attempt in
+   48 contains abandoned work and the checking side contains none.
 4. Unseal the three held-out results when you want the comparison. I have read counts and provenance
    only.
 5. Decide whether the one-question validation margin justifies a larger validation set.
