@@ -567,7 +567,9 @@ WHAT THE DEFINITIONS NOW SAY, and each one encodes a correction this audit made:
       only producers are identities; else a conversion factor; else from the question; else
       severalPossibleOrigins; else unresolved.                     [D-3, D-3e]
 
-  replacementDemonstrated nAbandoned  =  nAbandoned ≠ 0            [D-3e]
+  replacementDemonstrated nAbandoned  =  !(nAbandoned == 0)       [D-3e]
+      written with BEq rather than as a Prop-to-Bool coercion, so the definition does not
+      depend on an elaboration convenience.
 
 THE GENERAL THEOREMS, stated over the whole finite domain, not over the exported rows:
   refutationNeverAccuses                 a refuted rule resolves to unknown
@@ -582,7 +584,8 @@ THE GENERAL THEOREMS, stated over the whole finite domain, not over the exported
   fragmentIsNotFalseArithmetic           a fragment is unknown, not false
   restatementDoesNotSettle               an identity-only origin settles nothing
   severalPositionsDoNotSettle            several candidate positions settle nothing
-  consumedAncestorsAloneDoNotDemonstrateReplacement
+  consumedAncestorsAloneDoNotDemonstrateReplacement   zero abandoned work is no replacement
+  anyAbandonedWorkDemonstratesReplacement            and any abandoned work is one
   unknownEffectIsNotNoChange             an unknown action effect is not "nothing changed"
   uncorroboratedIsNeverSourced           a numeric match alone never reaches `sourced`
   replacedWorkCanStillDischarge          corrected work can still discharge
