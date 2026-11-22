@@ -1,139 +1,86 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-21 18:30 EST, after the campaign completed and its artifacts were pulled. Branch
-`officeqa-contracts`, worktree `SkillOpt-officeqa`, commit `7e53217`. NOT pushed (171 commits
-ahead of origin). Tracked tree clean. NO OfficeQA JOB RUNNING OR QUEUED — verified against
-`squeue` at 18:30; the 6 live jobs are the held `e3m-*` Experiment 3 GPU jobs, not this track.**
+**Last update: 2026-11-21 19:40 EST. Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`.
+NOT pushed. Tracked tree clean. THE LEARNED-CONTRACT FOLLOW-UP IS IN PROGRESS — see the next
+section for live jobs.**
 
-## CLUSTER ACCESS: fine now, but know the failure mode
+## CLUSTER ACCESS
+SSH master UP (`ssh -O check gl` → `Master running`). **Great Lakes needs Duo 2FA**, so a session that
+finds `~/.ssh/cm_gl` gone cannot restore it; the user must run `ssh -M -S ~/.ssh/cm_gl -fN gl`.
 
-**As of 2026-11-21 18:27 the SSH master is UP** — `ssh -O check gl` reports
-`Master running (pid=87102)`, socket `~/.ssh/cm_gl` re-created at 18:25, round trip works, and
-`squeue` shows **no OfficeQA job queued or running** (the 6 live jobs are the held `e3m-*` Experiment 3
-GPU jobs, not this track's).
+## THE COMPLETED TWO-BASELINE COMPARISON IS PRESERVED AND SEALED
+`docs/research/OFFICEQA_BASELINE_LAUNCH.md` is the complete campaign report. Endpoints
+`9d377d1c2906` (S0), `e35673d87cb7` (Original SkillOpt), `03d6564f1d10` (Trace2Skill), all three
+digest-verified locally. **Held-out: 30/30 per endpoint per pass, 180 episodes, SCORES SEALED.** Nothing
+in the follow-up below reads them, reruns a baseline, enlarges validation, or touches the frozen 12/12/30
+split.
 
-**It was DOWN at 05:05 and I recorded it as lost.** That was true then: the socket was absent and a
-fresh connection returned
-`Authentications that can continue: publickey,keyboard-interactive` → `Permission denied`. The ssh
-config explains why in its own comment — **Great Lakes requires Duo 2FA**, so re-authenticating is a
-manual interactive step and the long-lived master is the only thing that avoids it. The master was
-re-opened in the ~13 hours between.
+## THE FOLLOW-UP (rule OQA-LN-1, amendment D-1) — WHERE IT STANDS
 
-**So the recovery procedure, for next time:** a session that finds the socket gone cannot restore it
-itself. The user must run, and complete Duo for:
+**Bundles** (never rebuild one while its jobs are live; bash reads a body lazily):
+`oqa_ln_20261121` `95e5437`, `oqa_ln_20261121b` `482a2e0`, `oqa_ln_20261121c` `c4ee614`.
+Submit with `OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|lean|rehearse`.
+Output root `runs/20261121-officeqa-learner/{v1_freeze,v2_learn,v3_lean,v4_rehearse}`.
 
-    ssh -M -S ~/.ssh/cm_gl -fN gl
+| job | phase | state | what it established |
+|---|---|---|---|
+| 66580310 | ledger | COMPLETED | ledger PASS on nfs; suite 2,529 passed / **1 failed** (the stale pin) |
+| 66580311 | freeze | COMPLETED | evidence frozen `63c10e469f45930e`, vocabulary v10 `464b1cae6c65aa36` |
+| 66580469 | ledger | COMPLETED | suite **2,531 passed / 0 failed**; group probe: 17 is correct |
+| 66580714 | learn | **PAID, submitted 19:35** | two learner repetitions, ≤2 calls each |
 
-Nothing was ever at risk — the last job completed 04:56 and none was submitted after it.
+**1. ACCOUNTING IS REBUILT.** `docs/research/OFFICEQA_PHASE_ACCOUNTING.json`, from
+`research/officeqa/oqa_phase_acct{,_run}.py`. Two sources, overlap named not summed: the per-job backend
+call logs and the shared ledger. **Zero uncovered (job, role) pairs, zero unexpected spending**, and the
+one pair both sources cover agrees exactly.
 
-## ARTIFACTS: pulled and DIGEST-VERIFIED locally
+    target     3,462 attempts   charged $1.4378   provider-reported $1.1151   0 retries   0 unresolved
+    optimizer    206 attempts   charged $1.9788   provider figure UNAVAILABLE (no record carries one)
+    remaining    16,538 / $13.5622   and   194 / $18.0212
 
-`~/dev/lean_skillopt/runs/20261121-officeqa-two-baselines/` — **1,834 files, 47.9 MB** — and
-`.../20261121-officeqa-contract/` — 17 files, 672 KB. The three endpoints were checked against the
-digests recorded in their `PROVENANCE.json`, and all three match:
+The actor call log does NOT exist for the three held-out jobs: the deployed body at `c35df7e` has the
+export at the s0 and t2s branches only. Read from the deployed script, not inferred from absence.
 
-    endpoint_S0.md                      9d377d1c2906     887 B   OK
-    endpoint_original_skillopt.md        e35673d87cb7   4,518 B   OK
-    endpoint_trace2skill.md              03d6564f1d10  24,121 B   OK
+**2. THE CAP FAILURE HAS A MECHANISM AND IT IS FIXED.** The claim file NAME carried the amount, so two
+callers at one sequence number with different amounts wrote different names and `O_CREAT|O_EXCL` never
+fired; they got different amounts because `granted` came from two listings (claims, then releases).
+Reproduced deterministically as `000012-target-attempts-1.json` AND `-2.json`, net 24 against a cap of
+23. `_write_release` had the same defect. Three guards: one exclusive lock across grant and release, an
+amount-free sequence token, and releases read before claims. **Verified on /nfs/turbo (job 66580469):
+the interleaving is refused fail-closed, and the four-process race passed 12 of 12 with every run
+totalling exactly 23** — the cap reachable to its last unit and never exceeded.
+Plus a **phase-wide single-payer token** (`mkdir`, atomic on NFS) so two paid jobs cannot spend at once.
 
-    heldout/{S0,original_skillopt,trace2skill}/{p1,p2}/   30/30 each   <-- SEALED
-      + PROVENANCE.json per endpoint (skill digest, config digest, commit, rule, split, n, passes)
-    original_skillopt/   summary.json, history.json, slow_update/epoch_0{1,2,3,4}/, skills/v0000..0004
-    trace2skill/T2S_REPORT.json, trace2skill_skill.md, cache/{analysis,map,merge,apply,verify}/
-      + trace2skill_degraded_66553058/ + trace2skill_partial_66553156/   (the two degraded runs)
-    ../20261121-officeqa-contract/{v3_occ,v4_c1,v5_c2,v6_lean,v7_det}/
-      v6_lean holds OqaConnected.lean and the compile record; v7_det the determinism probe
+**3. THE EXPECTED-TO-CHANGE TEST IS CORRECTED, NOT DISABLED.** The pins moved to
+`tests/data/officeqa_report_expectations.json`, each naming the amendment that set it. The
+baseline-immutability assertions stayed in the test body and got stronger. **A claim is withdrawn:**
+C-3 did NOT return the stage-group count to 14 — it reads 17, and the probe shows why (the three
+largest UNKNOWN groups are `cell_bound`/`period_match`/`unit_match` at n=19 each, the triple C-2's
+defect-A repair emits for one withdrawn binding). 17 is correct; 14 was what a vanishing requirement
+looked like.
 
-**A pull-verification trap, since it cost three attempts.** macOS now ships **openrsync** (protocol 29),
-which does **not** accept `--info=stats2`: it prints its usage and exits, and through a pipe that looks
-like success. Use `-a --stats`. And verify a pull by `find | wc -l` on an **absolute** path — the shell's
-cwd resets between tool calls, so a relative check silently measures the wrong directory. I concluded
-"transferred nothing" twice before the problem was mine both times.
+**4. THE EVIDENCE SET IS FROZEN** at `63c10e469f45930e`: the 48 fixed-S0 training trajectories of job
+66552421, **676 binary calculations, 1,352 operands**, 82 chained statements declared out of scope.
+Task-separated 6/6 by `sha256("OQA-LN-1|"+uid)` — learn UID0028/0026/0079/0014/0034/0033, check
+UID0085/0031/0063/0065/0017/0030. **Three recovery-shaped attempts found by SHAPE, not by score:**
+p2/UID0026 (learn), **p4/UID0063 and p4/UID0085 (check — so the recovery control is prospective)**.
+Labelled REUSED DEVELOPMENT RECORDS: Trace2Skill already consumed these same 48.
 
-## START HERE -> `docs/research/OFFICEQA_BASELINE_LAUNCH.md` — the complete campaign report (519 lines)
+**5. ALLOWANCE FOR THIS FOLLOW-UP.** 8 requested CPU job-hours, 24 DeepSeek attempts AND $3, 0 actor
+calls, 0 GPUs — sublimits inside the phase ceilings of 50 h / 400 calls / $20, against which the
+campaign already drew 206 calls and $1.9788. **Used so far: CPU 1.42 of 8 requested; optimizer 0 of 24.**
 
-That one document is self-contained: results, frozen setup, resources, the contract arm, ten defects,
-limitations and next actions. The rest of this note is the operational handoff only.
-
-### THE RESULT IN THREE LINES
-* **Original SkillOpt:** 4 epochs, **0 accepts / 4 rejects** on ordinary steps; the only surviving
-  change is the **epoch-2 gated slow update**; validation **4/12 → 5/12**. Endpoint `e35673d87cb7`.
-* **Trace2Skill:** faithful on the **third** attempt — hierarchy 60→22→11→6→2→1, **18 items**, no
-  mechanical fallback, all 18 verified APPLIED. Endpoint `03d6564f1d10`.
-* **Held-out:** all three endpoints, 30/30 in both passes, **180 episodes. SCORES SEALED — do not
-  open them to choose contract features, prompts or repairs.**
-
-**Bundles — NEVER rebuild one while its jobs are queued or running (bash reads the body lazily):**
-* `oqa_base_20261121b` commit `a8f80fa` — the LIVE bundle for s0 and the four epochs.
-* `oqa_base_20261121c` commit `3765139` — the LIVE bundle for Trace2Skill.
-* `oqa_base_20261121` commit `ad65252` — the FAILED first prep. Kept as the record; do not reuse.
-Run root `runs/20261121-officeqa-two-baselines/`; FRESH ledger at its `ledger/`, starting at zero.
-
-**Resume after a TIMEOUT: resubmit the SAME stage with the SAME output directory.** `eval_only.py` and
-`run_batch` resume by id; every Trace2Skill call is cached by prompt digest. The body refuses to run
-under `SLURM_RESTART_COUNT != 0`, so a requeue can never re-spend — recovery is always deliberate.
-Submit with `OQA_BUNDLE=<bundle> bash <bundle>/oqa_base_submit.sh prep|s0|arm|t2s|heldout|chain`.
-
-### EVERYTHING SUBSTANTIVE IS IN THE REPORT — this note keeps only the operational handoff
-`docs/research/OFFICEQA_BASELINE_LAUNCH.md` holds the frozen setup, both results, the resources, the
-contract arm, the ten defects, the limitations and the next actions. It is deliberately NOT duplicated
-here: two copies drift, and the last version of this note had already drifted.
-
-Amendments **C-1, C-2, C-3** are in `docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md`, each with the
-prediction recorded BEFORE its code change and the measurement after.
-
-### BUNDLES — never rebuild one while its jobs are live (bash reads a body lazily)
-All jobs are finished, so none is locked now. The ones that matter, newest last:
-
-    oqa_base_20261121b  a8f80fa   s0 + the four Original SkillOpt epochs
-    oqa_base_20261121i  c35df7e   the three held-out evaluations
-    oqa_ct_20261121e    82a48d0   the contract arm's last phase (det)
-    oqa_base_20261121h  7d18cb4   Trace2Skill's faithful run came from the NEXT one, i
-    (a..i and ct a..e exist; each change went to a NEW directory, which is why there are so many)
-
-Submit with `OQA_BUNDLE=<bundle> bash <bundle>/oqa_base_submit.sh prep|s0|arm|t2s|heldout|chain`
-or `.../oqa_ct_submit.sh bundle7|replay|c2|lean|det`. **Both scripts now refuse a stage the deployed
-body does not contain** — build a new bundle for new code.
-
-### RESUME, if anything needs re-running
-`eval_only.py` and `run_batch` resume by id from `<dir>/results.jsonl`; every Trace2Skill optimizer
-reply is cached by prompt digest under `trace2skill/cache/<phase>/`. So resubmit the SAME stage with the
-SAME output directory and only the missing work is paid for. The body refuses to run under
-`SLURM_RESTART_COUNT != 0`, so an automatic requeue can never re-spend.
-
-**Two wiring facts that cost a whole campaign's worth of enforcement, now fixed — do not undo them:**
-* `SKILLOPT_SPEND_LEDGER_DIR` must be exported or `spend_ledger.py` is **inert** and every cap is
-  decorative. Every paid stage now calls `require_live_ledger` first and refuses without it.
-* `OQA_LEAN_BIN` must be the **toolchain** binary
-  (`lean/elan/toolchains/leanprover--lean4---v4.20.0/bin/lean`), not `elan/bin/lean`, which is a shim.
-
-### THIS PHASE'S ALLOWANCE — separate from the historical accounting
-Authorized 2026-11-21: **50 requested CPU job-hours, 0 GPUs, 20,000 actor attempts AND $15, 400
-DeepSeek calls AND $20.** Used: **CPU 33.42 of 50** (16.58 left; 17.5 of it was seven Trace2Skill
-submissions that used 44 minutes between them), **actor ~3,462 attempts / ~$1.87**, **optimizer 206
-calls of 400 / $2.06**. The optimizer CALL count at 52% is the tightest figure. **GPUs 0 of 0.**
-
-The spend figure is a **reconstruction from two incomplete sources** — see the report §3 and §6f. The
-ledger missed the first 1,801 attempts, so it cannot be cited as this phase's record.
-
-**Historical and untouched:** EmpirioLabs 12,042 of 30,024 and $8.0147 of $17.00; DeepSeek 105 of 266
-and $3.4689 of $10.00; CPU **disputed** — 35.649 of 44 core-hours or 66.483 of 44 requested walltime.
-**Which convention governs that 44-hour ceiling is still the user's decision.**
-
-### SEALED
-**Held-out scores and trajectories must not be used to choose contract features, prompts or repairs.**
-I read episode counts and provenance only. Unseal when the user asks.
+### RESUME
+Phases are independent and each writes its own versioned directory. `freeze` is deterministic and free.
+`learn` takes the payer token, refuses to start with an inert ledger, and is capped at 8 calls / $1.50
+per process. `lean` and `rehearse` read `v2_learn`. A requeue is refused (`SLURM_RESTART_COUNT != 0`).
 
 ### NEXT ACTIONS
-1. **Re-open SSH (Duo), then pull the campaign artifacts listed at the top of this note.**
+1. Read job 66580714's result, then submit `lean` and `rehearse`.
 2. Unseal the three held-out results when the user wants the comparison.
-3. The contract arm's real gap is the **learner**: a genuinely learned rule over column/series identity
-   with its evidence, a supported diagnosis on a later record, and the recovered-work control on
-   UID0026. Deliberately not started.
-4. Investigate the intermittent `spent <= cap` violation in the shared spend ledger, or decide it is
-   acceptable and record that. Not my code; characterised as intermittent (10 repeats, 10 passes).
-5. Decide whether the **one-question validation margin** makes a larger validation set worth the budget
-   before another comparison is run on this setup.
+3. Decide whether the one-question validation margin justifies a larger validation set.
+4. The historical 44-hour CPU convention decision (core-hours vs requested walltime) is still the
+   user's; it is separate from this phase and does not block it.
 
 ---
 
