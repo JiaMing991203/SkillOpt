@@ -60,6 +60,9 @@ export PYTHONPATH="$WORK"
 export OQA_TREE="$WORK"
 RES="$WORK/research/officeqa"
 
+# The route the guard must see, in its own format: semicolons between roles, pipes inside one. The
+# previous value named no base url or model, so the guard could not have pinned the backend at all.
+OPT_ROUTE="optimizer=openai_compatible|https://api.deepseek.com|deepseek-flash"
 S0="$OQA_BASE_ROOT/s0"
 OUT="$OQA_LN_ROOT"
 mkdir -p "$OUT" || exit 3
@@ -85,18 +88,33 @@ ledger_env() {
     export SKILLOPT_LEDGER_JOB_MAX_USD_OPTIMIZER="${OQA_LN_JOB_USD:-1.50}"
 }
 
-ledger_report() { "$OQA_PY" -I -m skillopt.model.spend_ledger report "$OQA_LEDGER_DIR"; }
+# `-I` is isolated mode: it does NOT put the current directory on sys.path and it IGNORES PYTHONPATH,
+# so `import skillopt` fails under it however the job is cd-ed. The tree root has to be inserted
+# explicitly, exactly as oqa_base_body.sh does. Job 66580714 is what this comment costs: the ledger
+# probe raised ModuleNotFoundError, `require_live_ledger` read that as an inactive ledger and refused
+# to load the key - which is the CORRECT fail-closed behaviour on a wrong premise, and spent nothing.
+ledger_report() {
+    "$OQA_PY" -I -c "
+import json, os, sys
+sys.path.insert(0, os.environ['OQA_TREE'])
+from skillopt.model import spend_ledger as L
+print(json.dumps(L.report(), indent=2, sort_keys=True))
+"
+}
 
 require_live_ledger() {
     "$OQA_PY" -I -c "
-import json, sys
+import json, os, sys
+sys.path.insert(0, os.environ['OQA_TREE'])
 from skillopt.model import spend_ledger as L
-snap = L.snapshot()
-print(json.dumps({'active': snap.get('active'), 'dir': snap.get('dir')}))
+snap = L.report()
+print(json.dumps({'active': snap.get('active'), 'dir': snap.get('dir'),
+                  'verdict': snap.get('verdict'), 'problems': snap.get('problems')}))
 sys.exit(0 if snap.get('active') else 9)
-" > "$OUTDIR/ledger_live.json" 2>> "$OUTDIR/job.log" \
-        || die "the spend ledger is NOT ACTIVE, so the caps are not enforced. Refusing to load a key."
-    log "ledger live: $(cat "$OUTDIR/ledger_live.json")"
+" > "$OUTDIR/ledger_live.json" 2>&1 \
+        || die "the spend ledger is NOT ACTIVE, so the caps are not enforced. Refusing to load a key. \
+See ledger_live.json"
+    log "ledger live: $(tr -d '\n' < "$OUTDIR/ledger_live.json")"
 }
 
 # ── the phase-wide single payment coordinator ───────────────────────────────
@@ -193,7 +211,7 @@ learn)
     take_payer_token
     require_live_ledger
     load_optimizer_key
-    export SKILLOPT_REQUIRE_ROUTE="optimizer=openai_compatible;target=none"
+    export SKILLOPT_REQUIRE_ROUTE="$OPT_ROUTE;target=none"
     V="$OUT/v2_learn"; mkdir -p "$V" || exit 3
     export OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl"
     ledger_report > "$OUTDIR/LEDGER_BEFORE.json" 2>> "$OUTDIR/job.log" || log "WARNING: ledger report failed"
@@ -218,7 +236,7 @@ rehearse)
     take_payer_token
     require_live_ledger
     load_optimizer_key
-    export SKILLOPT_REQUIRE_ROUTE="optimizer=openai_compatible;target=none"
+    export SKILLOPT_REQUIRE_ROUTE="$OPT_ROUTE;target=none"
     V="$OUT/v4_rehearse"; mkdir -p "$V" || exit 3
     export OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl"
     ledger_report > "$OUTDIR/LEDGER_BEFORE.json" 2>> "$OUTDIR/job.log" || true
