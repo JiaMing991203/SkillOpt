@@ -95,11 +95,20 @@ def classify (m : MatchT) (corroborated : Bool) (derived : Bool) (pow10 : Bool)
     else if inQuestion then OpClass.takenFromTheQuestion
     else OpClass.unresolved
 
-/-- `source_traced`. `refuted` means the LEARNED rule predicted a source the resolver did not confirm;
-    `channel` means at least one line-numbered observation exists; `nUnresolved` counts operands of the
-    SUPPORTING calculation with no identified origin. Replaced work does not appear, by construction. -/
-def sourceTraced (channel : Bool) (refuted : Bool) (nUnresolved : Nat) : ObState :=
-  if refuted then ObState.unknown
+/-- `source_traced`. `hasSupporting` means a written calculation yields the committed answer at all;
+    `refuted` means the LEARNED rule predicted a source the resolver did not confirm; `channel` means
+    at least one line-numbered observation exists; `nUnresolved` counts operands of the SUPPORTING
+    calculation with no identified origin. Replaced work does not appear, by construction.
+
+    `hasSupporting` WAS MISSING AND LEAN IS WHAT FOUND THAT. Without it this function mapped an
+    attempt with no supporting calculation - no operands, so `nUnresolved = 0` - to `discharged`,
+    while the Python side recorded UNKNOWN, and twenty-odd exported examples failed with
+    "decide proved that sourceTraced false false 0 = ObState.unknown is false". Nothing to trace is
+    not the same as nothing left to trace. -/
+def sourceTraced (hasSupporting : Bool) (channel : Bool) (refuted : Bool)
+    (nUnresolved : Nat) : ObState :=
+  if !hasSupporting then ObState.unknown
+  else if refuted then ObState.unknown
   else if nUnresolved = 0 then ObState.discharged
   else if channel then ObState.outstanding
   else ObState.unknown
@@ -123,27 +132,35 @@ def resolveEffect : Option Bool → ObState
   | some false => ObState.outstanding
 
 -- ── 1. a refutation of the learned rule is never an accusation ──────────────
-theorem refutationNeverAccuses (ch : Bool) (n : Nat) :
-    sourceTraced ch true n = ObState.unknown := by
-  simp [sourceTraced]
+theorem refutationNeverAccuses (hs ch : Bool) (n : Nat) :
+    sourceTraced hs ch true n = ObState.unknown := by
+  cases hs <;> simp [sourceTraced]
 
 -- ── 2. missing knowledge stays unknown ─────────────────────────────────────
-theorem noChannelNeverAccuses (rf : Bool) (n : Nat) (h : n ≠ 0) :
-    sourceTraced false rf n = ObState.unknown := by
-  cases rf <;> simp [sourceTraced, h]
+theorem noChannelNeverAccuses (hs rf : Bool) (n : Nat) (h : n ≠ 0) :
+    sourceTraced hs false rf n = ObState.unknown := by
+  cases hs <;> cases rf <;> simp [sourceTraced, h]
 
-theorem noChannelIsNeverViolated (rf : Bool) (n : Nat) :
-    sourceTraced false rf n ≠ ObState.violated := by
-  cases rf <;> by_cases h : n = 0 <;> simp [sourceTraced, h]
+theorem noChannelIsNeverViolated (hs rf : Bool) (n : Nat) :
+    sourceTraced hs false rf n ≠ ObState.violated := by
+  cases hs <;> cases rf <;> by_cases h : n = 0 <;> simp [sourceTraced, h]
+
+-- ── 2b. nothing to trace is UNKNOWN, not a discharge ───────────────────────
+-- This is the case the exported evidence disagreed about, and the reason the parameter exists.
+theorem nothingToTraceIsUnknown (ch rf : Bool) (n : Nat) :
+    sourceTraced false ch rf n = ObState.unknown := by
+  simp [sourceTraced]
 
 -- ── 3. a discharge needs every part of the chain ───────────────────────────
-theorem dischargeNeedsEverythingResolved (ch rf : Bool) (n : Nat)
-    (h : sourceTraced ch rf n = ObState.discharged) : rf = false ∧ n = 0 := by
-  cases rf
-  · by_cases hn : n = 0
-    · exact ⟨rfl, hn⟩
-    · cases ch <;> simp [sourceTraced, hn] at h
+theorem dischargeNeedsEverythingResolved (hs ch rf : Bool) (n : Nat)
+    (h : sourceTraced hs ch rf n = ObState.discharged) : hs = true ∧ rf = false ∧ n = 0 := by
+  cases hs
   · simp [sourceTraced] at h
+  · cases rf
+    · by_cases hn : n = 0
+      · exact ⟨rfl, rfl, hn⟩
+      · cases ch <;> simp [sourceTraced, hn] at h
+    · simp [sourceTraced] at h
 
 -- ── 4. an unknown effect is not "nothing changed" ──────────────────────────
 theorem unknownEffectIsNotNoChange : resolveEffect none = ObState.unknown := by
@@ -159,8 +176,8 @@ theorem unknownEffectIsNotDischarged (e : Option Bool)
 theorem recoveryCanDischarge : answerTraced true true = ObState.discharged := by
   simp [answerTraced]
 
-theorem supersededIsIrrelevant (ch rf : Bool) (n nSuperseded : Nat) :
-    sourceTraced ch rf n = sourceTraced ch rf n := by rfl
+theorem supersededIsIrrelevant (hs ch rf : Bool) (n nSuperseded : Nat) :
+    sourceTraced hs ch rf n = sourceTraced hs ch rf n := by rfl
 
 theorem anUncomputedAnswerIsAnExecutionDiagnosis :
     answerTraced true false = ObState.violated := by
@@ -225,9 +242,11 @@ def generate(stage_docs: list) -> tuple:
                 refuted = bool(o.get("model_refutations"))
                 nun = len([x for x in (rep.get("supporting_operands") or [])
                            if x["class"] == CK.UNRESOLVED])
+                has_supporting = rep["recovery_shape"].get("supporting_calculation") is not None
                 lines.append(
                     f"-- {rep['attempt_id']} source_traced -> {o['state']}\n"
-                    f"example : sourceTraced {_b(rep['occurrence_channel_available'])} "
+                    f"example : sourceTraced {_b(has_supporting)} "
+                    f"{_b(rep['occurrence_channel_available'])} "
                     f"{_b(refuted)} {nun} = {st} := by decide")
                 n_obl += 1
     lines.append("")

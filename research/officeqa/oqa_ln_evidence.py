@@ -258,22 +258,31 @@ def recovery_shape(extracted: dict) -> dict:
     """
     calcs = extracted["calculations"]
     cv = extracted["committed_answer_value"]
-    if cv is None or len(calcs) < 2:
-        return {"qualifies": False, "why": "no committed answer" if cv is None else "fewer than two calculations"}
-    supporting = [i for i, c in enumerate(calcs)
-                  if abs(c["result"] - cv) <= max(0.5, abs(cv) * 1e-6)]
+    empty = {"qualifies": False, "supporting_calculation": None, "superseded_calculations": [],
+             "committed_answer_value": cv}
+    if cv is None:
+        return {**empty, "why": "no committed answer"}
+    # THE SUPPORTING CALCULATION IS FOUND WHETHER OR NOT THIS IS A RECOVERY. The first version
+    # returned early on `len(calcs) < 2`, so an attempt whose SINGLE written calculation yields the
+    # committed answer reported no supporting calculation at all - and the stage layer reads that as
+    # "the committed answer is the result of no written calculation" and marks `answer_traced`
+    # VIOLATED. That is a FALSE ACCUSATION against an actor that did exactly the right thing, and it
+    # is the defect the Lean cross-check led to: Lean disagreed about `sourceTraced` on attempts with
+    # no supporting calculation, and following that disagreement is what exposed this.
+    close = lambda x: abs(x - cv) <= max(0.5, abs(cv) * 1e-6)  # noqa: E731
+    supporting = [i for i, c in enumerate(calcs) if close(c["result"])]
     if not supporting:
-        return {"qualifies": False, "why": "no written calculation yields the committed answer"}
+        return {**empty, "why": "no written calculation yields the committed answer"}
     last = supporting[-1]
-    superseded = [i for i, c in enumerate(calcs)
-                  if i < last and abs(c["result"] - cv) > max(0.5, abs(cv) * 1e-6)]
+    superseded = [i for i, c in enumerate(calcs) if i < last and not close(c["result"])]
     return {
         "qualifies": bool(superseded),
         "supporting_calculation": last,
         "superseded_calculations": superseded,
         "committed_answer_value": cv,
         "why": ("a later calculation yields the committed answer and at least one earlier one does not"
-                if superseded else "every earlier calculation already yields the committed answer"),
+                if superseded else "the committed answer is the result of written work, with nothing "
+                                   "replaced"),
     }
 
 

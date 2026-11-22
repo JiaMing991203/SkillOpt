@@ -151,6 +151,8 @@ def edits_of(patch) -> list:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--learn-root", required=True)
+    ap.add_argument("--stage-root", default=None,
+                    help="where the stage reports live, if not beside the models (the restaged ones)")
     ap.add_argument("--lean-root", required=True)
     ap.add_argument("--freeze", required=True)
     ap.add_argument("--skill", required=True)

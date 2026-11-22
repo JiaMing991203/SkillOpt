@@ -1,11 +1,12 @@
 #!/bin/bash
 # Submit a learned-contract phase. Rule OQA-LN-1.
 #
-#   OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|lean|rehearse [--dry-run]
+#   OQA_BUNDLE=<bundle> bash oqa_ln_submit.sh ledger|freeze|learn|restage|lean|rehearse [--dry-run]
 #
 #     ledger    0:25  FREE  the ledger race fix, verified on /nfs/turbo, plus the full test suite
 #     freeze    0:10  FREE  the evidence set, the v10 vocabulary and the accounting, frozen
 #     learn     0:15  PAID  two learner repetitions, at most 2 optimizer calls each
+#     restage   0:10  FREE  rebuild the stage reports from the already-frozen models
 #     lean      0:15  FREE  generate and compile the Lean file
 #     rehearse  0:15  PAID  the paired analyst rehearsal, exactly 2 optimizer calls
 #
@@ -35,7 +36,7 @@ fi
 # handful of HTTP calls.
 case "$WHAT" in
   ledger)   T=00:25:00 ;; freeze) T=00:10:00 ;; learn) T=00:15:00 ;;
-  lean)     T=00:15:00 ;; rehearse) T=00:15:00 ;;
+  restage)  T=00:10:00 ;; lean) T=00:15:00 ;; rehearse) T=00:15:00 ;;
   *) echo "unknown: $WHAT" >&2; exit 2 ;;
 esac
 if [ "$DRY" = "1" ]; then printf '  %-18s %s  PHASE=%s\n' "oqa-ln-$WHAT" "$T" "$WHAT" >&2; exit 0; fi

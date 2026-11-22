@@ -32,7 +32,7 @@
 set -uo pipefail
 B="${OQA_BUNDLE:?OQA_BUNDLE must be set}"
 PHASE="${PHASE:-freeze}"
-case "$PHASE" in ledger|freeze|learn|lean|rehearse) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
+case "$PHASE" in ledger|freeze|learn|restage|lean|rehearse) ;; *) echo "unknown PHASE=$PHASE" >&2; exit 2 ;; esac
 
 if [ "${SLURM_RESTART_COUNT:-0}" != "0" ]; then
     echo "REFUSING: SLURM_RESTART_COUNT=${SLURM_RESTART_COUNT}; a requeue would re-spend." >&2; exit 6
@@ -231,11 +231,26 @@ learn)
     cp -r "$V"/*.json "$OUTDIR/" 2>/dev/null || true
     ;;
 
+restage)
+    drop_all_keys
+    # FREE. Rebuild the stage reports from the models already frozen in v2_learn, after the
+    # recovery_shape defect the Lean cross-check led to. The superseded reports stay where they are:
+    # a corrected result that overwrites the result it corrects leaves nothing to check.
+    V="$OUT/v2b_restage"; mkdir -p "$V" || exit 3
+    "$OQA_PY" -I "$RES/oqa_ln_restage.py" --learn-root "$OUT/v2_learn" \
+        --freeze "$OUT/v1_freeze/LN_FREEZE.json" --out "$V" >> "$OUTDIR/job.log" 2>&1 || status=1
+    cp "$V"/*.json "$OUTDIR/" 2>/dev/null || true
+    ;;
+
 lean)
     drop_all_keys
     : "${OQA_LEAN_BIN:?settings.env must name the Lean toolchain binary, not the elan shim}"
     V="$OUT/v3_lean"; mkdir -p "$V" || exit 3
-    "$OQA_PY" -I "$RES/oqa_ln_lean.py" --learn-root "$OUT/v2_learn" \
+    # Read the RESTAGED reports when they exist, so Lean checks the corrected states.
+    STAGE_SRC="$OUT/v2_learn"
+    [ -d "$OUT/v2b_restage" ] && STAGE_SRC="$OUT/v2b_restage"
+    log "lean reads stage reports from $STAGE_SRC"
+    "$OQA_PY" -I "$RES/oqa_ln_lean.py" --learn-root "$STAGE_SRC" \
         --freeze "$OUT/v1_freeze/LN_FREEZE.json" --out "$V" --lean-bin "$OQA_LEAN_BIN" \
         >> "$OUTDIR/job.log" 2>&1 || status=1
     cp "$V"/*.json "$V"/*.lean "$OUTDIR/" 2>/dev/null || true
@@ -251,6 +266,7 @@ rehearse)
     export OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl"
     ledger_report > "$OUTDIR/LEDGER_BEFORE.json" 2>> "$OUTDIR/job.log" || true
     "$OQA_PY" -I "$RES/oqa_ln_rehearse.py" --learn-root "$OUT/v2_learn" \
+        --stage-root "$([ -d "$OUT/v2b_restage" ] && echo "$OUT/v2b_restage" || echo "$OUT/v2_learn")" \
         --lean-root "$OUT/v3_lean" --freeze "$OUT/v1_freeze/LN_FREEZE.json" \
         --skill "$OQA_BASE_ROOT/endpoint_S0.md" --out "$V" >> "$OUTDIR/job.log" 2>&1 || status=1
     ledger_report > "$OUTDIR/LEDGER_AFTER.json" 2>> "$OUTDIR/job.log" || true
