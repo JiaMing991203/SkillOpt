@@ -262,23 +262,36 @@ d2)
     # asserts that. Amendments D-2..D-5, replayed over the SAME frozen records with the SAME frozen
     # models - nothing is retrained and nothing is sent.
     : "${OQA_LEAN_BIN:?settings.env must name the Lean toolchain binary, not the elan shim}"
-    V="$OUT/v5_d2"; mkdir -p "$V" || exit 3
-    "$OQA_PY" -I "$RES/oqa_d2_run.py" --freeze "$OUT/v1_freeze/LN_FREEZE.json"         --learn-root "$OUT/v2_learn" --rehearse-root "$OUT/v4_rehearse"         --compare-stage-root "$OUT/v2b_restage" --lean "$OUT/v3_lean/LN_LEAN.json"         --out "$V" >> "$OUTDIR/job.log" 2>&1 || status=1
-    # Lean over the CORRECTED stage reports, in its own versioned directory. The superseded Lean
-    # source and receipt stay in v3_lean, unmodified.
-    L="$OUT/v5_lean"; mkdir -p "$L" || exit 3
-    "$OQA_PY" -I "$RES/oqa_ln_lean.py" --learn-root "$V"         --freeze "$OUT/v1_freeze/LN_FREEZE.json" --out "$L" --lean-bin "$OQA_LEAN_BIN"         >> "$OUTDIR/job.log" 2>&1 || status=1
+    V="$OUT/v5_d2"; L="$OUT/v5_lean"; mkdir -p "$V" "$L" || exit 3
+    d2_driver() {
+        "$OQA_PY" -I "$RES/oqa_d2_run.py" \
+            --freeze "$OUT/v1_freeze/LN_FREEZE.json" \
+            --learn-root "$OUT/v2_learn" \
+            --rehearse-root "$OUT/v4_rehearse" \
+            --compare-stage-root "$OUT/v2b_restage" \
+            --lean "$1" \
+            --out "$V" >> "$OUTDIR/job.log" 2>&1
+    }
+    # Pass 1 writes the corrected stage reports, which Lean then checks. Lean cannot run first.
+    d2_driver "$OUT/v3_lean/LN_LEAN.json" || status=1
+    "$OQA_PY" -I "$RES/oqa_ln_lean.py" --learn-root "$V" \
+        --freeze "$OUT/v1_freeze/LN_FREEZE.json" --out "$L" --lean-bin "$OQA_LEAN_BIN" \
+        >> "$OUTDIR/job.log" 2>&1 || status=1
+    # Pass 2 is deterministic and free, and makes the regenerated reports quote the NEW receipt.
+    d2_driver "$L/LN_LEAN.json" || status=1
     log "running the full test suite against the corrected code"
     export OQA_LN_FREEZE="$OUT/v1_freeze/LN_FREEZE.json"
     export OQA_CAMPAIGN_ROOT
-    "$OQA_PY" -I -m pytest -q -p no:cacheprovider --tb=long -rf tests/         > "$OUTDIR/pytest.txt" 2>&1 || true
+    "$OQA_PY" -I -m pytest -q -p no:cacheprovider --tb=long -rf tests/ \
+        > "$OUTDIR/pytest.txt" 2>&1 || true
     tail -40 "$OUTDIR/pytest.txt" >> "$OUTDIR/job.log"
-    "$OQA_PY" -I -m pytest -q -p no:cacheprovider --tb=no -rf tests/ 2>&1         | tail -30 > "$OUTDIR/pytest_summary.txt" || true
+    "$OQA_PY" -I -m pytest -q -p no:cacheprovider --tb=no -rf tests/ 2>&1 \
+        | tail -30 > "$OUTDIR/pytest_summary.txt" || true
     cp "$V"/*.json "$OUTDIR/" 2>/dev/null || true
     cp "$L"/*.json "$L"/*.lean "$OUTDIR/" 2>/dev/null || true
-    mkdir -p "$OUTDIR/reports_regenerated" && cp "$V"/reports_regenerated/*.md         "$OUTDIR/reports_regenerated/" 2>/dev/null || true
+    mkdir -p "$OUTDIR/reports_regenerated"
+    cp "$V"/reports_regenerated/*.md "$OUTDIR/reports_regenerated/" 2>/dev/null || true
     ;;
-
 rehearse)
     ledger_env
     take_payer_token
