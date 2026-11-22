@@ -236,7 +236,14 @@ def main(argv=None) -> int:
     lean = None
     if a.lean and os.path.exists(a.lean):
         with open(a.lean, encoding="utf-8") as f:
-            lean = json.load(f)
+            lr = json.load(f)
+        # FLATTENED THE SAME WAY `oqa_ln_rehearse` FLATTENS IT. `returncode` lives under `result`,
+        # and reading the top level gives None - which the report then prints as
+        # "return code None". The delivered report got this right; the first regeneration did not.
+        lean = {"version": lr.get("version"),
+                "returncode": (lr.get("result") or {}).get("returncode"),
+                "source_sha256": lr.get("source_sha256"),
+                "n_examples": lr.get("n_examples"), "scope": lr.get("scope")}
 
     written = {}
     written["D2_FREEZE.json"] = _write(os.path.join(a.out, "D2_FREEZE.json"),
