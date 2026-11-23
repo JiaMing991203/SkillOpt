@@ -822,12 +822,32 @@ dollars)`.
 
 ---
 
-**What I am explicitly not proposing, and why.** The "numbered table output" / "will the call return a citable
-cell" target — which this track's own D-2 packet §14b recommended — is **withdrawn**. Citable formatting is not
-the same thing as usable evidence: a read that returns no line numbers can still carry the caption and the
-header band that `unit_match` needs, and a perfectly citable grep hit carries neither, as the 0-of-261 row
-shows. Target A is the substantive form of what §14b was reaching for, and it says what is actually missing.
-I am also not proposing a third repetition of a proxy-label classifier in any form.
+### A correction to my own first draft of this section
+
+My first draft of this section said the D-2 packet's §14b target was "withdrawn" because it "conflates
+formatting with evidence". **That was unfair and I withdraw the withdrawal.** Re-reading §14b against this
+audit's own measurement:
+
+- §14b predicts, from the query as the agent writes it and the prefix before it, whether a tool call will
+  return a line-numbered, pipe-delimited observation. That is a forecast about **the next observation**, which
+  is the structural property this section asks for. §14b argues the point explicitly and correctly.
+- Its measurement and `PA3_TARGET_BASIS.json` are the **same measurement**. §14b's grep row is
+  "261 calls, 99 return nothing, 63 numbered with no cells, 99 numbered pipe cells"; PA3's grep row is
+  "261 calls, 99 returned nothing, 99 returned a table row". **Target B above is therefore a restatement of
+  §14b from the other side, not a replacement for it** — for grep the two targets partition the same 261 calls
+  identically.
+- §14b also already names the honest risk ("the regularity may be close to *read never cites, grep sometimes
+  does*") and locates the real empirical content in the same place Target B does: what distinguishes the 99
+  greps that return a cell from the 162 that do not.
+
+So the live options are **two, not three**: §14b/Target B (one target, two descriptions) and Target A. What this
+audit genuinely adds is **Target A**, which §14b does not cover: a citable cell is not the same thing as the
+*context that interprets it*. A grep hit can be perfectly citable and still carry no units — 0 of 261 greps
+returned a stated money scale, against 36 of 192 reads — and `unit_match` needs the units, not the line number.
+Target A is the complement of §14b, and it is the one blocked on P-2.
+
+**What I am not proposing, in any form:** a third repetition of a proxy-label classifier, or any target whose
+label the supplied pipeline computes from the same prefix the features come from.
 
 ---
 

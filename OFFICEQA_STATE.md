@@ -160,11 +160,13 @@ nothing (66598457 and 66599047 both did).
 3. **The recommended free next step, REVISED by PA-1.** Fix the `max(0.5, |x|·1e-6)` numeric
    tolerance; then, before any new learning, close the extraction gap PA-1 identified (**P-2**: a
    data cell's column header is never bound — 814 of 814 — which is why `scale_binds` produced 0
-   conclusions on 113 operands). **D-2 packet §14b is WITHDRAWN**: "will a tool call return a citable
-   cell" conflates formatting with evidence — 0 of 261 greps ever returned a stated money scale while
-   36 of 192 reads did. The two live target options are in `OFFICEQA_PARITY_AUDIT.md` §9: (A) will a
-   call return the context that governs its own rows (needs P-2 first), (B) will a call return
-   anything at all (measurable today: 99 of 261 greps and 61 of 76 globs returned nothing).
+   conclusions on 113 operands). **D-2 packet §14b STANDS** — an earlier draft of the parity audit
+   called it withdrawn and that was wrong, corrected in `OFFICEQA_PARITY_AUDIT.md` §9. §14b and the
+   audit's "Target B" are the SAME target described from opposite sides: for grep both partition the
+   same 261 calls (99 return a citable cell, 99 return nothing). What the audit ADDS is **Target A** —
+   will a call return the *context* that interprets its rows, which a citable cell does not imply:
+   **0 of 261 greps returned a stated money scale against 36 of 192 reads**, and `unit_match` needs
+   the units, not the line number. Target A is blocked on P-2; §14b/Target B is measurable today.
    **Do NOT propose abandonment**: D-2 packet §14a measured it and it fails — one attempt in 48
    contains abandoned work and the checking side contains none. **Do NOT propose another proxy-label
    classifier.**

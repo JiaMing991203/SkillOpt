@@ -2103,3 +2103,20 @@ is refused with `Permission denied (publickey,keyboard-interactive)`). So cluste
 from this session any more. The last verified reading stands at 01:40 EST: no OfficeQA job queued or running,
 66599377 COMPLETED 00:04:03, the six live `e3m-*` jobs are held Experiment 3 GPU jobs on another track. The
 parity audit submitted nothing, so nothing of mine can be running.
+
+**A second correction, 19:50 EST: I was unfair to the D-2 packet's own proposal.** The parity audit's first
+draft said §14b ("will a tool call return a line-numbered, pipe-delimited observation") was *withdrawn* because
+it conflated formatting with evidence. Re-reading §14b against PA3 shows that is wrong on two counts. §14b is a
+forecast about the **next observation** from query form and prefix — the exact structural property the audit
+demands — and it argues that explicitly. And its measurement is PA3's measurement: §14b's grep row is 261 calls,
+99 returning nothing, 99 returning numbered pipe cells; PA3's is 261 calls, 99 empty, 99 with a table row. So
+the audit's "Target B" is **§14b restated from the other side**, not a replacement. §14b even names the same
+residual question (what distinguishes the 99 from the 162). Corrected in the audit §9, its mirror and the state
+note: there are **two** live options, §14b/Target B and Target A, and Target A is the genuinely new one — a
+citable cell is not the context that interprets it, and 0 of 261 greps returned a stated money scale against 36
+of 192 reads.
+
+**[INTERPRETATION] The lesson, since this is the second avoidable error in one day.** Both came from writing a
+judgement before checking the thing judged: the wall-clock estimate, and the dismissal of a proposal I had read
+hours earlier and then summarised from memory. Re-read the thing you are about to overturn, in full, at the
+moment you overturn it.
