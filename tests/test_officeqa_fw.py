@@ -727,3 +727,25 @@ def test_the_learn_stage_cannot_hand_the_arm_a_stale_model():
     import fw_ir as IR
     src = __import__("inspect").getsource(IR.freeze)
     assert "frozen with another content" in src and "os.chmod(path, 0o444)" in src
+
+
+def test_the_report_hook_can_verify_a_campaign_shaped_model(tmp_path):
+    """The one path between the learner and the first paid analyst call that nothing exercised. The
+    reflect.py hook keys its report cache on `oqa_reports.lc_model_digest(OFFICEQA_LC_MODEL)`, which
+    verifies the file through the LC generation's `load_frozen` - and the campaign's models are written
+    by the FRAMEWORK's `freeze`, with `frozen_at_epoch` and `parent_sha256` that no LC model carries.
+    If the two canonicalisations disagreed, the hook would raise "refuses to build reports under an
+    unverifiable model version" and the whole arm stage would die after the learner had been paid."""
+    import fw_ir as IR
+    import oqa_fw_arm as ARM
+    import oqa_fw_domain as DOM
+    import oqa_reports as R
+    dom = DOM.OfficeQADomain()
+    model = IR.empty_model(dom)
+    path = str(tmp_path / "FW_MODEL_e1.json")
+    fr = ARM.freeze_to(model, path, parent_sha256=None, epoch=1)
+    assert fr["freeze_problem"] is None
+    on_disk = json.load(open(path, encoding="utf-8"))
+    assert on_disk["frozen_at_epoch"] == 1
+    assert R.lc_model_digest(path) == on_disk["sha256"] == fr["sha256"], (
+        "the LC verifier must accept a model the framework froze")
