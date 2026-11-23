@@ -370,14 +370,21 @@ def test_the_arm_driver_applies_an_empty_proposal_when_a_contract_is_contradicte
     evidence contradicts, and it runs only when `apply_proposal` is called. Across epochs the proposer
     will not always propose, so the recheck must be explicit or a refuted contract stays active."""
     src = open(os.path.join(RESEARCH, "oqa_fw_arm.py"), encoding="utf-8").read()
-    fn = next(n for n in ast.walk(ast.parse(src))
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "learn_over")
     body = ast.dump(ast.Module(body=fn.body, type_ignores=[]))
     # an EMPTY proposal, applied explicitly, with "recheck" as its source
     assert "'recheck'" in body or '"recheck"' in body
     assert "assumption_ops" in body and "contract_ops" in body
-    assert body.count("apply_proposal") >= 3, "seed, induce and recheck must each be able to apply"
+    assert body.count("apply_proposal") >= 2, "the seed and the recheck must each be able to apply"
     assert "attempt" in body, "a refuted contract must be offered to the repair machinery"
+    # the proposing step applies too, and since 2026-11-23 it lives in a per-proposer helper rather
+    # than inline: assert the whole module can still apply from all three places.
+    assert ast.dump(tree).count("apply_proposal") >= 4, (
+        "seed, teacher, search and recheck must each be able to apply")
+    for name in ("_teacher_pass", "_search_pass"):
+        assert any(isinstance(n, ast.FunctionDef) and n.name == name for n in ast.walk(tree)), name
 
 
 def test_the_arm_driver_freezes_one_model_per_epoch_with_its_parent():
@@ -388,3 +395,152 @@ def test_the_arm_driver_freezes_one_model_per_epoch_with_its_parent():
     assert ARM.SEED_ASSUMPTIONS == ("index_alignment", "table_scale_applies_to_rows")
     # a seed run must declare that epoch 1's reports are in-sample
     assert "in_sample_warning" in src and "IN-SAMPLE" in src
+
+
+# ── 10. the DeepSeek learner (oqa_fw_teacher) and amendment F-1 ──────────────
+def test_the_learner_prompt_is_generated_from_the_domain_not_hard_coded():
+    """A hand-written atom list in the prompt is a drift waiting to happen: the learner would be told
+    about a vocabulary the code no longer has. Every atom and every assumption must come from the
+    Domain object, and the category marks must be the ones the code uses."""
+    import oqa_fw_domain as DOM
+    import oqa_fw_teacher as TEACH
+    dom = DOM.OfficeQADomain()
+    block = TEACH.vocab_block(dom)
+    for atom, (_kinds, cat, _why) in dom.atoms.items():
+        assert atom in block, atom
+        assert f"[{cat}]" in block
+    for name in dom.assumptions:
+        assert name in block, name
+    for kind in dom.kinds:
+        assert kind in block, kind
+    # the prompt must warn about the two ways a gate-accepted rule is still worthless
+    sysp = TEACH.system_prompt(dom)
+    assert "CIRCULARITY" in sysp and "REDUNDANCY" in sysp
+    assert "LEARNED-DEPENDENT" in sysp
+    d = TEACH.prompt_digest(dom)
+    assert d["system_sha"] and d["vocab_sha"] and d["domain_version"] == dom.version
+
+
+def test_the_leak_check_refuses_rather_than_filters():
+    """The learner may see the question, the tool calls, the observations and the code-computed values.
+    It may not see a gold answer, a score, the skill or held-out material. The check RAISES - it does
+    not quietly strip, because a silently filtered prompt is a prompt nobody can reconstruct."""
+    import oqa_fw_teacher as TEACH
+    TEACH.leak_check([{"role": "user", "content": "co:s1:0:0 col_label_present=T"}])
+    for bad in ("ground_truth: 123", "the answer is 4,500", "## Skill Knowledge", "valid_unseen",
+                "eval_summary", "scored: 0.41"):
+        try:
+            TEACH.leak_check([{"role": "user", "content": f"records ... {bad} ... more"}])
+        except TEACH.LeakError:
+            continue
+        raise AssertionError(f"leak_check accepted {bad!r}")
+
+
+def test_circularity_is_refused_before_the_gate_ever_sees_it():
+    """A rule that conditions on its own consequence, or on a LEARNED-DEPENDENT atom, would be scored
+    against values its own acceptance produced. That is a schema fault, not an evidence fault."""
+    import oqa_fw_domain as DOM
+    import oqa_fw_teacher as TEACH
+    dom = DOM.OfficeQADomain()
+    own = {"kind": "concludes", "scope": "any", "subject": {"?s": "column"}, "subject_scope": "once",
+           "conditions": [[{"atom": "col_child_label_present", "args": ["?s"], "value": True}]],
+           "consequence": {"atom": "col_child_label_present", "args": ["?s"], "value": True},
+           "context": {"task_types": []}}
+    assert TEACH.circularity(own, dom), "a rule may not condition on its own consequence"
+    dep = dict(own, conditions=[[{"atom": "col_bound", "args": ["?s"], "value": True}]],
+               consequence={"atom": "col_label_present", "args": ["?s"], "value": True})
+    why = TEACH.circularity(dep, dom)
+    assert why and "LEARNED-DEPENDENT" in " ".join(why)
+    clean = dict(own, conditions=[[{"atom": "col_label_present", "args": ["?s"], "value": True}]])
+    assert TEACH.circularity(clean, dom) == []
+
+
+def test_compile_ops_reports_a_malformed_proposal_instead_of_dropping_it():
+    """"The learner proposed nothing" and "the learner proposed something unusable" are different
+    findings. A dropped operation would record the first when the second happened."""
+    import oqa_fw_domain as DOM
+    import oqa_fw_teacher as TEACH
+    dom = DOM.OfficeQADomain()
+    parsed = {"contract_ops": [
+        {"op": "add", "contract": {"kind": "concludes", "scope": "any",
+                                   "subject": {"?s": "column"},
+                                   "conditions": [[{"atom": "header_split", "args": ["?s"],
+                                                    "value": True}]],
+                                   "consequence": {"atom": "col_label_present", "args": ["?s"],
+                                                   "value": True},
+                                   "context": {"task_types": []}}},
+        {"op": "add", "contract": {"kind": "concludes"}},
+        {"op": "retire"},
+        {"op": "nonsense"}],
+        "assumption_ops": [{"op": "adopt", "name": "not_an_assumption", "reason": "x"}]}
+    out = TEACH.compile_ops(parsed, dom)
+    assert out["contract_ops"] == [], "every one of these is unusable"
+    assert len(out["refused"]) == 5
+    # the TYPED-argument error must be the reason the first one failed, named explicitly
+    first = " ".join(out["refused"][0]["why"])
+    assert "header_split" in first and "column" in first
+    assert out["assumption_ops"] == []
+
+
+def test_parse_reply_takes_the_last_fenced_block_and_falls_back_to_bare_json():
+    import oqa_fw_teacher as TEACH
+    d = TEACH.parse_reply('blah ```json {"contract_ops": [], "notes": "a"} ``` tail')
+    assert d["notes"] == "a" and d["contract_ops"] == []
+    d = TEACH.parse_reply('thinking... {"assumption_ops": [{"op": "adopt", "name": "x"}]} done')
+    assert d["assumption_ops"][0]["name"] == "x"
+    for bad in ("", "no json here"):
+        try:
+            TEACH.parse_reply(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"parse_reply accepted {bad!r}")
+
+
+def test_amendment_F1_widens_what_licenses_col_bound_without_making_it_true():
+    """F-1: the licence set was one atom that section 11b measured to be unevaluable in a campaign
+    epoch, so no rule concluding it could ever pass the support gate and the learner could not reach a
+    single obligation. The set is now the two atoms that can DETERMINE a column's own label. It must
+    still contain no LEARNED-DEPENDENT atom, and an empty model must still license nothing."""
+    import fw_ir as IR
+    import oqa_fw_domain as DOM
+    dom = DOM.OfficeQADomain()
+    assert dom.LICENCE_CONSEQUENCES == ("col_label_agrees_flat", "col_child_label_present")
+    for atom in dom.LICENCE_CONSEQUENCES:
+        assert atom in dom.atoms
+        assert dom.atoms[atom][1] != "LEARNED-DEPENDENT", f"{atom} would license itself"
+        assert dom.atoms[atom][0] == ("column",)
+    assert DOM.OfficeQADomain(model=None).licence_rules() == []
+    assert DOM.OfficeQADomain(model=IR.empty_model(dom)).licence_rules() == []
+    # a rule concluding EITHER atom licenses; one concluding something else does not
+    def rule(atom):
+        return {"id": "C1", "version": 1, "status": "active", "kind": "concludes", "scope": "any",
+                "subject": {"?s": "column"}, "subject_scope": "once",
+                "conditions": [[{"atom": "col_label_present", "args": ["?s"], "value": True}]],
+                "consequence": {"atom": atom, "args": ["?s"], "value": True},
+                "context": {"task_types": []}}
+    for atom in dom.LICENCE_CONSEQUENCES:
+        m = dict(IR.empty_model(dom), contracts=[rule(atom)])
+        assert len(DOM.OfficeQADomain(model=m).licence_rules()) == 1, atom
+    m = dict(IR.empty_model(dom), contracts=[rule("cell_scale_resolved")])
+    assert DOM.OfficeQADomain(model=m).licence_rules() == [], (
+        "only a label-determining conclusion may license reading a merged sub-label")
+
+
+def test_the_campaign_learner_is_the_provider_and_the_search_is_a_labelled_diagnostic():
+    """The instruction is explicit: the finite enumeration may remain a diagnostic but must not be
+    silently substituted for the campaign learner. So the default proposer is the teacher, the
+    diagnostic is recorded as NOT APPLIED, and the only function that opens a socket leak-checks first."""
+    import inspect
+    import oqa_fw_arm as ARM
+    import oqa_fw_teacher as TEACH
+    sig = inspect.signature(ARM.learn_over)
+    assert sig.parameters["proposer"].default == "teacher"
+    src = inspect.getsource(ARM._search_diagnostic)
+    assert '"applied": False' in src and "NOT applied" in src
+    assert "not the campaign learner" in src
+    # the one paid entry point: leak_check runs before the import of the provider client
+    call_src = inspect.getsource(TEACH.call)
+    assert call_src.index("leak_check") < call_src.index("chat_optimizer_messages")
+    # and no other function in the module reaches the provider: every mention is inside call()
+    mod_src = inspect.getsource(TEACH)
+    assert mod_src.count("chat_optimizer") == call_src.count("chat_optimizer") == 2

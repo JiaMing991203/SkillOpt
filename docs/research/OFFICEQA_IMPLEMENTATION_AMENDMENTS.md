@@ -1216,3 +1216,82 @@ a differing factor resolves to UNKNOWN rather than to a violation.
 
 **Full report:** `docs/research/OFFICEQA_FRAMEWORK_PORT.md`, mirrored at `HANDOFF_LATEST.md`.
 Artifacts: `runs/20261122-officeqa-framework/`.
+
+---
+
+## Amendment F-1 — the DeepSeek learner, and what licenses `col_bound` (2026-11-23)
+
+**Decided and committed BEFORE any campaign job was submitted.** Both parts are recorded here so that
+a later reader can tell what was chosen in advance from what the run then produced.
+
+### F-1a. The campaign learner is DeepSeek, not the enumeration
+
+The instruction for the full campaign is explicit: *"The campaign must use DeepSeek to propose
+hypotheses, followed by deterministic validation and evidence gates, as intended in the shared
+framework. The finite candidate enumeration demonstrated locally may remain a diagnostic; do not
+silently substitute it for the campaign learner."*
+
+`research/officeqa/oqa_fw_teacher.py` is that learner, in the shape of `upstream/vx1/vx_prompt.py`:
+
+| who | does what |
+|---|---|
+| DeepSeek | proposes one JSON object of contract and assumption operations |
+| `fw_ir.validate` + `oqa_fw_teacher.circularity` | schema, vocabulary, typed arguments, no circularity |
+| `fw_check.score` | support and counterexamples over ALL permitted evidence so far |
+| `fw_learn.apply_proposal` | the gate: zero determinate counterexamples, ≥1 support, regression check |
+| `fw_repair.attempt` | `drop_conjunct` / `narrow` / `restrict_scope` / `retire` |
+
+Nothing the provider says is believed. Each learner pass is up to **three** paid attempts: propose,
+then be told the gate's own refusal reasons with named counterexamples, then narrow. The prompt is
+generated from the `Domain` object, so prompt and code cannot drift, and every block is digested.
+
+**What the learner may see** is the permitted analyst view and nothing else: the question, the agent's
+tool calls, the observations, and the atom values code computes from them. `leak_check` RAISES — it
+does not filter — on a gold answer, a score, the skill document, or held-out material, and it runs on
+every message before the socket opens. A test asserts the refusal for six such markers.
+
+`SearchProposer` stays as `--proposer search` and also runs free and **unapplied** beside the teacher,
+recorded as `search_diagnostic` with `"applied": false`. It prices the hypothesis space; it cannot be
+the campaign learner, because the one consequence atom it enumerates over was chosen by a researcher.
+
+### F-1b. The licence set, widened from one atom to two
+
+`col_bound` — "the index-merged sub-label may be read as this column's name" — is true only through an
+active learned rule whose consequence is a **label-determining** atom. That set was a single atom,
+`col_label_agrees_flat` (a paired flat rendering names the same label at this index).
+
+**Why it had to change.** FW-1 section 11b measured that atom in the setting the campaign actually runs
+in: over the four recorded epochs of the completed Original SkillOpt arm there are **0 tables with a
+flat/split pair, so 0 columns any such rule can judge, in every epoch**. No rule concluding it can pass
+the "at least one supporting case" gate there. With one atom the licence is unreachable, and *no*
+hypothesis the learner could find would be able to move a single obligation — which makes the
+campaign's own integration check vacuous rather than negative.
+
+**What F-1b changes.** The set becomes the two atoms that can determine a column's own label from an
+observation:
+
+```
+LICENCE_CONSEQUENCES = ("col_label_agrees_flat",        # cross-rendering agreement, as before
+                        "col_child_label_present")      # the sub-label row's own cell is a real name
+```
+
+**What it does not change.** It does not make `col_bound` true. A rule must still be proposed by the
+learner, must still have zero counterexamples and at least one supporting case over all permitted
+evidence, and `col_bound` is still FALSE wherever `index_alignment` is not adopted and UNKNOWN wherever
+no accepted rule covers the column. Note what an accepted rule concluding the second atom guarantees:
+the gate rejects it unless the sub-label **is** present wherever its conditions hold — which is exactly
+the condition FW-1 found separates columns whose independent renderings agree from those that disagree
+(24 agree / 8 disagree / 0 mixed). The set contains no `LEARNED-DEPENDENT` atom, so nothing licenses
+itself; a test asserts that, and asserts that a rule concluding anything else licenses nothing.
+
+**Where the researcher's judgement is, stated plainly.** A researcher chose which *kind* of conclusion
+licenses reading a merged sub-label. No researcher chose the conditions, and the code does not permit
+one to: that is the learner's job and the gate's. The honest value test remains the ablation — the same
+pipeline with the model absent — not the fact that an obligation moved.
+
+### What is NOT changed by F-1
+
+No ALFWorld file. No actor, tool, document rendering or scorer. No baseline artifact. The executed
+baselines' settings, splits, skill and sealed outcomes are untouched; the contract arm reuses their
+epoch-1 rollout by byte-identical provenance (`research/officeqa/oqa_fw_reuse.py`) rather than by
+re-rolling it.

@@ -120,9 +120,33 @@ class OfficeQADomain(Domain):
     invalidators = {}
     completion_atom = None
 
-    # The licence atom `col_bound` is true only through an active learned rule whose consequence is
-    # this atom; naming it here keeps the dependency in the vocabulary rather than in a driver.
-    LICENCE_CONSEQUENCE = "col_label_agrees_flat"
+    # ---- WHAT LICENSES `col_bound`, and amendment F-1 ------------------------------------------------
+    # `col_bound` is true only through an active learned rule whose consequence is a LABEL-DETERMINING
+    # atom; naming the set here keeps the dependency in the vocabulary rather than in a driver.
+    #
+    # AMENDMENT F-1 (2026-11-23, before any campaign job). The set was a single atom,
+    # `col_label_agrees_flat` - cross-rendering agreement, which is the strongest evidence that an
+    # index-merged sub-label really is a column's name, and which FW-1 section 11b then measured to be
+    # UNEVALUABLE in a campaign epoch: over the four recorded epochs of the completed Original SkillOpt
+    # arm there are 0 tables with a flat/split pair, so 0 columns any such rule can judge, so no rule
+    # concluding it can ever pass the "at least one supporting case" gate. With one atom the licence is
+    # therefore unreachable in the setting the campaign runs in, and no hypothesis the learner could find
+    # would be able to change a single obligation.
+    #
+    # WHAT F-1 CHANGES AND WHAT IT DOES NOT. It widens the set to the two atoms that can DETERMINE a
+    # column's own label from an observation: cross-rendering agreement as before, and the sub-label
+    # row's own cell at this index being a real column name. It does NOT make `col_bound` true: a rule
+    # must still be PROPOSED by the learner, must still have zero counterexamples and at least one
+    # supporting case over all permitted evidence, and `col_bound` is still false wherever
+    # `index_alignment` is not adopted and unknown wherever no accepted rule covers the column. Note what
+    # an accepted rule concluding the second atom guarantees: the gate rejects it unless the sub-label IS
+    # present wherever its conditions hold, which is exactly the condition FW-1 found separates the
+    # columns whose independent renderings agree from those that disagree (24 / 8 / 0 mixed).
+    #
+    # A researcher chose which KIND of conclusion licenses reading a merged sub-label. No researcher
+    # chose the conditions, and none is permitted to: that is the learner's job and the gate's.
+    LICENCE_CONSEQUENCE = "col_label_agrees_flat"          # the first slice's own licence, kept
+    LICENCE_CONSEQUENCES = ("col_label_agrees_flat", "col_child_label_present")
 
     def __init__(self, entities=None, asked_scale=None, question_numbers=(), model=None):
         self.entities = entities or {"tables": {}, "columns": {}, "cells": {}, "operands": {},
@@ -138,7 +162,7 @@ class OfficeQADomain(Domain):
         if not self.model:
             return []
         return [c for c in IR.active(self.model, "concludes")
-                if (c.get("consequence") or {}).get("atom") == self.LICENCE_CONSEQUENCE
+                if (c.get("consequence") or {}).get("atom") in self.LICENCE_CONSEQUENCES
                 and (c.get("consequence") or {}).get("value") is True]
 
     # ---- record reading --------------------------------------------------------------------------

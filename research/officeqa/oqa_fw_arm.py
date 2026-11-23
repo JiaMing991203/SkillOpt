@@ -23,7 +23,11 @@ the new traces have just produced would leave the contract active and unrepaired
 therefore applied explicitly whenever any active contract is contradicted, which runs the recheck,
 marks it refuted, and lets the repair target it.
 
-No network call is made from this module.
+WHO PROPOSES. From 2026-11-23 the campaign learner is DEEPSEEK, through `oqa_fw_teacher`: it reads the
+records and the code-computed atom values and proposes operations, and code validates, scores, gates and
+repairs them. This module therefore DOES make paid provider calls on the `teacher` path, under the live
+spend ledger, and records every attempt. The finite enumeration stays available as `--proposer search`
+and runs free and unapplied as a diagnostic beside the teacher; it is never substituted for it.
 """
 from __future__ import annotations
 
@@ -45,6 +49,7 @@ import oqa_fw_domain as DOM  # noqa: E402
 import oqa_fw_extract as E  # noqa: E402
 import oqa_fw_learn as PROP  # noqa: E402
 import oqa_fw_run as RUN  # noqa: E402
+import oqa_fw_teacher as TEACH  # noqa: E402
 import oqa_ln_evidence as EV  # noqa: E402
 
 SCHEMA = "lso.officeqa_framework_arm.v1"
@@ -52,6 +57,8 @@ SUBJECT, CONSEQUENCE = "column", "col_label_agrees_flat"
 SEED_ASSUMPTIONS = ("index_alignment", "table_scale_applies_to_rows")
 SEED_WHY = ("seed: binding a figure to a column and a unit is not possible without reading a split "
             "header's own sub-label row, nor without carrying a table's stated scale to its rows")
+TEACHER_ROUNDS = 3              # paid attempts per learner pass, including the feedback rounds
+TEACHER_CAP = 8000              # completion tokens per call
 
 
 # ── records ───────────────────────────────────────────────────────────────────
@@ -90,11 +97,117 @@ def load_attempts(pred_dir: str, order: list, tag: str = "") -> list:
     return recs
 
 
+# ── the two proposers ─────────────────────────────────────────────────────────
+def _teacher_pass(model: dict, recs: list, dom, ev, epoch: int, *, rounds: int, cap: int,
+                  calls: list) -> tuple:
+    """Up to `rounds` paid attempts: propose, gate, feed the gate's refusals back, gate again.
+
+    Every attempt is recorded in `calls` whether it parsed or not, and a round that produces nothing the
+    gate accepts is an event in its own right rather than a silent absence. A transport failure or an
+    unparseable reply is recorded as `problem` and does NOT count as a learning step - the caller can see
+    that the learner was never heard from, which is the difference between "proposed nothing" and
+    "never ran" that the instruction asks us not to blur.
+    """
+    events: list = []
+    msgs = TEACH.build_messages(model, recs, ev, dom, batch=epoch, n_batches=rounds,
+                                earlier=[r["episode_id"] for r in recs][:0])
+    for rnd in range(1, max(1, rounds) + 1):
+        rec = TEACH.call(msgs, stage=f"fw_learn_e{epoch}_r{rnd}", cap=cap)
+        calls.append({k: v for k, v in rec.items() if k != "reply"} | {"reply_head": rec["reply"][:2000]})
+        if rec["problem"] or not rec["parsed"]:
+            events.append({"phase": "teacher", "round": rnd, "called": True, "parsed": False,
+                           "problem": rec["problem"] or "no JSON object in the reply",
+                           "usage": rec.get("usage"), "decisions": []})
+            break
+        comp = TEACH.compile_ops(rec["parsed"], dom)
+        model, dec = LN.apply_proposal(model, {"contract_ops": comp["contract_ops"],
+                                               "assumption_ops": comp["assumption_ops"]},
+                                       ev, epoch, "teacher", dom)
+        events.append({"phase": "teacher", "round": rnd, "called": True, "parsed": True,
+                       "n_contract_ops": len(comp["contract_ops"]),
+                       "n_assumption_ops": len(comp["assumption_ops"]),
+                       "n_refused_before_the_gate": len(comp["refused"]),
+                       "refused_before_the_gate": comp["refused"][:6],
+                       "uncovered": comp["uncovered"][:6], "notes": str(comp["notes"])[:400],
+                       "usage": rec.get("usage"), "decisions": dec,
+                       "consequence_categories": _categories(comp["contract_ops"], dom)})
+        dom, ev = RUN.evidence_of(recs, model=model)
+        bad = [d for d in dec if d.get("decision") in ("rejected", "refuted")] + [
+            {"type": "contract", "op": r.get("op"), "decision": "rejected", "why": r.get("why")}
+            for r in comp["refused"]]
+        if not bad or rnd >= rounds:
+            break
+        msgs = TEACH.feedback_messages(msgs, rec["reply"], bad)
+    return model, dom, ev, events
+
+
+def _categories(ops: list, dom) -> dict:
+    """The vocabulary CATEGORY of each proposed consequence, so a rule that merely restates a supplied
+    computation is visible in the artifact instead of being discovered later."""
+    out = {}
+    for op in ops:
+        c = op.get("contract") or {}
+        atom = (c.get("consequence") or {}).get("atom")
+        if atom in dom.atoms:
+            out[atom] = dom.atoms[atom][1]
+    return out
+
+
+def _search_pass(model: dict, recs: list, dom, ev, epoch: int) -> tuple:
+    sp = PROP.SearchProposer(dom, SUBJECT, CONSEQUENCE)
+    induced = sp.propose(model, ev)
+    events = []
+    if induced["contract_ops"]:
+        model, dec = LN.apply_proposal(model, induced, ev, epoch, "search", dom)
+        events.append({"phase": "induce", "proposer": "search", "n_candidates": induced["n_candidates"],
+                       "n_acceptable": induced["n_acceptable"],
+                       "n_proposed": len(induced["contract_ops"]), "decisions": dec})
+        dom, ev = RUN.evidence_of(recs, model=model)
+    else:
+        events.append({"phase": "induce", "proposer": "search", "n_candidates": induced["n_candidates"],
+                       "n_acceptable": 0, "n_proposed": 0, "decisions": [],
+                       "note": "the search offered nothing the gate would accept on this evidence"})
+    return model, dom, ev, events
+
+
+def _search_diagnostic(model: dict, dom, ev) -> dict:
+    """The enumeration run and NOT applied: how big the space was, how much of it the gate would take."""
+    sp = PROP.SearchProposer(dom, SUBJECT, CONSEQUENCE)
+    induced = sp.propose(model, ev, want=3)
+    return {"phase": "search_diagnostic", "applied": False,
+            "what_it_is": "the finite enumeration over the ONE researcher-chosen consequence "
+                          f"{CONSEQUENCE!r}, scored but NOT applied; it prices the hypothesis space and "
+                          "is not the campaign learner",
+            "n_candidates": induced["n_candidates"], "n_acceptable": induced["n_acceptable"],
+            "top": [{"rendered": r["rendered"], "n_support": r["n_support"],
+                     "n_counter": r["n_counter"], "undetermined": r["undetermined"],
+                     "gate": r["gate"]} for r in induced["trail"][:5]]}
+
+
 # ── one learner pass ──────────────────────────────────────────────────────────
-def learn_over(model: dict, recs: list, epoch: int, *, seed_assumptions: bool) -> tuple:
-    """Assumptions (first time only), search, EXPLICIT recheck, then repair. One order, every epoch."""
+def learn_over(model: dict, recs: list, epoch: int, *, seed_assumptions: bool,
+               proposer: str = "teacher", rounds: int = TEACHER_ROUNDS, cap: int = TEACHER_CAP,
+               calls: list | None = None, diagnostic_search: bool = True) -> tuple:
+    """Supplied assumptions (first time only), PROPOSE, EXPLICIT recheck, then repair.
+
+    `proposer` picks who proposes, and the artifact records which one did:
+
+      "teacher"  the DeepSeek learner (`oqa_fw_teacher`). THIS IS THE CAMPAIGN LEARNER. It reads the
+                 records and the code-computed atom values, proposes contract and assumption operations
+                 over any atom it is allowed to conclude, and is told the gate's reason for every
+                 refusal in a feedback round. Each round is one paid attempt under the live ledger.
+      "search"   the finite enumeration (`oqa_fw_learn.SearchProposer`). A DIAGNOSTIC, kept because it
+                 prices the hypothesis space, and never substituted for the campaign learner: it can
+                 only ever propose rules concluding the ONE atom a researcher gave it.
+
+    With `diagnostic_search` the enumeration also runs under the teacher, free and NOT APPLIED, so the
+    artifact can say how large the space was and how much of it the gate would have accepted - which is
+    the only way to tell a learner that found nothing from a space that contains nothing.
+    """
     dom, ev = RUN.evidence_of(recs, model=model)
     events: list = []
+    if calls is None:
+        calls = []
 
     if seed_assumptions:
         prop = {"assumption_ops": [{"op": "adopt", "name": a, "reason": SEED_WHY}
@@ -104,18 +217,17 @@ def learn_over(model: dict, recs: list, epoch: int, *, seed_assumptions: bool) -
                        "assumptions_after": list(model["assumptions"])})
         dom, ev = RUN.evidence_of(recs, model=model)
 
-    sp = PROP.SearchProposer(dom, SUBJECT, CONSEQUENCE)
-    induced = sp.propose(model, ev)
-    if induced["contract_ops"]:
-        model, dec = LN.apply_proposal(model, induced, ev, epoch, "search", dom)
-        events.append({"phase": "induce", "n_candidates": induced["n_candidates"],
-                       "n_acceptable": induced["n_acceptable"],
-                       "n_proposed": len(induced["contract_ops"]), "decisions": dec})
-        dom, ev = RUN.evidence_of(recs, model=model)
+    if proposer == "teacher":
+        model, dom, ev, ev_events = _teacher_pass(model, recs, dom, ev, epoch, rounds=rounds, cap=cap,
+                                                  calls=calls)
+        events += ev_events
+        if diagnostic_search:
+            events.append(_search_diagnostic(model, dom, ev))
+    elif proposer == "search":
+        model, dom, ev, ev_events = _search_pass(model, recs, dom, ev, epoch)
+        events += ev_events
     else:
-        events.append({"phase": "induce", "n_candidates": induced["n_candidates"],
-                       "n_acceptable": 0, "n_proposed": 0, "decisions": [],
-                       "note": "the search offered nothing the gate would accept on this evidence"})
+        raise ValueError(f"unknown proposer {proposer!r}")
 
     # THE EXPLICIT RECHECK. See the module docstring: without this an active contract that the new
     # epoch's traces contradict stays active, because nothing called apply_proposal.
@@ -203,15 +315,35 @@ def main(argv=None) -> int:
     ap.add_argument("--epoch", type=int, default=1)
     ap.add_argument("--arm", default="FW")
     ap.add_argument("--carry", action="append", default=[],
-                    help="evolve: an earlier epoch's predictions dir:order pair, repeatable, so the "
-                         "gate sees ALL evidence so far rather than only this epoch's")
+                    help="evolve: an earlier epoch's predictions:order[:tag] triple, repeatable, so "
+                         "the gate sees ALL evidence so far rather than only this epoch's")
+    ap.add_argument("--tag", help="episode-id prefix for --pred, default e<epoch>/. Set it to the "
+                                 "epoch the TRACES come from, which is not always the epoch whose "
+                                 "model is being frozen: the model consumed by epoch N is learned "
+                                 "from epoch N-1's traces, and the artifact should say so")
+    ap.add_argument("--proposer", choices=("teacher", "search"), default="teacher",
+                    help="teacher = the DeepSeek campaign learner (paid); search = the finite "
+                         "enumeration, a free diagnostic that is NOT the campaign learner")
+    ap.add_argument("--rounds", type=int, default=TEACHER_ROUNDS)
+    ap.add_argument("--cap", type=int, default=TEACHER_CAP)
+    ap.add_argument("--no-diagnostic-search", action="store_true")
     a = ap.parse_args(argv)
 
-    recs = load_attempts(a.pred, read_order(a.order), tag=f"e{a.epoch}/")
+    recs = load_attempts(a.pred, read_order(a.order), tag=(a.tag or f"e{a.epoch}/"))
     for spec in a.carry:
-        pred, order = spec.split(":", 1)
-        ep = os.path.basename(os.path.dirname(os.path.abspath(pred))) or "prev"
-        recs = load_attempts(pred, read_order(order), tag=f"{ep}/") + recs
+        bits = spec.split(":")
+        if len(bits) == 3:
+            pred, order, tag = bits
+        elif len(bits) == 2:
+            pred, order = bits
+            tag = (os.path.basename(os.path.dirname(os.path.abspath(pred))) or "prev") + "/"
+        else:
+            ap.error(f"--carry wants predictions:order[:tag], got {spec!r}")
+        recs = load_attempts(pred, read_order(order), tag=tag) + recs
+    seen = [r["episode_id"] for r in recs]
+    if len(set(seen)) != len(seen):
+        ap.error("two records share an episode id; give each --carry its own :tag, or the gate would "
+                 "score one record twice and count the same column as two cases")
 
     if a.mode == "seed":
         dom0 = DOM.OfficeQADomain()
@@ -225,21 +357,36 @@ def main(argv=None) -> int:
 
     before = {"version": model["version"], "assumptions": list(model["assumptions"]),
               "n_active": len(IR.active(model))}
+    calls: list = []
     model, events, dom, ev = learn_over(model, recs, a.epoch,
-                                        seed_assumptions=(a.mode == "seed"))
+                                        seed_assumptions=(a.mode == "seed"),
+                                        proposer=a.proposer, rounds=a.rounds, cap=a.cap,
+                                        calls=calls,
+                                        diagnostic_search=not a.no_diagnostic_search)
     path = os.path.join(a.out, f"FW_MODEL_e{a.epoch}.json")
     fr = freeze_to(model, path, parent_sha256=parent, epoch=a.epoch)
 
     doc = {"schema": SCHEMA, "rule": RUN.RULE, "mode": a.mode, "arm": a.arm, "epoch": a.epoch,
-           "evidence": {"n_attempts": len(recs),
+           "evidence": {"n_attempts": len(recs), "tag": (a.tag or f"e{a.epoch}/"),
+                        "carry": list(a.carry),
                         "attempts": [{"episode_id": r["episode_id"], "item": r["item"],
                                       "trace_sha256": r["trace_sha256"][:16]} for r in recs]},
            "model_before": before, "events": events, "frozen": fr,
+           "proposer": a.proposer,
+           "prompt_digest": (TEACH.prompt_digest(dom) if a.proposer == "teacher" else None),
+           "learner_calls": {"n": len(calls), "n_parsed": sum(1 for c in calls if c.get("parsed")),
+                             "usage": [c.get("usage") for c in calls],
+                             "prompt_sha256": [c.get("prompt_sha256") for c in calls]},
            "snapshot": snapshot(model, dom), "retained": retained(model, ev, dom),
            "in_sample_warning": ("epoch 1's reports describe the very rollout M0 was learned on, so "
                                  "they are IN-SAMPLE" if a.mode == "seed" else None)}
     RUN.seal(doc)
     RUN.jdump(doc, os.path.join(a.out, f"FW_ARM_{a.arm}_e{a.epoch}.json"))
+    if calls:
+        with open(os.path.join(a.out, f"FW_LEARNER_CALLS_{a.arm}_e{a.epoch}.jsonl"), "w",
+                  encoding="utf-8") as f:
+            for c in calls:
+                f.write(json.dumps(c, sort_keys=True) + "\n")
     print(f"[{a.mode} epoch {a.epoch} arm {a.arm}] model v{model['version']} "
           f"{fr['sha256'][:16]} -> {path}")
     print(f"  active: {doc['snapshot']['active']}  refuted: {doc['snapshot']['refuted']}  "
