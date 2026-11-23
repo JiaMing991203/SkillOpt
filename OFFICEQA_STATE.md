@@ -99,22 +99,26 @@ Treasury figures in the logged payloads. Every one of my 860 actor records is `o
 lines in `coordination/reservations.jsonl` (`OQA-FW-1:EMPIRIO-RPM`, `-2`, `-3`). **The split between
 the two campaigns is the user's decision and is still open.**
 
-## CLUSTER ACCESS IS DOWN (verified 2026-11-23 14:20 EST)
+## CLUSTER ACCESS AND QUEUE (live check 2026-11-23 15:19:44 EST)
 
-`ssh gl` fails with "Network is unreachable" and the ControlMaster socket `~/.ssh/cm_gl` is gone. It
-needs the Duo 2FA only the user can clear, so **no live `squeue` or `sacct` reading is possible from
-this session until they do.** The last live queue reading was about 05:25 EST.
+The user re-opened the SSH socket; master running. **Live reading:** `squeue -u $USER` shows six
+`e3m-*` jobs, all `JobHeldUser` (Experiment 3 GPU work on a third track, held, making no provider
+request), **no OfficeQA job running or queued, and no `ac2-*` job either**. `sacct` since 05:20 shows
+one OfficeQA job: 66667514 `oqa-fw-ho`, COMPLETED, Start 05:02:46, End **05:25:20**, Elapsed 00:22:34.
+(The report quotes 05:25:19 from the job log's last episode line; sacct's End is the authoritative
+05:25:20.)
 
-Nothing is waiting on it: the campaign chain is exhausted, all nine jobs COMPLETED, and no OfficeQA job
-is pending or held. Every artifact has been retrieved to `runs/20261123-officeqa-fw-campaign/` and the
-final report's analysis was computed from those local copies, so the result does not depend on regaining
-access.
+Earlier today, between about 14:20 and 15:19 EST, `ssh gl` was unreachable and the ControlMaster socket
+was gone — it needs the Duo 2FA only the user can clear. Nothing was blocked by it: every artifact had
+already been retrieved to `runs/20261123-officeqa-fw-campaign/`, and the final report's analysis,
+including the ablation, was computed from those local copies.
 
-**Coordination:** the user decided AC-2 waits for OfficeQA, and the ALFWorld session asked for a line
-when the account is free. `coordination/reservations.jsonl` now carries `OQA-FW-1:EMPIRIO-FREE` naming
-the finish time (05:25:19 EST, job 66667514) **and stating plainly that it is an inference rather than a
-fresh observation**, because no live check was possible. That session will verify the queue itself
-before resuming its 42 requests/minute.
+**Coordination, settled.** The user decided AC-2 waits for OfficeQA. `coordination/reservations.jsonl`
+carries `OQA-FW-1:EMPIRIO-FREE` (the finish time, explicitly labelled an inference because no live
+check was then possible) and `OQA-FW-1:EMPIRIO-FREE-VERIFIED` (the live observation above, which
+discharges that caveat). The account is idle on both sides; the ALFWorld session has been told it may
+resume. **No further OfficeQA actor work is planned, and a RESERVATION line goes in that ledger before
+anything new runs.**
 
 **The newest report is `docs/research/OFFICEQA_FW_CAMPAIGN_REPORT.md`** (the completed campaign),
 mirrored byte-identically at `OFFICEQA_HANDOFF_LATEST.md`. The port note below it is the previous
