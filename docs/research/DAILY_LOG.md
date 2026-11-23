@@ -2310,3 +2310,57 @@ of the 19.583 remaining CPU job-hours, and the ledger caps are set to *(what the
 + (true remaining headroom)* because the ledger was inert for most of the baseline campaign and would
 otherwise have allowed the full 400 and 20,000 over again. The demonstration sublimit (3.08 CPU
 job-hours, 18 teacher attempts) is untouched and is not the campaign's budget.
+
+## 2026-11-23 (05:30 EST) — the contract-arm campaign finished, and the result is a clean negative
+
+All nine chain jobs COMPLETED. Full report: `docs/research/OFFICEQA_FW_CAMPAIGN_REPORT.md`, mirrored
+byte-identically at `OFFICEQA_HANDOFF_LATEST.md`.
+
+**The headline.** The learned contract layer changed **no conclusion**. The four-cell ablation over the
+campaign's own rollouts is identical in every cell — 1,346 operands across three epochs, every
+obligation state the same with no assumption and no rule, with the assumptions alone, and with the model
+the learner produced. Over epochs 1, 3 and 4 the reports delivered 2,790 judgements: 2,639 UNKNOWN, 151
+NOT_REQUIRED, **0 DISCHARGED and 0 OUTSTANDING.** The soundness property holds and so does the
+uselessness.
+
+**Held out, released together as instructed.** S0 11/60, Original SkillOpt 15/60, Trace2Skill 15/60,
+contract arm 17/60. The contract arm is nominally highest and it is **not a supported difference**:
+paired sign tests give p = 0.754 against Original SkillOpt and p = 0.804 against Trace2Skill, and the
+arm's own two passes scored 11 then 6 with **11 of 30 questions flipping between its own passes**. A
+2-of-60 gap between arms sits inside a 5-of-30 swing within one arm.
+
+**What I learned about the framework, as opposed to about the slice.**
+
+*The gate has no logical-independence check.* The epoch-3 learner proposed the exact contrapositive of
+an active rule, scored 934 supporting cases on it, and the gate accepted it — because the gate asks
+whether the evidence refutes a rule, never whether the model already entails it. The learner even named
+it as the contrapositive. Zero counterexamples plus high support does not mean a rule adds anything.
+
+*The contract layer cannot reach consolidation.* Measured from the sent prompts: 38,399 characters of
+report in the analyst calls and **zero** in merge, ranking, slow-update and meta-skill. Whatever a
+contract is going to contribute has to survive being re-written by the analyst first.
+
+*F-1b did not pay off, and I want that on the record as mine.* I widened the licence set before the run
+so that a rule concluding `col_child_label_present` could make `col_bound` determinate — otherwise no
+hypothesis could have moved any obligation and the integration check would have been vacuous. The
+learner used that atom as a condition instead, and its one rule over it concludes it FALSE, which cannot
+license. The amendment removed a structural impossibility and produced nothing.
+
+**And the sharpest single line in the whole analysis:** on column header identity — the one subject the
+contract layer exists to adjudicate, about which its reports said UNKNOWN 1,346 times — **both
+endpoints contain zero phrase hits.** The optimizer wrote nothing about it, in either arm.
+
+**Three defects found while submitting, each before any result existed.** Lean refuted the Python export
+on its first compile ever (24 `decide` goals disproved, and the `self_check` that existed to catch
+exactly that could not, because it never asked whether a tuple determines its own state). The learner's
+route was configured and inert, because the guard's only caller is the trainer. And the learner reasoned
+past its 8,000-token completion budget and returned empty content with 31,393 characters of
+`reasoning_content`.
+
+**My conduct in the shared-account conflict, recorded because it was not good.** I saturated an
+account-wide rate limit and two of the ALFWorld session's jobs died for it. Then I told that session my
+own jobs had been throttled too — which was false, from grepping the literal "429" against payloads full
+of Treasury figures. All 1,724 of my actor calls succeeded on the first attempt. I withdrew it, held my
+remaining actor jobs, halved my concurrency and logged three correction lines. The lesson is narrow and
+worth keeping: a grep over a log line that embeds a request payload is not a measurement of that
+request's outcome.

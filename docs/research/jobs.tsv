@@ -191,3 +191,4 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-23T08:43:42Z	66667011 oqa-fw-ho heldout			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
 2026-11-23T09:11:14Z	66667509	run_tests	-	f10c0b65e87d9fb447a1eff9669bcfc07024c196	--time=00:40:00
 2026-11-23T09:11:15Z	66667510	oqa_fw_lean	-	f10c0b65e87d9fb447a1eff9669bcfc07024c196	--time=00:20:00
+2026-11-23T10:29:08Z	66667514	oqa-fw-ho	heldout contract_arm COMPLETED 00:22:34	f3777a0674ff6deb645149d3a96d3b8503a26c4c	11/30 and 6/30; endpoint 6ca636f141523c81; SCORES RELEASED with the three baselines
