@@ -2401,3 +2401,107 @@ image: a target chosen for being *informative* that turns out to be rarely evalu
 a target whose evidence appears in every rollout; D-2 §14b qualifies by construction.
 
 **Resources.** 0 cluster jobs, 0 provider calls, local only.
+
+---
+
+## OQA-FW-1 — the contract-arm campaign against the frozen OfficeQA baselines (2026-11-23)
+
+### Configuration, verified against the executed baseline rather than restated
+
+| item | value | where it was verified |
+|---|---|---|
+| config | `configs/research/officeqa_base2.yaml`, sha256 `671eb1d4229399c5…` | the baselines' own `heldout/*/PROVENANCE.json` names this file and digest |
+| training questions | 12 (`train_size: 12`) | `original_skillopt/summary.json` resolved config |
+| epochs | 4, `steps_per_epoch` 1 (batch 40 > 12, so one update per epoch) | same |
+| slow update | on from epoch 2, 6 samples, gated with selection | same |
+| validation | 12 (`valid_seen`), `sel_env_num: 0` | `s0/val_baseline/eval_summary.json`, 12 rows |
+| held out | 30 (`valid_unseen`), 2 passes | `heldout/S0/PROVENANCE.json` |
+| edit budget | 4, min 2, `skill_update_mode: patch` | resolved config |
+| split | `split_sel4`, `split_seed` 42, rule OQA-SEL-4 (`b0dbbd4be97fc245`) | preflight, id by id |
+| actor | `qwen3-5-4b`, hosted endpoint, max_tokens 8000, temperature 0.7, thinking off | preflight asserts the EFFECTIVE value |
+| optimizer | `deepseek-flash`, `openai_compatible`, `https://api.deepseek.com` | route guard, in the calling process |
+| arm variables | `OFFICEQA_STAGE_REPORT_CONDITION=FW`, `…_REPORT_DIR`, `OFFICEQA_LC_MODEL` | three variables, nothing else differs |
+
+### Epoch-1 reuse, decided by provenance and not by outcome
+
+`research/officeqa/oqa_fw_reuse.py`, artifact `FW_REUSE.json`. All checks passed on the cluster:
+
+* `results.jsonl` sha256 `d5c0ced1c70c9d21…` and the predictions tree `04887721282a2a78…` are
+  **byte-identical** to what the completed Original SkillOpt arm consumed at `steps/step_0001/rollout`;
+* the 12 question ids are exactly the frozen OQA-SEL-4 training set, 0 missing and 0 extra;
+* the starting skill `9d377d1c2906981b…` (887 bytes) is present inside **every** row's own recorded
+  system prompt — checked in the prompt, not inferred from a path;
+* all 12 rows carry the actor/tool settings fingerprint `d58cf3b59bbc2928`, and that is the value the
+  config produces (`search_mode` offline, local tools, 24 tool turns, 4 queries per turn);
+* the 12-row gate baseline `9601ef2b4091365a…` is the baselines' own `s0/val_baseline`.
+
+Recorded and kept rather than filtered: 1 of the 12 attempts made no tool call, and 7 committed no
+answer. Both are evidence about the actor. The check reads `predicted_answer` for completeness and
+never reads `ground_truth`, `hard` or `soft`.
+
+### The model schedule, and why it is this one
+
+Every report must rest on a model frozen before the traces it describes. At the start of epoch 2 the
+only traces in existence are epoch 1's, which are the ones M0 was learned on, so M0 serves both and
+the first evolution follows epoch 2.
+
+| epoch | model | learned from | in sample? |
+|---|---|---|---|
+| 1 | `FW_MODEL_e1.json` (M0) | the reused shared epoch-1 rollout | **YES, declared** |
+| 2 | `FW_MODEL_e1.json` (M0) | — | no |
+| 3 | `FW_MODEL_e3.json` | the arm's own epoch-2 traces, plus epoch 1 carried | no |
+| 4 | `FW_MODEL_e4.json` | the arm's own epoch-3 traces, plus epochs 1-2 carried | no |
+
+### Submissions
+
+| chain | jobs | outcome |
+|---|---|---|
+| 1 | 66666642-66666650 | killed by its own failed Lean gate before any stage started. Zero cost. |
+| 2 | 66666915-66666923 | preflight PASS; **learn.e1 failed on an empty completion** (below). No actor call. |
+| 3 | 66667003-66667011 | submitted 2026-11-23 03:5x EST on commit `371bbe3`, bundle `oqa_fw_20261123d` |
+
+Gates, re-run per commit and green every time: `run_tests` over the whole tree (2,646 passed / 16
+skipped / 0 failed) and `oqa_fw_lean` (Lean 4.20.0, rc 0, 0 errors, 0 warnings).
+
+### Three defects found during submission, each with its evidence
+
+**1. Lean refuted the Python export (job 66666627).** The first compile this file ever had disproved
+**24 `decide` goals**. `conversionAccounted` took three inputs and encoded the conversion rule as it
+stood before the 2026-11-22 audit; and the exported tuple could not determine the state recorded
+beside it — `in_calculation` was absent, a missing required factor was written as `0`, and whether the
+operand matched a cell at all was absent. Fixed under `oqa.fw.lean.v2`. `self_check` now re-derives
+all three states from the exported fields with a second implementation: **12 state and 3 total
+mismatches on the first regeneration under it, then 0 / 0 / 0 over 36 tuples and 24 rule rows.**
+Compiled receipt: 12 theorems, 114 examples, 5.41 s, source `d45ec19540ca6588`.
+
+**2. The learner's route was configured and inert.** `chat_optimizer*` is a router whose backend comes
+from a call, and `SKILLOPT_REQUIRE_ROUTE`'s only caller is the trainer, which the learner does not
+run. `oqa_fw_teacher.configure()` now configures and runs `route_guard.verify_or_die` in the calling
+process. Confirmed live in job 66666916's log:
+`[route guard] optimizer: openai_compatible -> https://api.deepseek.com (deepseek-flash); target: openai_chat -> n/a (no key)`.
+
+**3. The empty completion (job 66666916), measured.** One paid attempt, 46.73 s,
+`prompt_tokens` 41,526, `max_tokens` 8,000, `finish_reason` **length**, `content` **""**,
+`reasoning_content` **31,393 characters**. The recovery policy in force (`committed_answer`) looked for
+an `<answer>` tag in the alternate field and correctly found none. The model was engaging with the
+evidence — its reasoning opens by reading the atom census — and simply never reached the JSON block.
+Cap raised to 16,000 (the config's ceiling is 16,384 and the backend clamps silently above it), the
+output section rewritten to demand the JSON block first, and an unparseable reply is now retried
+inside the round budget with a short corrective message. The learn stage also sets
+`CONTENT_FALLBACK=reasoning_text`, scoped to that stage because in the arm stage the same variable
+governs the actor.
+
+**A silent hazard the failure exposed.** `fw_ir.freeze` refuses to overwrite a frozen file whose
+content differs, and `freeze_to` catches the refusal while reporting the NEW digest — so a second
+attempt at the same epoch would have left the arm loading the first attempt's empty model with no
+error. The learn stage now archives prior artifacts to `models/superseded/<utc>_job<id>/` and asserts
+both that the freeze reported no problem and that the digest ON DISK is the one the pass recorded.
+
+### Resources
+
+Reserved inside the 2026-11-21 phase grant (50 requested CPU job-hours; 400 DeepSeek attempts AND $20;
+20,000 actor attempts AND $15; no GPU). Consumed by the two baselines: 30.417 CPU job-hours, 206
+optimizer attempts / $1.9788, 3,462 actor attempts / $1.4378. The chain asks 8.00 CPU job-hours of the
+19.583 remaining. Because the ledger was inert for most of the baseline campaign, the caps are set to
+*(ledger-recorded) + (true remaining headroom)*: optimizer 235 attempts / $18.36, actor 17,941 /
+$14.37. The demonstration sublimit (3.08 CPU job-hours, 18 teacher attempts) is separate and untouched.
