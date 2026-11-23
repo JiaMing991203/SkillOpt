@@ -527,7 +527,63 @@ def _utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def call(messages: list, *, stage: str, cap: int = 8000, retries: int = 2) -> dict:
+CONFIG = "configs/research/officeqa_base2.yaml"
+_ROUTE_CHECKED: dict = {}
+
+
+def configure(config_path: str = CONFIG, optimizer_model: str = "") -> dict:
+    """Point the model layer at DeepSeek, and PROVE the dispatch path, before anything is sent.
+
+    THIS IS THE THIRD TIME THIS PROJECT HAS PAID FOR THE SAME LESSON, so it is enforced here rather
+    than documented. `skillopt.model.chat_optimizer*` is a ROUTER. A config file does not reach it: the
+    trainer calls `set_optimizer_backend` and `configure_openai_compatible`, and a module that calls
+    the router directly must do the same or dispatch to whatever `OPTIMIZER_BACKEND` happens to say -
+    which defaults to `openai_chat`, not to this project's endpoint. Job 66271190 sent a perfect
+    openai-compatible config to Azure and recorded `no_content`; job 66552741 raised "Azure OpenAI
+    endpoint is not configured for optimizer" 48 times after a dry run reported everything healthy.
+
+    And CONFIGURED IS NOT EFFECTIVE. `SKILLOPT_REQUIRE_ROUTE` is only honoured where something calls
+    the guard, and the only caller is `skillopt/engine/trainer.py` - so a learner that runs outside the
+    trainer had the variable set and the guard inert. `verify_or_die` is therefore called here, in the
+    process that will make the call, which is the only place it can mean anything.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    if "oqa_t2s" not in sys.modules:
+        sys.path.insert(0, HERE)
+    import oqa_t2s as T2S  # noqa: PLC0415
+    # The config is named relative to the tree root, and the learner may be run from anywhere.
+    cfg_path = ""
+    for cand in (config_path, os.path.join(root, config_path)):
+        if cand and os.path.isfile(cand):
+            cfg_path = cand
+            break
+    if not cfg_path:
+        raise RuntimeError(f"cannot find {config_path!r} from {os.getcwd()!r} or {root!r}. Without it "
+                           f"the base URL, model and token cap would come from whatever the "
+                           f"environment happens to hold, which is the misdispatch this guards.")
+    effective = T2S.configure_models(cfg_path, optimizer_model or os.environ.get("OPTIMIZER_MODEL", ""))
+    from skillopt.model.backend_config import get_optimizer_backend  # noqa: PLC0415
+    backend = get_optimizer_backend()
+    if backend != "openai_compatible":
+        raise RuntimeError(f"the optimizer backend resolved to {backend!r}, not 'openai_compatible'. "
+                           f"Refusing to send: this is the router misdispatch of job 66271190.")
+    route = {"backend": backend, "config": cfg_path or "(none found; env only)",
+             "effective": effective}
+    if os.environ.get("SKILLOPT_REQUIRE_ROUTE", "").strip() and not _ROUTE_CHECKED:
+        from skillopt.model.route_guard import verify_or_die  # noqa: PLC0415
+        _ROUTE_CHECKED["guard"] = verify_or_die()
+        route["route_guard"] = _ROUTE_CHECKED["guard"]
+    else:
+        route["route_guard"] = _ROUTE_CHECKED.get("guard") or (
+            "SKILLOPT_REQUIRE_ROUTE is not set, so the guard was not run: the backend assertion above "
+            "is the only pin")
+    return route
+
+
+def call(messages: list, *, stage: str, cap: int = 8000, retries: int = 2,
+         config_path: str = CONFIG) -> dict:
     """ONE paid learner attempt through the project's own optimizer route, with the ledger in force.
 
     `retries` IS the number of attempts, not the number of extra tries: the backend loop is
@@ -535,6 +591,7 @@ def call(messages: list, *, stage: str, cap: int = 8000, retries: int = 2) -> di
     stage). The ledger counts each attempt.
     """
     leak_check(messages)
+    route = configure(config_path)
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if root not in sys.path:
         sys.path.insert(0, root)
@@ -547,7 +604,7 @@ def call(messages: list, *, stage: str, cap: int = 8000, retries: int = 2) -> di
         parsed = parse_reply(raw)
     except Exception as exc:                               # noqa: BLE001 - recorded, not raised
         problem = f"{type(exc).__name__}: {exc}"
-    return {"stage": stage, "utc": _utc(), "n_messages": len(messages),
+    return {"stage": stage, "utc": _utc(), "n_messages": len(messages), "route": route,
             "prompt_sha256": sha("".join(m["content"] for m in messages)),
             "prompt_chars": sum(len(m["content"]) for m in messages),
             "max_completion_tokens": cap, "reply": raw, "reply_chars": len(raw),

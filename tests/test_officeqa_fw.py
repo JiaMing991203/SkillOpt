@@ -541,9 +541,11 @@ def test_the_campaign_learner_is_the_provider_and_the_search_is_a_labelled_diagn
     # the one paid entry point: leak_check runs before the import of the provider client
     call_src = inspect.getsource(TEACH.call)
     assert call_src.index("leak_check") < call_src.index("chat_optimizer_messages")
-    # and no other function in the module reaches the provider: every mention is inside call()
+    # and no other function in the module reaches the provider: every mention of the entry point
+    # is inside call(), which is the one place the socket can open. (A docstring elsewhere may name
+    # the router in prose, which is why this counts the exact entry point rather than the prefix.)
     mod_src = inspect.getsource(TEACH)
-    assert mod_src.count("chat_optimizer") == call_src.count("chat_optimizer") == 2
+    assert mod_src.count("chat_optimizer_messages") == call_src.count("chat_optimizer_messages") == 2
 
 
 # ── 11. the Lean export, after the compiler refuted it (oqa.fw.lean.v2) ──────
@@ -621,3 +623,24 @@ def test_the_generated_lean_file_is_core_only_and_carries_the_corrected_rule():
     man = open(os.path.join(RESEARCH, "lean", "MANIFEST.sha256"), encoding="utf-8").read()
     import hashlib
     assert hashlib.sha256(text.encode()).hexdigest() in man
+
+
+def test_the_learner_configures_and_proves_its_route_before_sending():
+    """CONFIGURED IS NOT EFFECTIVE, for the third time in this project. chat_optimizer* is a router
+    whose backend comes from a call, not from a config file, and SKILLOPT_REQUIRE_ROUTE is only
+    honoured where something calls the guard - whose only caller was the trainer. A learner that runs
+    outside the trainer therefore had the variable set and the guard inert."""
+    import inspect
+    import oqa_fw_teacher as TEACH
+    call_src = inspect.getsource(TEACH.call)
+    conf_src = inspect.getsource(TEACH.configure)
+    # order: refuse a leaking prompt, then pin the route, then send
+    assert call_src.index("leak_check") < call_src.index("configure(config_path)")
+    assert call_src.index("configure(config_path)") < call_src.index("chat_optimizer_messages")
+    # the backend is asserted, not hoped for
+    assert "openai_compatible" in conf_src and "Refusing to send" in conf_src
+    assert "configure_models" in conf_src, "the same helper the trainer-equivalent path uses"
+    assert "verify_or_die" in conf_src, "the guard must run in the process that makes the call"
+    # a missing config is a refusal, not a fallback to the ambient environment
+    assert "cannot find" in conf_src
+    assert TEACH.CONFIG == "configs/research/officeqa_base2.yaml"

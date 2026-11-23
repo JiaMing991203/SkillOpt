@@ -164,3 +164,4 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-23T08:19:46Z	66666536	run_tests	-	a1dbd98fa648b4536eb727fa7ed6733755ba99f5	--time=00:40:00
 2026-11-23T08:19:47Z	66666537	oqa_fw_lean	-	a1dbd98fa648b4536eb727fa7ed6733755ba99f5	--time=00:20:00
 2026-11-23T08:24:57Z	66666627	oqa_fw_lean	-	a22ea981227feefce46233f281d7f97d6acff143	--time=00:20:00
+2026-11-23T08:33:14Z	66666891	oqa_fw_lean	-	6dcd333b101d99b17a0f7a321cb7ee92f352faf6	--time=00:20:00
