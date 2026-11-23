@@ -99,6 +99,27 @@ Treasury figures in the logged payloads. Every one of my 860 actor records is `o
 lines in `coordination/reservations.jsonl` (`OQA-FW-1:EMPIRIO-RPM`, `-2`, `-3`). **The split between
 the two campaigns is the user's decision and is still open.**
 
+## CLUSTER ACCESS IS DOWN (verified 2026-11-23 14:20 EST)
+
+`ssh gl` fails with "Network is unreachable" and the ControlMaster socket `~/.ssh/cm_gl` is gone. It
+needs the Duo 2FA only the user can clear, so **no live `squeue` or `sacct` reading is possible from
+this session until they do.** The last live queue reading was about 05:25 EST.
+
+Nothing is waiting on it: the campaign chain is exhausted, all nine jobs COMPLETED, and no OfficeQA job
+is pending or held. Every artifact has been retrieved to `runs/20261123-officeqa-fw-campaign/` and the
+final report's analysis was computed from those local copies, so the result does not depend on regaining
+access.
+
+**Coordination:** the user decided AC-2 waits for OfficeQA, and the ALFWorld session asked for a line
+when the account is free. `coordination/reservations.jsonl` now carries `OQA-FW-1:EMPIRIO-FREE` naming
+the finish time (05:25:19 EST, job 66667514) **and stating plainly that it is an inference rather than a
+fresh observation**, because no live check was possible. That session will verify the queue itself
+before resuming its 42 requests/minute.
+
+**The newest report is `docs/research/OFFICEQA_FW_CAMPAIGN_REPORT.md`** (the completed campaign),
+mirrored byte-identically at `OFFICEQA_HANDOFF_LATEST.md`. The port note below it is the previous
+milestone.
+
 ## START HERE -> `docs/research/OFFICEQA_FRAMEWORK_PORT.md` (newest), mirrored at `HANDOFF_LATEST.md`
 
 **FW-1 (2026-11-22) is the port the PA-1 audit asked for, and it works — but it does not yet beat the
