@@ -167,3 +167,12 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-23T08:33:14Z	66666891	oqa_fw_lean	-	6dcd333b101d99b17a0f7a321cb7ee92f352faf6	--time=00:20:00
 2026-11-23T08:34:54Z	66666908	run_tests	-	ff1f5e991ee0c7a956646ea3e8cab2e6e75382c9	--time=00:40:00
 2026-11-23T08:34:54Z	66666909	oqa_fw_lean	-	ff1f5e991ee0c7a956646ea3e8cab2e6e75382c9	--time=00:20:00
+2026-11-23T08:35:36Z	66666915	oqa-fw-pre	preflight	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	bundle oqa_fw_20261123b, dep afterok:66666908:66666909
+2026-11-23T08:35:36Z	66666916	oqa-fw-learn-e1	learn EPOCH=1 seed	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	DeepSeek learner, OPT cap 8/$0.50, no actor key
+2026-11-23T08:35:36Z	66666917	oqa-fw-A-e1	arm EPOCH=1 M0	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	40 min, actor 400/$0.50, opt 12/$0.60
+2026-11-23T08:35:36Z	66666918	oqa-fw-A-e2	arm EPOCH=2 M0	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	90 min, actor 900/$1.00, opt 20/$1.00
+2026-11-23T08:35:36Z	66666919	oqa-fw-learn-e3	learn EPOCH=3 traces e2	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	evolve from FW_MODEL_e1
+2026-11-23T08:35:36Z	66666920	oqa-fw-A-e3	arm EPOCH=3 M_e2	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	90 min
+2026-11-23T08:35:36Z	66666921	oqa-fw-learn-e4	learn EPOCH=4 traces e3	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	evolve from FW_MODEL_e3
+2026-11-23T08:35:36Z	66666922	oqa-fw-A-e4	arm EPOCH=4 M_e3	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	90 min
+2026-11-23T08:35:36Z	66666923	oqa-fw-ho	heldout contract_arm	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	90 min, skips itself if the endpoint digest is already evaluated

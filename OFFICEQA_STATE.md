@@ -1,70 +1,116 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-23 02:45 EST (compaction prep). FW-1 — the ALFWorld learned-contract framework
-is PORTED, integrated and end-to-end tested on saved records (2026-11-22, 19:50-20:38 EST). PA-1
-parity audit before it, D-2..D-5 before that.** Branch `officeqa-contracts`, worktree
-`SkillOpt-officeqa`, HEAD `4d5a5fe`, **tree clean**, 212 commits ahead of `origin`, **NOT pushed**.
+**Last update: 2026-11-23 03:40 EST. THE CONTRACT-ARM CAMPAIGN IS SUBMITTED AND RUNNING.** Branch
+`officeqa-contracts`, worktree `SkillOpt-officeqa`, HEAD `4b69200`, **pushed to `origin`**.
 
-## THE USER IS ABOUT TO SPECIFY A FULL-SCALE EXPERIMENT. What is ready, and what it needs
+## THE LIVE CAMPAIGN — job ids first
 
-**READ THIS FIRST: the prepared arm's target has NO evidence in a campaign epoch's rollout.**
-Measured 2026-11-23 over the four recorded epochs of the completed Original SkillOpt arm (4,097
-columns, 48 attempts - the exact condition a campaign would be in): **0 tables with a flat/split pair,
-so 0 columns the rule can judge, in every one of the four epochs.** Relaxing the pairing guard to the
-one-shared-row criterion `oqa_lc_cells` uses yields 15/0/30/30 judgeable columns of which **0 of 75
-agree** - the signature of the defect the guard removes, which would make the learner report the rule
-FALSE rather than unevidenced. So an empty-bank campaign of this arm would carry an **empty model
-through all four epochs and deliver a universally inert report**, which the instruction says is not a
-completed integration. `docs/research/OFFICEQA_FRAMEWORK_PORT.md` **section 11b** has the tables.
+Bundle `oqa_fw_20261123b` (commit `4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e`), run root
+`runs/20261123-officeqa-fw-campaign/`. Two gate jobs, then one strict `afterok` chain; a failed link
+stops everything downstream before a cent is spent.
 
-**What this does and does not mean.** The machinery is fine: `oqa_fw_arm.py` runs the per-epoch seed
-and evolve, the gate runs, the ablation on the frozen corpus is real and the learned rule is
-load-bearing there. What fails is the **target's evidence density in the campaign setting** - a
-property of the question the rule asks, not of the port. **The fix is one line of the design:** pick a
-target whose evidence occurs in every rollout. D-2 packet §14b is the obvious one (*will this tool
-call return a citable cell?* - 536 recorded calls, 261 greps, 99 returning a citable cell and 99
-returning nothing, so both classes appear in every epoch by construction). It is a `concludes` rule
-over tool calls instead of columns; nothing in `fw_*` changes.
+| job | stage | what it is |
+|---|---|---|
+| 66666908 | `run_tests` | the whole `tests/` tree — GATE |
+| 66666909 | `oqa_fw_lean` | compile `OqaFramework.lean` — GATE (**COMPLETED rc 0**) |
+| 66666915 | preflight | reuse provenance, effective actor settings, live ledger, FW tests, FW condition |
+| 66666916 | learn e1 | the DeepSeek learner seeds M0 from the reused epoch-1 rollout |
+| 66666917 | arm e1 | SkillOpt epoch 1 under M0 (reports IN-SAMPLE, declared) |
+| 66666918 | arm e2 | epoch 2 under M0 (out-of-sample) |
+| 66666919 | learn e3 | evolve from the arm's own epoch-2 traces |
+| 66666920 | arm e3 | epoch 3 under M_e2 |
+| 66666921 | learn e4 | evolve from the arm's own epoch-3 traces |
+| 66666922 | arm e4 | epoch 4 under M_e3 |
+| 66666923 | heldout | the one new endpoint, 2 passes of 30; skips itself if the digest is already evaluated |
 
-**Ready now, no implementation work outstanding:**
-* the ported framework and its OfficeQA adapter (`research/officeqa/framework/`, `oqa_fw_*.py`),
-  reaching the optimizer through the integration that already existed (one additive branch in
-  `oqa_reports.build_one_lc`, condition `FW`, selected by `OFFICEQA_STAGE_REPORT_CONDITION`);
-* `runs/20261122-officeqa-framework/FW_CAMPAIGN_SPEC.json` (digest `a15a5248c1ba5ab0`) — the contract
-  arm, with **all seven protocol items verified against the executed baseline's own `config.json`**:
-  4 epochs, 6 slow-update samples, slow update on, gate on, edit budget 4, fixed learning-rate
-  control, split dir with seed 42;
-* `research/officeqa/oqa_fw_arm.py` — the per-epoch campaign driver (`seed` / `evolve`), with the
-  EXPLICIT recheck that `oqa_lc_arm` learned the hard way: without it, a contract the new epoch's
-  traces contradict stays active because nothing called `apply_proposal`;
-* `research/cluster/oqa_fw_lean.sbatch`, registered in `research/submit.sh`;
-* 22 new tests passing locally; the Lean file generated and digested.
+Superseded, all at zero or trivial cost: 66666536 (tests, 2,646 passed, on the earlier commit),
+66666537 and 66666627 (Lean, see below), 66666891 (the first green compile), 66666642-66666650 (the
+first chain, killed by its own failed Lean dependency before any stage started).
 
-**Three things any full-scale run needs, in this order:**
-1. **A PUSH.** `research/deploy.sh` refuses a commit that is not on `origin`, so *nothing* reaches the
-   cluster until `officeqa-contracts` is pushed. This blocks the Lean compile, the full test suite and
-   every campaign arm alike. It is the single gate.
-2. **A TARGET DECISION — see the box above.** Launching the prepared arm on its current target would
-   spend the allowance on an inert report.
-3. **A RESOURCE DECISION.** Remaining verified OfficeQA follow-up allowance: **3.08 requested CPU
-   job-hours and 18 teacher attempts**, both untouched by FW-1. The prepared single contract arm is
-   estimated at ~1.5 CPU job-hours, 16 optimizer calls, ~873k optimizer prompt tokens, 673 actor
-   calls and 60 final-evaluation attempts, no GPU. **A full-scale design with more arms or more
-   questions will exceed 3.08 CPU job-hours**, so it needs one consolidated budget request before
-   submission rather than after.
-4. **SHARED CLUSTER AWARENESS.** The ALFWorld session is running its AC-2 campaign right now
-   (verified 02:40 EST: `ac2-con` RUNNING 3:36:40, `ac2-ev` RUNNING 1:54:27, five more PENDING on
-   dependencies). Standing authorization since 2026-11-15 replaces per-job acknowledgement, but the
-   GPU cap and the shared log still apply, and those jobs are **not mine to touch**.
+**Requested walltime for the chain: 8.00 job-hours** (20 + 3x20 + 40 + 3x90 + 90 min), from the
+baselines' MEASURED elapsed times (epoch 1 took 3 min, epochs 2-4 took 19/19/18, each held-out
+endpoint 22-32) at about 4x margin for sharing the provider with the ALFWorld campaign.
 
-**NO OfficeQA JOB RUNNING OR QUEUED** (verified 2026-11-23 02:40 EST). The only OfficeQA jobs since
-2026-11-22 are the three D-2 submissions: 66598457 and 66599047 CANCELLED while PENDING at zero cost,
-66599377 COMPLETED 00:04:03 on one core (**Lean 4.20.0 rc 0, 0 errors, 272 examples, suite 2,615
-passed / 0 failed**). The six held `e3m-*` jobs are Experiment 3 GPU work on a third track.
+## WHAT THE CAMPAIGN DOES DIFFERENTLY FROM THE BASELINES — three variables
 
-**RESOURCES: 0.00 of the 3.08 remaining OfficeQA CPU job-hours and 0 of 18 teacher attempts are
-spent.** FW-1 submitted nothing, called no provider and used no GPU; it ran on the workstation in
-about 3 minutes of CPU. The budget ledger reads `verdict: PASS`.
+`OFFICEQA_STAGE_REPORT_CONDITION=FW`, `OFFICEQA_STAGE_REPORT_DIR=<run>/reports_fw/e<N>`,
+`OFFICEQA_LC_MODEL=<the epoch's frozen model>`. Everything else is the executed baseline's: the same
+`configs/research/officeqa_base2.yaml` (digest `671eb1d4229399c5`), the same 12/12/30 split
+(`split_sel4`, seed 42), 4 epochs, 1 update per epoch, 6 slow-update samples from epoch 2, edit
+budget 4, the same gate, the same actor (`qwen3-5-4b` at the hosted endpoint, 8,000-token cap,
+temperature 0.7, thinking off) and the same scorer.
+
+**Epoch 1 is REUSED, verified by provenance and not by outcome** (`research/officeqa/oqa_fw_reuse.py`,
+`FW_REUSE.json`): the rollout is byte-identical to the one the completed Original SkillOpt arm
+consumed (`results.jsonl` `d5c0ced1c70c9d21...`, predictions tree `04887721282a2a78...`), its 12
+question ids are exactly the frozen OQA-SEL-4 training set (`b0dbbd4be97fc245`), every row's own
+recorded system prompt contains the starting skill (`9d377d1c2906981b`, 887 bytes), all 12 rows share
+one actor/tool settings fingerprint (`d58cf3b59bbc2928`), and the 12-row gate baseline is the
+baselines' own. The starting skill's held-out evaluation also stays reused and sealed.
+
+## THE LEARNER IS DEEPSEEK. Amendment F-1
+
+`research/officeqa/oqa_fw_teacher.py`. DeepSeek proposes contract and assumption operations; code
+validates the schema, vocabulary, typed arguments and circularity, scores support and counterexamples
+over all permitted evidence, gates on zero determinate counterexamples and at least one supporting
+case, and repairs. Up to three paid attempts per pass: propose, hear the gate's own refusal reasons
+with named counterexamples, narrow. The prompt is generated from the `Domain` object and digested.
+`leak_check` RAISES on a gold answer, a score, the skill or held-out material. The finite enumeration
+stays as `--proposer search` and runs free and **unapplied** beside the teacher, recorded as
+`"applied": false`.
+
+**F-1b widened what licenses `col_bound`** from `col_label_agrees_flat` alone to that atom plus
+`col_child_label_present`, because section 11b measured the first to be unevaluable in a campaign
+epoch — with one atom no hypothesis the learner could find could move a single obligation. It does
+not make `col_bound` true: the gate is unchanged and the ablation is still the value test. Full
+statement: `docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md` amendment F-1.
+
+## TWO DEFECTS FOUND AND FIXED WHILE SUBMITTING, both of which would have broken the run
+
+1. **LEAN REFUTED THE PYTHON EXPORT.** The first compile of `OqaFramework.lean` ever attempted (job
+   66666627) disproved **24 `decide` goals**. It was right. `conversionAccounted` encoded the
+   conversion rule as it stood BEFORE the 2026-11-22 audit, and the exported tuple could not determine
+   the state recorded beside it: it omitted `in_calculation`, wrote a MISSING required factor as 0
+   (conflating "no factor is defined between these scales" with "the required factor is 10^0") and
+   omitted whether the operand matched a cell at all. Fixed under `oqa.fw.lean.v2`; `self_check` now
+   re-derives all three states from the exported fields with a second implementation and is clean
+   (0 row / 0 state / 0 total mismatches over 36 tuples and 24 rule rows) where the first regeneration
+   under it reported 12 and 3. **Job 66666909: Lean 4.20.0, rc 0, 0 errors, 0 warnings, 12 theorems,
+   114 examples, 5.41 s, source `d45ec19540ca6588`.**
+2. **THE LEARNER'S ROUTE WAS CONFIGURED AND NOT EFFECTIVE, for the third time in this project.**
+   `chat_optimizer*` is a router whose backend comes from a call, not a config file, and
+   `SKILLOPT_REQUIRE_ROUTE`'s only caller is the trainer — so a learner outside the trainer had the
+   variable set and the guard inert. `oqa_fw_teacher.configure()` now runs in the calling process:
+   configures through the same helper the trace2skill path uses, asserts the resolved backend, refuses
+   when the config cannot be found, and runs `route_guard.verify_or_die`, whose dispatch check proves
+   the path at zero cost.
+
+## RESOURCES — reserved inside the phase ceilings, no new funds
+
+The 2026-11-21 phase grant: **50 requested CPU job-hours, 400 DeepSeek attempts AND $20, 20,000 actor
+attempts AND $15, no GPU.** Consumed by the two-baseline campaign: **30.417** requested CPU job-hours
+(`oqa-base-*`), 206 optimizer attempts / $1.9788, 3,462 actor attempts / $1.4378. **Remaining:
+19.583 CPU job-hours, 194 optimizer attempts / $18.0212, 16,538 actor attempts / $13.5622.** This
+chain asks for 8.00 of the CPU hours.
+
+The ledger was INERT for most of the baseline campaign and holds only part of what was spent, so the
+caps in `settings.env` are set to *(ledger-recorded so far) + (true remaining headroom)* — optimizer
+235 attempts / $18.36, actor 17,941 / $14.37 — and the live ledger therefore stops this campaign where
+the grant actually runs out rather than at 400 and 20,000 again.
+
+**The separate demonstration sublimit is untouched: 3.08 requested CPU job-hours and 18 teacher
+attempts, none of it spent.** It is not the campaign's budget and the two are not summed.
+
+**SHARED CLUSTER AND SHARED PROVIDER.** The ALFWorld session's AC-2 campaign is running on the same
+account and the same two providers. Its jobs are not mine to touch. The actor rate limit is
+account-wide, which is why this chain is strictly serial and its walltimes carry 4x margin.
+
+## IF A LINK FAILS
+
+`OQA_BUNDLE=<bundle> bash oqa_fw_submit.sh --from <stage>` re-heads the chain at `preflight`,
+`learn.1`, `arm.1`..`arm.4`, `learn.3`, `learn.4` or `heldout`, skipping everything before it. Never
+rebuild a bundle while one of its jobs is queued or running — bash reads a body lazily. Build a new
+bundle directory instead.
 
 ## START HERE -> `docs/research/OFFICEQA_FRAMEWORK_PORT.md` (newest), mirrored at `HANDOFF_LATEST.md`
 

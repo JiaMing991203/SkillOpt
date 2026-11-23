@@ -2235,3 +2235,78 @@ in the deployment setting is a property to measure before committing, not after.
 **What I did not do.** I did not quietly switch the target, re-aim the campaign or re-run anything to
 make the number look better. The column rule stays in the model as what it is: narrow, clean,
 prospectively confirmed on the one question that provided the evidence.
+
+## 2026-11-23 (early morning EST) — the contract-arm campaign, submitted; two defects found on the way
+
+**What was asked.** Go straight to the full planned contract-arm campaign, skipping the paired-edit
+rehearsal and collecting that evidence through the real training epochs; reuse the baselines' shared
+first-epoch rollout; make the Lean compile and the software checks automatic job dependencies rather
+than another approval milestone; and use **DeepSeek** to propose hypotheses, with the finite
+enumeration kept only as a diagnostic.
+
+**The push.** Authorized and done: `d2c6b76` and then four further commits to
+`origin/officeqa-contracts`. I flagged once, before pushing, that the remote is a **public** fork and
+that the push therefore publishes 216 commits of research logs; the branch already held the same kind
+of material, no credentials or run artifacts were in the set, and the user's authorization was
+explicit. One new exposure worth naming: two docs now carry the cluster home path `/home/yaojm`.
+
+**What I had to build.** The campaign learner. `oqa_fw_learn.SearchProposer` enumerates the whole
+vocabulary for ONE consequence atom and keeps what the gate accepts — a real learner over that space,
+and also a researcher's choice of target wearing a learner's clothes, because I picked the
+consequence. `research/officeqa/oqa_fw_teacher.py` is the provider learner in
+`upstream/vx1/vx_prompt.py`'s shape: DeepSeek proposes, code validates and gates, the gate's own
+refusal reasons with named counterexamples go back in a feedback round, and the learner narrows. Up to
+three paid attempts per pass. The prompt is generated from the `Domain` object so it cannot drift from
+the code, and every block is digested. The enumeration still runs beside it, free and **unapplied**,
+so the artifact can distinguish "the learner found nothing" from "the space contains nothing".
+
+**Amendment F-1b, and I want it on the record as a researcher's decision.** Section 11b measured that
+`col_label_agrees_flat` — the single atom that licensed `col_bound` — is unevaluable in a campaign
+epoch. With one atom the licence is unreachable there, so *no* hypothesis the learner could find could
+move a single obligation, and the campaign's own integration check would have been vacuous rather
+than negative. I widened the licence set to the two atoms that can determine a column's own label. It
+does not make `col_bound` true: the learner must still propose, the gate is unchanged, and the
+ablation is still the value test. A researcher chose which KIND of conclusion licenses reading a
+merged sub-label; no researcher chose the conditions, and the code does not permit one to.
+
+**THE FIRST DEFECT: Lean refuted the Python side.** Job 66666627 was the first time
+`OqaFramework.lean` was ever compiled, and it disproved **24 `decide` goals**. It was right, twice
+over. `conversionAccounted` took three inputs and encoded the conversion rule as it stood BEFORE the
+2026-11-22 audit — a missing stated factor and a DIFFERING stated factor were both OUTSTANDING. And
+the exported tuple could not determine the state recorded beside it: `in_calculation` was not exported
+at all, a MISSING required factor was written as `0` (which conflates "no factor is defined between
+these scales" with "the required factor is 10^0"), and whether the operand matched a cell was omitted
+— the case where the checker returns UNKNOWN for all three obligations before consulting any rule. Two
+operands with different states collided on one tuple, which is also why the tuple totals had been
+disagreeing with the report by 8.
+
+*The hole that let it through.* `self_check` existed precisely to catch an export that disagrees with
+the checker, and it only asserted that the tuples' multiplicities summed to the report's totals. It
+never asked whether the tuple's own fields DETERMINE the state written beside it. A tuple that does
+not determine its state cannot be checked by anything. It now re-derives all three states from the
+exported fields with a second implementation; the first regeneration under that check reported 12
+state and 3 total mismatches, and after adding `has_cell` it is clean over 36 tuples and 24 rule rows.
+Two of the audit's properties are now theorems instead of comments. **Job 66666909: rc 0, 0 errors,
+0 warnings, 12 theorems, 114 examples, 5.41 s.** The lesson generalises: a cross-check earns its keep
+when it fails, and a self-check that cannot fail for the right reason is not one.
+
+**THE SECOND DEFECT: configured is not effective, for the third time.** `chat_optimizer*` is a router
+whose backend comes from a call and not from a config file, and the learner does not run the trainer —
+so it would have dispatched to whatever `OPTIMIZER_BACKEND` happened to say. Worse,
+`SKILLOPT_REQUIRE_ROUTE` was set in the learn stage and INERT, because the guard's only caller is
+`skillopt/engine/trainer.py`. The learner now configures and calls `route_guard.verify_or_die` in the
+process that will make the call; the guard's dispatch check proves the path by monkeypatching the
+transport to raise, so it costs nothing. I found this only because the Lean failure sent me reading
+the paid paths — which is an argument for running the cheap gate first on principle.
+
+**What is reused and how it was decided.** By provenance, never by outcome. The epoch-1 rollout is
+byte-identical to the one the completed Original SkillOpt arm consumed, its ids are exactly the frozen
+training set, every row's own recorded system prompt contains the starting skill, all 12 rows share
+one actor/tool settings fingerprint, and the gate baseline is the baselines' own. The checker reads
+`predicted_answer` for completeness and never reads `ground_truth`, `hard` or `soft`.
+
+**Resources.** Reserved inside the 2026-11-21 phase ceilings, with no new funds: the chain asks 8.00
+of the 19.583 remaining CPU job-hours, and the ledger caps are set to *(what the ledger has recorded)
++ (true remaining headroom)* because the ledger was inert for most of the baseline campaign and would
+otherwise have allowed the full 400 and 20,000 over again. The demonstration sublimit (3.08 CPU
+job-hours, 18 teacher attempts) is untouched and is not the campaign's budget.
