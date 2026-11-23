@@ -176,3 +176,5 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-23T08:35:36Z	66666921	oqa-fw-learn-e4	learn EPOCH=4 traces e3	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	evolve from FW_MODEL_e3
 2026-11-23T08:35:36Z	66666922	oqa-fw-A-e4	arm EPOCH=4 M_e3	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	90 min
 2026-11-23T08:35:36Z	66666923	oqa-fw-ho	heldout contract_arm	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	90 min, skips itself if the endpoint digest is already evaluated
+2026-11-23T08:41:21Z	66666982	run_tests	-	2346dacff126996992144a5b63e7fc998632e993	--time=00:40:00
+2026-11-23T08:41:21Z	66666983	oqa_fw_lean	-	2346dacff126996992144a5b63e7fc998632e993	--time=00:20:00
