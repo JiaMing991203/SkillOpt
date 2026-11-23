@@ -706,3 +706,24 @@ def test_the_learner_content_fallback_never_reaches_the_actor():
     assert "SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK=committed_answer" in body[:learn]
     # the learn stage loads NO actor key, so the setting cannot reach a rollout even in principle
     assert "load_actor_key" not in body[learn:arm]
+
+
+def test_the_learn_stage_cannot_hand_the_arm_a_stale_model():
+    """fw_ir.freeze REFUSES to overwrite a frozen file whose content differs, and freeze_to catches
+    that refusal and reports the NEW digest while the OLD file stays on disk. A second attempt at the
+    same epoch would therefore leave the arm loading the previous attempt's model with no error. Job
+    66666916 failed after freezing an empty v1, so this is not hypothetical."""
+    body = open(os.path.join(REPO, "research", "cluster", "oqa_fw_body.sh"),
+                encoding="utf-8").read()
+    learn = body.index("\nlearn)")
+    arm = body.index("\narm)")
+    stage = body[learn:arm]
+    assert "superseded/" in stage, "a previous attempt's artifacts must be moved aside, not overwritten"
+    assert stage.index("superseded/") < stage.index("oqa_fw_arm.py"), "archive BEFORE learning"
+    assert "freeze_problem" in stage and "exit(9)" in stage, "a refused freeze must fail the stage"
+    assert "THE FROZEN FILE IS NOT THE ONE THIS PASS PRODUCED" in stage, (
+        "the file on disk must be checked against the digest the pass recorded")
+    # and the freeze really is refuse-on-difference, which is what makes all of the above necessary
+    import fw_ir as IR
+    src = __import__("inspect").getsource(IR.freeze)
+    assert "frozen with another content" in src and "os.chmod(path, 0o444)" in src

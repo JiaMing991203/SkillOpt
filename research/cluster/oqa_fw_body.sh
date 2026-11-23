@@ -267,6 +267,25 @@ learn)
             CARRY+=(--carry "$ARM_OUT/steps/$ED/rollout/predictions:$ARM_OUT/steps/$ED/rollout/results.jsonl:e$e/")
         done
     fi
+    # A PREVIOUS ATTEMPT'S ARTIFACTS ARE MOVED ASIDE, NEVER OVERWRITTEN, and this is not tidiness.
+    # `fw_ir.freeze` REFUSES to overwrite a frozen file whose content differs, and `freeze_to` catches
+    # that refusal and records it as `freeze_problem` while reporting the NEW digest - so the file on
+    # disk would still hold the OLD model and the arm stage would load it with no error at all. Job
+    # 66666916 failed after freezing an empty v1, so this is the exact situation.
+    PREV_FILES=""
+    for f in "$MODELS/FW_MODEL_e$EPOCH.json" "$MODELS/FW_ARM_FW_e$EPOCH.json" \
+             "$MODELS/FW_LEARNER_CALLS_FW_e$EPOCH.jsonl"; do
+        [ -e "$f" ] && PREV_FILES="$PREV_FILES $f"
+    done
+    if [ -n "$PREV_FILES" ]; then
+        ARCH="$MODELS/superseded/$(date -u +%Y%m%dT%H%M%SZ)_job${SLURM_JOB_ID:-x}"
+        mkdir -p "$ARCH" || die "cannot create $ARCH"
+        for f in $PREV_FILES; do
+            chmod u+w "$f" 2>/dev/null || true
+            mv "$f" "$ARCH/" || die "cannot move $f aside"
+        done
+        log "archived a previous attempt's artifacts to $ARCH"
+    fi
     log "learner pass: mode=$MODE model-for-epoch=$EPOCH traces-from-epoch=$TRACE_EPOCH proposer=teacher"
     "$OQA_PY" -I research/officeqa/oqa_fw_arm.py "$MODE" \
         --pred "$PRED" --order "$ORDER" --tag "e$TRACE_EPOCH/" \
@@ -284,9 +303,21 @@ lc = d.get('learner_calls') or {}
 rounds = [e for e in d.get('events') or [] if e.get('phase') == 'teacher']
 called = sum(1 for e in rounds if e.get('called'))
 parsed = sum(1 for e in rounds if e.get('parsed'))
+fr = d.get('frozen') or {}
 print(json.dumps({'learner_attempts': lc.get('n'), 'parsed': lc.get('n_parsed'),
                   'teacher_rounds': len(rounds), 'called': called, 'reply_parsed': parsed,
-                  'proposer': d.get('proposer'), 'active': d.get('snapshot', {}).get('active')}))
+                  'proposer': d.get('proposer'), 'active': d.get('snapshot', {}).get('active'),
+                  'frozen_sha256': (fr.get('sha256') or '')[:16],
+                  'freeze_problem': fr.get('freeze_problem')}))
+if fr.get('freeze_problem'):
+    sys.stderr.write('THE MODEL WAS NOT FROZEN: ' + str(fr['freeze_problem']) + '. The file on disk\n'
+                     'is NOT the model this pass produced, and the arm stage would load the stale one.\n')
+    sys.exit(9)
+on_disk = json.load(open('$MODELS/FW_MODEL_e$EPOCH.json'))
+if on_disk.get('sha256') != fr.get('sha256'):
+    sys.stderr.write('THE FROZEN FILE IS NOT THE ONE THIS PASS PRODUCED: on disk '
+                     + str(on_disk.get('sha256'))[:16] + ', recorded ' + str(fr.get('sha256'))[:16] + '\n')
+    sys.exit(10)
 if not called:
     sys.stderr.write('THE LEARNER WAS NEVER CALLED: this is an operational failure, not an abstention\n')
     sys.exit(7)
