@@ -116,9 +116,21 @@ including the ablation, was computed from those local copies.
 **Coordination, settled.** The user decided AC-2 waits for OfficeQA. `coordination/reservations.jsonl`
 carries `OQA-FW-1:EMPIRIO-FREE` (the finish time, explicitly labelled an inference because no live
 check was then possible) and `OQA-FW-1:EMPIRIO-FREE-VERIFIED` (the live observation above, which
-discharges that caveat). The account is idle on both sides; the ALFWorld session has been told it may
-resume. **No further OfficeQA actor work is planned, and a RESERVATION line goes in that ledger before
-anything new runs.**
+discharges that caveat). **AC-2 RESUMED AT ABOUT 15:2x EST AND THE SHARED ACCOUNT IS NO LONGER IDLE** —
+three lanes at 42 requests/minute in total (18 + 12 + 12), logged as
+`AC-2:RESUME-AFTER-CONFLICT`, acknowledged by `OQA-FW-1:EMPIRIO-AC2-LIVE`.
+
+**READ THIS BEFORE SUBMITTING ANY OfficeQA ACTOR JOB.** The EmpirioLabs limit is ~50 requests/minute
+ACCOUNT-WIDE and the agreed shared ceiling is 48. With AC-2 at 42 there is about **6 requests/minute**
+of headroom, and this campaign measured **14.25 req/min per worker** — so even one worker overruns it.
+An OfficeQA actor job therefore **waits for AC-2 or negotiates a share first**; it does not assume
+headroom. A `RESERVATION` line in `coordination/reservations.jsonl` goes in BEFORE the job starts, not
+after. No further OfficeQA actor work is planned.
+
+**The cost of the 03:47 saturation, recorded plainly:** AC-2's three lanes stopped at 03:47-03:59 EST on
+the account-rate breaker my 4-worker job helped trip, and were resubmitted from saved state with no loss
+beyond time — about eleven and a half hours of another campaign's wall clock spent waiting on the split
+decision, while every one of my 1,724 actor requests succeeded on its first attempt.
 
 **The newest report is `docs/research/OFFICEQA_FW_CAMPAIGN_REPORT.md`** (the completed campaign),
 mirrored byte-identically at `OFFICEQA_HANDOFF_LATEST.md`. The port note below it is the previous
