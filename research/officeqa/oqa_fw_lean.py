@@ -53,7 +53,7 @@ import fw_ir as IR  # noqa: E402
 import oqa_fw_run as RUN  # noqa: E402
 import oqa_fw_stage as ST  # noqa: E402
 
-SCHEMA = "lso.officeqa_framework_lean.v1"
+SCHEMA = "lso.officeqa_framework_lean.v2"
 KV = {True: "KV.tt", False: "KV.ff", None: "KV.uu"}
 CLS = {"support": "Cls.support", "counter": "Cls.counter",
        "counter_converse": "Cls.counterConverse", "consistent": "Cls.consistent",
@@ -143,29 +143,99 @@ def unitResolved : KV → OS
   | KV.uu => OS.unknown
   | KV.ff => OS.notRequired
 
-/-- `conversion_accounted`. The resolved-scale value is matched FIRST, so an unresolved scale cannot
-    reach `outstanding` whatever the required and stated factors are: that is the stage link, and it is
-    the property the next theorem states over arbitrary factors. -/
-def conversionAccounted (resolved : KV) (req : Int) (stated : Option Int) : OS :=
-  match resolved with
+/-- `conversion_accounted`, as the 2026-11-22 audit left it. CORRECTED 2026-11-23 under
+    `oqa.fw.lean.v2`: the first version of this definition took only three inputs and encoded the rule
+    BEFORE that audit, so it could not reproduce the states the checker records, and the compiler said
+    so - 24 `decide` goals were disproved the first time this file was ever compiled. The two inputs it
+    was missing are the two the audit added.
+
+    The order of the tests is the rule:
+    * a question that asks for no money scale requires no conversion of anything;
+    * a number that is not an operand or result of a WRITTEN CALCULATION requires no conversion. Without
+      this the obligation was raised for every number the actor typed, including ones it was only
+      reading aloud: 70 of one attempt's 227 written numbers were accused that way and none survived
+      the audit;
+    * an unresolved scale leaves it UNKNOWN, so an unresolved scale can never be reported as a missing
+      conversion;
+    * no factor defined between the two scales leaves it UNKNOWN;
+    * a required factor of 10^0 requires nothing, because demanding an explicit multiplication by one
+      would be a false alarm;
+    * no factor written anywhere in the prefix is the one genuine accusation;
+    * a DIFFERING factor is UNKNOWN, not a violation: the factor was written somewhere in the record and
+      which numbers it was applied to is not something this checker reads. -/
+def conversionAccounted (asked inCalc : Bool) (resolved : KV) (req : Option Int)
+    (stated : Option Int) : OS :=
+  if asked = false then OS.notRequired
+  else if inCalc = false then OS.notRequired
+  else match resolved with
   | KV.uu => OS.unknown
   | KV.ff => OS.unknown
   | KV.tt =>
-    if req = 0 then OS.notRequired
-    else match stated with
-      | none => OS.outstanding
-      | some s => if s = req then OS.discharged else OS.outstanding
+    match req with
+    | none => OS.unknown
+    | some r =>
+      if r = 0 then OS.notRequired
+      else match stated with
+        | none => OS.outstanding
+        | some s => if s = r then OS.discharged else OS.unknown
 
 /-- SOUNDNESS. A withdrawn licence - no rule, a refuted rule, a retired rule - leaves every obligation
-    downstream of it UNKNOWN, for every required and stated factor. -/
-theorem licenceWithdrawnNeverAccuses (req : Int) (stated : Option Int) :
-    colIdentified KV.uu = OS.unknown ∧ unitResolved KV.uu = OS.unknown ∧
-    conversionAccounted KV.uu req stated = OS.unknown := by
-  exact ⟨rfl, rfl, rfl⟩
+    downstream of it UNKNOWN, for every required and stated factor.
 
-theorem unknownNeverOutstanding (req : Int) (stated : Option Int) :
-    conversionAccounted KV.uu req stated ≠ OS.outstanding := by
-  simp [conversionAccounted]
+    Every proof below is `rfl`, `cases ... <;> rfl`, or a `by_cases` chain closed by `decide`. That is
+    deliberate: this file imports nothing but the Lean core, so it must not reach for a tactic that
+    lives in Mathlib, and a proof that is only definitional unfolding is one a reader can check by
+    unfolding the definition themselves. -/
+theorem licenceWithdrawnNeverAccuses (req stated : Option Int) :
+    colIdentified KV.uu = OS.unknown ∧ unitResolved KV.uu = OS.unknown ∧
+    conversionAccounted true true KV.uu req stated = OS.unknown :=
+  ⟨rfl, rfl, rfl⟩
+
+/-- The normal form of the conversion rule on an UNRESOLVED scale: the required and stated factors
+    cannot appear in it at all, which is what makes the next theorem true of every pair of them. -/
+theorem unresolvedScaleNormalForm (asked inCalc : Bool) (req stated : Option Int) :
+    conversionAccounted asked inCalc KV.uu req stated
+      = (if asked = false then OS.notRequired
+         else if inCalc = false then OS.notRequired else OS.unknown) := rfl
+
+/-- An unresolved scale is NEVER reported as a missing conversion. This is the stage link: the
+    obligation downstream of an unsettled interpretation abstains instead of accusing. -/
+theorem unknownNeverOutstanding (asked inCalc : Bool) (req stated : Option Int) :
+    conversionAccounted asked inCalc KV.uu req stated ≠ OS.outstanding := by
+  rw [unresolvedScaleNormalForm]
+  by_cases h : asked = false
+  · rw [if_pos h]; decide
+  · rw [if_neg h]
+    by_cases h2 : inCalc = false
+    · rw [if_pos h2]; decide
+    · rw [if_neg h2]; decide
+
+/-- THE AUDIT'S FIRST PROPERTY, as a theorem rather than as a comment. A number outside a written
+    calculation is never accused, whatever else is true of it. Without this clause the obligation was
+    raised for every number the actor typed, including ones it was only reading aloud: 70 of one
+    attempt's 227 written numbers were reported OUTSTANDING and none survived the audit. -/
+theorem outsideACalculationNeverAccuses (asked : Bool) (resolved : KV) (req stated : Option Int) :
+    conversionAccounted asked false resolved req stated = OS.notRequired := by
+  cases asked <;> rfl
+
+/-- The normal form on a RESOLVED scale with both factors known. OUTSTANDING does not occur in it. -/
+theorem resolvedScaleNormalForm (r s : Int) :
+    conversionAccounted true true KV.tt (some r) (some s)
+      = (if r = 0 then OS.notRequired else if s = r then OS.discharged else OS.unknown) := rfl
+
+/-- THE AUDIT'S SECOND PROPERTY. A factor of ten written in the record that differs from the one this
+    operand needs leaves the obligation UNSETTLED, never OUTSTANDING: the factor was written somewhere
+    in the record, and which numbers it was applied to is not something this checker reads, so "the
+    actor converted wrongly" is not established by the evidence it has. -/
+theorem aDifferingFactorIsNeverAnAccusation (r s : Int) :
+    conversionAccounted true true KV.tt (some r) (some s) ≠ OS.outstanding := by
+  rw [resolvedScaleNormalForm]
+  by_cases h0 : r = 0
+  · rw [if_pos h0]; decide
+  · rw [if_neg h0]
+    by_cases h1 : s = r
+    · rw [if_pos h1]; decide
+    · rw [if_neg h1]; decide
 
 /-- A rule whose CONDITION the records do not settle produces no class, in either direction. -/
 theorem undeterminedWhenConditionUnknown (isIff : Bool) (cons : KV) :
@@ -266,9 +336,23 @@ def obligation_rows(args, model) -> dict:
                 lic = est.value(n, "col_bound", [cell_e.get("column")])["v"] if xref else None
                 res = est.value(n, "cell_scale_resolved", [xref])["v"] if xref else None
                 ca = row["obligations"]["conversion_accounted"]
+                # EVERY INPUT THE STATE DEPENDS ON, under oqa.fw.lean.v2. The first version keyed on
+                # (licence, resolved, required, stated, asked) and mapped a MISSING required factor to
+                # 0 - which conflates "no factor is defined between these two scales" (UNKNOWN) with
+                # "the required factor is 10^0" (NOT_REQUIRED), and left out `in_calculation`
+                # altogether. A tuple that does not determine the state cannot be checked: Lean
+                # faithfully disproved 24 such goals the first time this file was compiled.
+                op_e = (r["entities"]["operands"] or {}).get(row["operand"]) or {}
                 req = ca.get("required_exp")
-                key = (lic, res, 0 if req is None else int(req),
-                       ca.get("stated_exp"), d2.asked_scale is not None)
+                # `has_cell` is part of the tuple because the checker returns UNKNOWN for all three
+                # obligations BEFORE consulting any rule when an operand matches no single data cell:
+                # there is then no column to identify and no scale to resolve. Without this field that
+                # case is indistinguishable from "a cell, but the question asks for no scale", whose
+                # conversion obligation is NOT_REQUIRED - and the two collided in the tally, which is
+                # how the first version's totals came to disagree with the report by 8.
+                key = (xref is not None, lic, res, d2.asked_scale is not None,
+                       bool(op_e.get("in_calculation")),
+                       None if req is None else int(req), ca.get("stated_exp"))
                 t = tally.setdefault(key, {"n": 0, "states": {}})
                 t["n"] += 1
                 for name in ST.OBLIGATIONS:
@@ -277,10 +361,10 @@ def obligation_rows(args, model) -> dict:
                 tot = totals.setdefault(name, {})
                 for st, nn in c.items():
                     tot[st] = tot.get(st, 0) + nn
-        out[cell] = {"tuples": [{"licence": k[0], "resolved": k[1], "required_exp": k[2],
-                                 "stated_exp": k[3], "asked": k[4], "n": v["n"],
-                                 "states": v["states"]} for k, v in sorted(
-                                     tally.items(), key=lambda kv: str(kv[0]))],
+        out[cell] = {"tuples": [{"has_cell": k[0], "licence": k[1], "resolved": k[2], "asked": k[3],
+                                 "in_calculation": k[4], "required_exp": k[5],
+                                 "stated_exp": k[6], "n": v["n"], "states": v["states"]}
+                                for k, v in sorted(tally.items(), key=lambda kv: str(kv[0]))],
                      "totals": totals}
     return out
 
@@ -313,16 +397,27 @@ def generate(rows: list, obs: dict, model: dict) -> tuple:
     L.append("")
     L.append("-- ── the stage algebra over the exported tuples, per ablation cell ─────────────")
     L.append("structure ObRow where")
+    L.append("  hasCell : Bool")
     L.append("  licence : KV")
     L.append("  resolved : KV")
-    L.append("  req : Int")
+    L.append("  asked : Bool")
+    L.append("  inCalc : Bool")
+    L.append("  req : Option Int")
     L.append("  stated : Option Int")
     L.append("  mult : Nat")
     L.append("deriving Repr")
     L.append("")
+    L.append("/-- An operand matched to no single data cell has no column to identify and no scale")
+    L.append("    to resolve, so all three obligations are UNKNOWN before any rule is consulted. -/")
     L.append("def obStates (r : ObRow) : OS × OS × OS :=")
-    L.append("  (colIdentified r.licence, unitResolved r.resolved,")
-    L.append("   conversionAccounted r.resolved r.req r.stated)")
+    L.append("  if r.hasCell = false then (OS.unknown, OS.unknown, OS.unknown)")
+    L.append("  else (colIdentified r.licence, unitResolved r.resolved,")
+    L.append("        conversionAccounted r.asked r.inCalc r.resolved r.req r.stated)")
+    L.append("")
+    L.append("theorem unmatchedOperandNeverAccuses (l rs : KV) (a c : Bool)")
+    L.append("    (q st : Option Int) (m : Nat) :")
+    L.append("    obStates ⟨false, l, rs, a, c, q, st, m⟩ = (OS.unknown, OS.unknown, OS.unknown) := by")
+    L.append("  simp [obStates]")
     L.append("")
     L.append("def countState (pick : ObRow → OS) (k : OS) (xs : List ObRow) : Nat :=")
     L.append("  xs.foldl (fun a r => if pick r = k then a + r.mult else a) 0")
@@ -332,19 +427,22 @@ def generate(rows: list, obs: dict, model: dict) -> tuple:
         L.append(f"-- {cell}")
         L.append(f"def {ident} : List ObRow := [")
         for i, t in enumerate(blk["tuples"]):
-            L.append(f"  ⟨{_kv(t['licence'])}, {_kv(t['resolved'])}, {_int(t['required_exp'])}, "
-                     f"{_opt(t['stated_exp'])}, {t['n']}⟩" + ("," if i + 1 < len(blk["tuples"]) else ""))
+            L.append(f"  ⟨{'true' if t['has_cell'] else 'false'}, "
+                     f"{_kv(t['licence'])}, {_kv(t['resolved'])}, "
+                     f"{'true' if t['asked'] else 'false'}, "
+                     f"{'true' if t['in_calculation'] else 'false'}, "
+                     f"{_opt(t['required_exp'])}, {_opt(t['stated_exp'])}, {t['n']}⟩"
+                     + ("," if i + 1 < len(blk["tuples"]) else ""))
         L.append("]")
         for i, t in enumerate(blk["tuples"]):
             trip = (f"({OS_[t['states']['column_identified']]}, "
                     f"{OS_[t['states']['unit_resolved']]}, "
                     f"{OS_[t['states']['conversion_accounted']]})")
-            L.append(f"example : obStates ({ident}.getD {i} ⟨KV.uu, KV.uu, 0, none, 0⟩) = {trip} "
-                     f":= by decide")
-        for name, pick in (("column_identified", "(fun r => colIdentified r.licence)"),
-                           ("unit_resolved", "(fun r => unitResolved r.resolved)"),
-                           ("conversion_accounted",
-                            "(fun r => conversionAccounted r.resolved r.req r.stated)")):
+            L.append(f"example : obStates ({ident}.getD {i} "
+                     f"⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = {trip} := by decide")
+        for name, pick in (("column_identified", "(fun r => (obStates r).1)"),
+                           ("unit_resolved", "(fun r => (obStates r).2.1)"),
+                           ("conversion_accounted", "(fun r => (obStates r).2.2)")):
             for st, lean in sorted(OS_.items()):
                 n = (blk["totals"].get(name) or {}).get(st, 0)
                 L.append(f"example : countState {pick} {lean} {ident} = {n} := by decide")
@@ -418,9 +516,65 @@ def self_check(rows: list, obs: dict) -> dict:
             if got != want:
                 tot_bad.append({"cell": cell, "obligation": name, "from_tuples": got,
                                 "from_report": want})
+    # THE CHECK THAT WAS MISSING, and whose absence cost a compile. The block above only asserts that
+    # the tuples' multiplicities add up to the report's totals; it never asks whether the tuple's own
+    # fields DETERMINE the state recorded beside them. They did not - `in_calculation` was not
+    # exported and a missing required factor was written as 0 - so the export passed this function and
+    # Lean disproved 24 goals. Re-deriving each state here, from the exported fields alone and with a
+    # second implementation, is the same question the compiler asks, asked before the job is submitted.
+    state_bad = []
+    for cell, blk in obs.items():
+        for t in blk["tuples"]:
+            want = t["states"]
+            got = _d_states(t)
+            if got != {k: want[k] for k in got}:
+                state_bad.append({"cell": cell, "tuple": {k: t[k] for k in
+                                  ("has_cell", "licence", "resolved", "asked", "in_calculation",
+                                   "required_exp", "stated_exp")},
+                                  "n": t["n"], "recomputed": got,
+                                  "recorded": {k: want[k] for k in got}})
     return {"rows_checked": len(rows), "row_mismatches": bad[:8], "n_row_mismatches": len(bad),
             "total_mismatches": tot_bad[:8], "n_total_mismatches": len(tot_bad),
-            "clean": not bad and not tot_bad}
+            "n_tuples_checked": sum(len(b["tuples"]) for b in obs.values()),
+            "state_mismatches": state_bad[:8], "n_state_mismatches": len(state_bad),
+            "clean": not bad and not tot_bad and not state_bad}
+
+
+# The three obligation rules again, deliberately written a second time and from the EXPORTED fields
+# only. If this disagrees with the checker, either the export is incomplete or one of the two
+# implementations is wrong, and both are worth knowing before a compiler says so.
+def _d_states(t: dict) -> dict:
+    if not t["has_cell"]:
+        return {"column_identified": ST.UNKNOWN, "unit_resolved": ST.UNKNOWN,
+                "conversion_accounted": ST.UNKNOWN}
+    return {"column_identified": _d_col(t["licence"]),
+            "unit_resolved": _d_unit(t["resolved"]),
+            "conversion_accounted": _d_conv(t["asked"], t["in_calculation"], t["resolved"],
+                                            t["required_exp"], t["stated_exp"])}
+
+
+def _d_col(licence):
+    return ST.DISCHARGED if licence is True else ST.UNKNOWN
+
+
+def _d_unit(resolved):
+    if resolved is True:
+        return ST.DISCHARGED
+    return ST.UNKNOWN if resolved is None else ST.NOT_REQUIRED
+
+
+def _d_conv(asked, in_calc, resolved, req, stated):
+    if not asked or not in_calc:
+        return ST.NOT_REQUIRED
+    if resolved is not True:
+        return ST.UNKNOWN
+    if req is None:
+        return ST.UNKNOWN
+    if int(req) == 0:
+        return ST.NOT_REQUIRED
+    if stated is None:
+        return ST.OUTSTANDING
+    return ST.DISCHARGED if int(stated) == int(req) else ST.UNKNOWN
 
 
 def lean_version(lean_bin: str) -> str:

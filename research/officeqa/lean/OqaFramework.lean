@@ -80,29 +80,99 @@ def unitResolved : KV → OS
   | KV.uu => OS.unknown
   | KV.ff => OS.notRequired
 
-/-- `conversion_accounted`. The resolved-scale value is matched FIRST, so an unresolved scale cannot
-    reach `outstanding` whatever the required and stated factors are: that is the stage link, and it is
-    the property the next theorem states over arbitrary factors. -/
-def conversionAccounted (resolved : KV) (req : Int) (stated : Option Int) : OS :=
-  match resolved with
+/-- `conversion_accounted`, as the 2026-11-22 audit left it. CORRECTED 2026-11-23 under
+    `oqa.fw.lean.v2`: the first version of this definition took only three inputs and encoded the rule
+    BEFORE that audit, so it could not reproduce the states the checker records, and the compiler said
+    so - 24 `decide` goals were disproved the first time this file was ever compiled. The two inputs it
+    was missing are the two the audit added.
+
+    The order of the tests is the rule:
+    * a question that asks for no money scale requires no conversion of anything;
+    * a number that is not an operand or result of a WRITTEN CALCULATION requires no conversion. Without
+      this the obligation was raised for every number the actor typed, including ones it was only
+      reading aloud: 70 of one attempt's 227 written numbers were accused that way and none survived
+      the audit;
+    * an unresolved scale leaves it UNKNOWN, so an unresolved scale can never be reported as a missing
+      conversion;
+    * no factor defined between the two scales leaves it UNKNOWN;
+    * a required factor of 10^0 requires nothing, because demanding an explicit multiplication by one
+      would be a false alarm;
+    * no factor written anywhere in the prefix is the one genuine accusation;
+    * a DIFFERING factor is UNKNOWN, not a violation: the factor was written somewhere in the record and
+      which numbers it was applied to is not something this checker reads. -/
+def conversionAccounted (asked inCalc : Bool) (resolved : KV) (req : Option Int)
+    (stated : Option Int) : OS :=
+  if asked = false then OS.notRequired
+  else if inCalc = false then OS.notRequired
+  else match resolved with
   | KV.uu => OS.unknown
   | KV.ff => OS.unknown
   | KV.tt =>
-    if req = 0 then OS.notRequired
-    else match stated with
-      | none => OS.outstanding
-      | some s => if s = req then OS.discharged else OS.outstanding
+    match req with
+    | none => OS.unknown
+    | some r =>
+      if r = 0 then OS.notRequired
+      else match stated with
+        | none => OS.outstanding
+        | some s => if s = r then OS.discharged else OS.unknown
 
 /-- SOUNDNESS. A withdrawn licence - no rule, a refuted rule, a retired rule - leaves every obligation
-    downstream of it UNKNOWN, for every required and stated factor. -/
-theorem licenceWithdrawnNeverAccuses (req : Int) (stated : Option Int) :
-    colIdentified KV.uu = OS.unknown ∧ unitResolved KV.uu = OS.unknown ∧
-    conversionAccounted KV.uu req stated = OS.unknown := by
-  exact ⟨rfl, rfl, rfl⟩
+    downstream of it UNKNOWN, for every required and stated factor.
 
-theorem unknownNeverOutstanding (req : Int) (stated : Option Int) :
-    conversionAccounted KV.uu req stated ≠ OS.outstanding := by
-  simp [conversionAccounted]
+    Every proof below is `rfl`, `cases ... <;> rfl`, or a `by_cases` chain closed by `decide`. That is
+    deliberate: this file imports nothing but the Lean core, so it must not reach for a tactic that
+    lives in Mathlib, and a proof that is only definitional unfolding is one a reader can check by
+    unfolding the definition themselves. -/
+theorem licenceWithdrawnNeverAccuses (req stated : Option Int) :
+    colIdentified KV.uu = OS.unknown ∧ unitResolved KV.uu = OS.unknown ∧
+    conversionAccounted true true KV.uu req stated = OS.unknown :=
+  ⟨rfl, rfl, rfl⟩
+
+/-- The normal form of the conversion rule on an UNRESOLVED scale: the required and stated factors
+    cannot appear in it at all, which is what makes the next theorem true of every pair of them. -/
+theorem unresolvedScaleNormalForm (asked inCalc : Bool) (req stated : Option Int) :
+    conversionAccounted asked inCalc KV.uu req stated
+      = (if asked = false then OS.notRequired
+         else if inCalc = false then OS.notRequired else OS.unknown) := rfl
+
+/-- An unresolved scale is NEVER reported as a missing conversion. This is the stage link: the
+    obligation downstream of an unsettled interpretation abstains instead of accusing. -/
+theorem unknownNeverOutstanding (asked inCalc : Bool) (req stated : Option Int) :
+    conversionAccounted asked inCalc KV.uu req stated ≠ OS.outstanding := by
+  rw [unresolvedScaleNormalForm]
+  by_cases h : asked = false
+  · rw [if_pos h]; decide
+  · rw [if_neg h]
+    by_cases h2 : inCalc = false
+    · rw [if_pos h2]; decide
+    · rw [if_neg h2]; decide
+
+/-- THE AUDIT'S FIRST PROPERTY, as a theorem rather than as a comment. A number outside a written
+    calculation is never accused, whatever else is true of it. Without this clause the obligation was
+    raised for every number the actor typed, including ones it was only reading aloud: 70 of one
+    attempt's 227 written numbers were reported OUTSTANDING and none survived the audit. -/
+theorem outsideACalculationNeverAccuses (asked : Bool) (resolved : KV) (req stated : Option Int) :
+    conversionAccounted asked false resolved req stated = OS.notRequired := by
+  cases asked <;> rfl
+
+/-- The normal form on a RESOLVED scale with both factors known. OUTSTANDING does not occur in it. -/
+theorem resolvedScaleNormalForm (r s : Int) :
+    conversionAccounted true true KV.tt (some r) (some s)
+      = (if r = 0 then OS.notRequired else if s = r then OS.discharged else OS.unknown) := rfl
+
+/-- THE AUDIT'S SECOND PROPERTY. A factor of ten written in the record that differs from the one this
+    operand needs leaves the obligation UNSETTLED, never OUTSTANDING: the factor was written somewhere
+    in the record, and which numbers it was applied to is not something this checker reads, so "the
+    actor converted wrongly" is not established by the evidence it has. -/
+theorem aDifferingFactorIsNeverAnAccusation (r s : Int) :
+    conversionAccounted true true KV.tt (some r) (some s) ≠ OS.outstanding := by
+  rw [resolvedScaleNormalForm]
+  by_cases h0 : r = 0
+  · rw [if_pos h0]; decide
+  · rw [if_neg h0]
+    by_cases h1 : s = r
+    · rw [if_pos h1]; decide
+    · rw [if_neg h1]; decide
 
 /-- A rule whose CONDITION the records do not settle produces no class, in either direction. -/
 theorem undeterminedWhenConditionUnknown (isIff : Bool) (cons : KV) :
@@ -222,128 +292,165 @@ example : countCls Cls.neutral classes = 0 := by decide
 
 -- ── the stage algebra over the exported tuples, per ablation cell ─────────────
 structure ObRow where
+  hasCell : Bool
   licence : KV
   resolved : KV
-  req : Int
+  asked : Bool
+  inCalc : Bool
+  req : Option Int
   stated : Option Int
   mult : Nat
 deriving Repr
 
+/-- An operand matched to no single data cell has no column to identify and no scale
+    to resolve, so all three obligations are UNKNOWN before any rule is consulted. -/
 def obStates (r : ObRow) : OS × OS × OS :=
-  (colIdentified r.licence, unitResolved r.resolved,
-   conversionAccounted r.resolved r.req r.stated)
+  if r.hasCell = false then (OS.unknown, OS.unknown, OS.unknown)
+  else (colIdentified r.licence, unitResolved r.resolved,
+        conversionAccounted r.asked r.inCalc r.resolved r.req r.stated)
+
+theorem unmatchedOperandNeverAccuses (l rs : KV) (a c : Bool)
+    (q st : Option Int) (m : Nat) :
+    obStates ⟨false, l, rs, a, c, q, st, m⟩ = (OS.unknown, OS.unknown, OS.unknown) := by
+  simp [obStates]
 
 def countState (pick : ObRow → OS) (k : OS) (xs : List ObRow) : Nat :=
   xs.foldl (fun a r => if pick r = k then a + r.mult else a) 0
 
 -- A_no_assumption_no_rule
 def cellA : List ObRow := [
-  ⟨KV.uu, KV.ff, 0, none, 111⟩,
-  ⟨KV.uu, KV.ff, 0, none, 13⟩,
-  ⟨KV.uu, KV.uu, 0, none, 1095⟩,
-  ⟨KV.uu, KV.uu, 0, none, 1362⟩
+  ⟨false, KV.uu, KV.uu, false, false, none, none, 845⟩,
+  ⟨false, KV.uu, KV.uu, false, true, none, none, 250⟩,
+  ⟨false, KV.uu, KV.uu, true, false, none, none, 817⟩,
+  ⟨false, KV.uu, KV.uu, true, true, none, none, 285⟩,
+  ⟨true, KV.uu, KV.ff, false, false, none, none, 111⟩,
+  ⟨true, KV.uu, KV.ff, true, false, none, none, 13⟩,
+  ⟨true, KV.uu, KV.uu, true, false, none, none, 242⟩,
+  ⟨true, KV.uu, KV.uu, true, true, none, none, 18⟩
 ]
-example : obStates (cellA.getD 0 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellA.getD 1 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellA.getD 2 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : obStates (cellA.getD 3 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : countState (fun r => colIdentified r.licence) OS.discharged cellA = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.notRequired cellA = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.outstanding cellA = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.unknown cellA = 2581 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.discharged cellA = 0 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.notRequired cellA = 124 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.outstanding cellA = 0 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.unknown cellA = 2457 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.discharged cellA = 0 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.notRequired cellA = 366 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.outstanding cellA = 0 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.unknown cellA = 2215 := by decide
+example : obStates (cellA.getD 0 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellA.getD 1 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellA.getD 2 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellA.getD 3 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellA.getD 4 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellA.getD 5 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellA.getD 6 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.notRequired) := by decide
+example : obStates (cellA.getD 7 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : countState (fun r => (obStates r).1) OS.discharged cellA = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.notRequired cellA = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.outstanding cellA = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.unknown cellA = 2581 := by decide
+example : countState (fun r => (obStates r).2.1) OS.discharged cellA = 0 := by decide
+example : countState (fun r => (obStates r).2.1) OS.notRequired cellA = 124 := by decide
+example : countState (fun r => (obStates r).2.1) OS.outstanding cellA = 0 := by decide
+example : countState (fun r => (obStates r).2.1) OS.unknown cellA = 2457 := by decide
+example : countState (fun r => (obStates r).2.2) OS.discharged cellA = 0 := by decide
+example : countState (fun r => (obStates r).2.2) OS.notRequired cellA = 366 := by decide
+example : countState (fun r => (obStates r).2.2) OS.outstanding cellA = 0 := by decide
+example : countState (fun r => (obStates r).2.2) OS.unknown cellA = 2215 := by decide
 
 -- B_assumption_only
 def cellB : List ObRow := [
-  ⟨KV.uu, KV.ff, 0, none, 111⟩,
-  ⟨KV.uu, KV.ff, 0, none, 13⟩,
-  ⟨KV.uu, KV.uu, 0, none, 1095⟩,
-  ⟨KV.uu, KV.uu, 0, none, 1362⟩
+  ⟨false, KV.uu, KV.uu, false, false, none, none, 845⟩,
+  ⟨false, KV.uu, KV.uu, false, true, none, none, 250⟩,
+  ⟨false, KV.uu, KV.uu, true, false, none, none, 817⟩,
+  ⟨false, KV.uu, KV.uu, true, true, none, none, 285⟩,
+  ⟨true, KV.uu, KV.ff, false, false, none, none, 111⟩,
+  ⟨true, KV.uu, KV.ff, true, false, none, none, 13⟩,
+  ⟨true, KV.uu, KV.uu, true, false, none, none, 242⟩,
+  ⟨true, KV.uu, KV.uu, true, true, none, none, 18⟩
 ]
-example : obStates (cellB.getD 0 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellB.getD 1 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellB.getD 2 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : obStates (cellB.getD 3 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : countState (fun r => colIdentified r.licence) OS.discharged cellB = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.notRequired cellB = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.outstanding cellB = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.unknown cellB = 2581 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.discharged cellB = 0 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.notRequired cellB = 124 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.outstanding cellB = 0 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.unknown cellB = 2457 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.discharged cellB = 0 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.notRequired cellB = 366 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.outstanding cellB = 0 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.unknown cellB = 2215 := by decide
+example : obStates (cellB.getD 0 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellB.getD 1 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellB.getD 2 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellB.getD 3 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellB.getD 4 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellB.getD 5 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellB.getD 6 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.notRequired) := by decide
+example : obStates (cellB.getD 7 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : countState (fun r => (obStates r).1) OS.discharged cellB = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.notRequired cellB = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.outstanding cellB = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.unknown cellB = 2581 := by decide
+example : countState (fun r => (obStates r).2.1) OS.discharged cellB = 0 := by decide
+example : countState (fun r => (obStates r).2.1) OS.notRequired cellB = 124 := by decide
+example : countState (fun r => (obStates r).2.1) OS.outstanding cellB = 0 := by decide
+example : countState (fun r => (obStates r).2.1) OS.unknown cellB = 2457 := by decide
+example : countState (fun r => (obStates r).2.2) OS.discharged cellB = 0 := by decide
+example : countState (fun r => (obStates r).2.2) OS.notRequired cellB = 366 := by decide
+example : countState (fun r => (obStates r).2.2) OS.outstanding cellB = 0 := by decide
+example : countState (fun r => (obStates r).2.2) OS.unknown cellB = 2215 := by decide
 
 -- C_assumption_and_rule
 def cellC : List ObRow := [
-  ⟨KV.uu, KV.ff, 0, none, 111⟩,
-  ⟨KV.uu, KV.ff, 0, none, 8⟩,
-  ⟨KV.uu, KV.uu, 0, none, 1095⟩,
-  ⟨KV.uu, KV.uu, 0, none, 1110⟩,
-  ⟨KV.tt, KV.ff, 0, none, 5⟩,
-  ⟨KV.tt, KV.tt, (-3), (some (-6)), 5⟩,
-  ⟨KV.tt, KV.tt, (-6), (some (-6)), 13⟩,
-  ⟨KV.tt, KV.tt, 0, none, 234⟩
+  ⟨false, KV.uu, KV.uu, false, false, none, none, 845⟩,
+  ⟨false, KV.uu, KV.uu, false, true, none, none, 250⟩,
+  ⟨false, KV.uu, KV.uu, true, false, none, none, 817⟩,
+  ⟨false, KV.uu, KV.uu, true, true, none, none, 285⟩,
+  ⟨true, KV.uu, KV.ff, false, false, none, none, 111⟩,
+  ⟨true, KV.uu, KV.ff, true, false, none, none, 8⟩,
+  ⟨true, KV.uu, KV.uu, true, false, none, none, 8⟩,
+  ⟨true, KV.tt, KV.ff, true, false, none, none, 5⟩,
+  ⟨true, KV.tt, KV.tt, true, false, none, none, 234⟩,
+  ⟨true, KV.tt, KV.tt, true, true, (some (-3)), (some (-6)), 5⟩,
+  ⟨true, KV.tt, KV.tt, true, true, (some (-6)), (some (-6)), 13⟩
 ]
-example : obStates (cellC.getD 0 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellC.getD 1 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellC.getD 2 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : obStates (cellC.getD 3 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : obStates (cellC.getD 4 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellC.getD 5 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.discharged, OS.unknown) := by decide
-example : obStates (cellC.getD 6 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.discharged, OS.discharged) := by decide
-example : obStates (cellC.getD 7 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.discharged, OS.notRequired) := by decide
-example : countState (fun r => colIdentified r.licence) OS.discharged cellC = 257 := by decide
-example : countState (fun r => colIdentified r.licence) OS.notRequired cellC = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.outstanding cellC = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.unknown cellC = 2324 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.discharged cellC = 252 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.notRequired cellC = 124 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.outstanding cellC = 0 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.unknown cellC = 2205 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.discharged cellC = 13 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.notRequired cellC = 366 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.outstanding cellC = 0 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.unknown cellC = 2202 := by decide
+example : obStates (cellC.getD 0 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellC.getD 1 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellC.getD 2 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellC.getD 3 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellC.getD 4 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellC.getD 5 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellC.getD 6 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.notRequired) := by decide
+example : obStates (cellC.getD 7 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellC.getD 8 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.discharged, OS.notRequired) := by decide
+example : obStates (cellC.getD 9 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.discharged, OS.unknown) := by decide
+example : obStates (cellC.getD 10 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.discharged, OS.discharged) := by decide
+example : countState (fun r => (obStates r).1) OS.discharged cellC = 257 := by decide
+example : countState (fun r => (obStates r).1) OS.notRequired cellC = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.outstanding cellC = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.unknown cellC = 2324 := by decide
+example : countState (fun r => (obStates r).2.1) OS.discharged cellC = 252 := by decide
+example : countState (fun r => (obStates r).2.1) OS.notRequired cellC = 124 := by decide
+example : countState (fun r => (obStates r).2.1) OS.outstanding cellC = 0 := by decide
+example : countState (fun r => (obStates r).2.1) OS.unknown cellC = 2205 := by decide
+example : countState (fun r => (obStates r).2.2) OS.discharged cellC = 13 := by decide
+example : countState (fun r => (obStates r).2.2) OS.notRequired cellC = 366 := by decide
+example : countState (fun r => (obStates r).2.2) OS.outstanding cellC = 0 := by decide
+example : countState (fun r => (obStates r).2.2) OS.unknown cellC = 2202 := by decide
 
 -- D_assumption_and_refused_rule
 def cellD : List ObRow := [
-  ⟨KV.uu, KV.uu, 0, none, 1095⟩,
-  ⟨KV.uu, KV.uu, 0, none, 1102⟩,
-  ⟨KV.tt, KV.ff, 0, none, 111⟩,
-  ⟨KV.tt, KV.ff, 0, none, 13⟩,
-  ⟨KV.tt, KV.tt, (-3), (some (-6)), 5⟩,
-  ⟨KV.tt, KV.tt, (-6), (some (-6)), 13⟩,
-  ⟨KV.tt, KV.tt, 0, none, 242⟩
+  ⟨false, KV.uu, KV.uu, false, false, none, none, 845⟩,
+  ⟨false, KV.uu, KV.uu, false, true, none, none, 250⟩,
+  ⟨false, KV.uu, KV.uu, true, false, none, none, 817⟩,
+  ⟨false, KV.uu, KV.uu, true, true, none, none, 285⟩,
+  ⟨true, KV.tt, KV.ff, false, false, none, none, 111⟩,
+  ⟨true, KV.tt, KV.ff, true, false, none, none, 13⟩,
+  ⟨true, KV.tt, KV.tt, true, false, none, none, 242⟩,
+  ⟨true, KV.tt, KV.tt, true, true, (some (-3)), (some (-6)), 5⟩,
+  ⟨true, KV.tt, KV.tt, true, true, (some (-6)), (some (-6)), 13⟩
 ]
-example : obStates (cellD.getD 0 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : obStates (cellD.getD 1 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
-example : obStates (cellD.getD 2 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellD.getD 3 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.notRequired, OS.notRequired) := by decide
-example : obStates (cellD.getD 4 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.discharged, OS.unknown) := by decide
-example : obStates (cellD.getD 5 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.discharged, OS.discharged) := by decide
-example : obStates (cellD.getD 6 ⟨KV.uu, KV.uu, 0, none, 0⟩) = (OS.discharged, OS.discharged, OS.notRequired) := by decide
-example : countState (fun r => colIdentified r.licence) OS.discharged cellD = 384 := by decide
-example : countState (fun r => colIdentified r.licence) OS.notRequired cellD = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.outstanding cellD = 0 := by decide
-example : countState (fun r => colIdentified r.licence) OS.unknown cellD = 2197 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.discharged cellD = 260 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.notRequired cellD = 124 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.outstanding cellD = 0 := by decide
-example : countState (fun r => unitResolved r.resolved) OS.unknown cellD = 2197 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.discharged cellD = 13 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.notRequired cellD = 366 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.outstanding cellD = 0 := by decide
-example : countState (fun r => conversionAccounted r.resolved r.req r.stated) OS.unknown cellD = 2202 := by decide
+example : obStates (cellD.getD 0 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellD.getD 1 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellD.getD 2 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellD.getD 3 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.unknown, OS.unknown, OS.unknown) := by decide
+example : obStates (cellD.getD 4 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellD.getD 5 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.notRequired, OS.notRequired) := by decide
+example : obStates (cellD.getD 6 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.discharged, OS.notRequired) := by decide
+example : obStates (cellD.getD 7 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.discharged, OS.unknown) := by decide
+example : obStates (cellD.getD 8 ⟨false, KV.uu, KV.uu, false, false, none, none, 0⟩) = (OS.discharged, OS.discharged, OS.discharged) := by decide
+example : countState (fun r => (obStates r).1) OS.discharged cellD = 384 := by decide
+example : countState (fun r => (obStates r).1) OS.notRequired cellD = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.outstanding cellD = 0 := by decide
+example : countState (fun r => (obStates r).1) OS.unknown cellD = 2197 := by decide
+example : countState (fun r => (obStates r).2.1) OS.discharged cellD = 260 := by decide
+example : countState (fun r => (obStates r).2.1) OS.notRequired cellD = 124 := by decide
+example : countState (fun r => (obStates r).2.1) OS.outstanding cellD = 0 := by decide
+example : countState (fun r => (obStates r).2.1) OS.unknown cellD = 2197 := by decide
+example : countState (fun r => (obStates r).2.2) OS.discharged cellD = 13 := by decide
+example : countState (fun r => (obStates r).2.2) OS.notRequired cellD = 366 := by decide
+example : countState (fun r => (obStates r).2.2) OS.outstanding cellD = 0 := by decide
+example : countState (fun r => (obStates r).2.2) OS.unknown cellD = 2202 := by decide
 
 end OqaFramework

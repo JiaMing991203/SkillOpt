@@ -51,9 +51,15 @@ log "lean version: $(cat "$RUN_DIR/lean_version.txt")"
 mkdir -p "$RUN_DIR/lean"
 cp "$SRC" "$RUN_DIR/lean/OqaFramework.lean"
 T0=$(date +%s.%N)
+# `set -e` is in force from lib.sh, and a non-zero compiler exit here would end the script BEFORE
+# results.tsv is written - which is what job 66666627 did: 24 goals were disproved, the output file
+# survived, and the receipt that names the digest and the counts did not. The compiler's own exit
+# status is the result of this job, so it is captured rather than allowed to abort it.
+set +e
 ( cd "$RUN_DIR/lean" && timeout "${OQA_LEAN_TIMEOUT:-900}" "$OQA_LEAN_BIN" OqaFramework.lean ) \
     > "$RUN_DIR/lean/OqaFramework.out" 2>&1
 RC=$?
+set -e
 T1=$(date +%s.%N)
 SECONDS_ELAPSED=$(awk "BEGIN{printf \"%.2f\", $T1 - $T0}")
 

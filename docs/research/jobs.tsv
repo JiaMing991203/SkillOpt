@@ -163,3 +163,4 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 66599377	2026-11-22T00:57	oqa-ln-d2	COMPLETED	00:04:03	00:25:00	1	OQA-D2 FREE, keys dropped: amendments D-2..D-5 replayed over the frozen set with both frozen models; Lean 4.20.0 rc 0, 0 errors 0 warnings, 272 examples, source ec5e8ee905465b76; suite 2615 passed / 0 failed. The cluster rebuilt the replay from the FROZEN records and agrees with the local run on every headline figure.
 2026-11-23T08:19:46Z	66666536	run_tests	-	a1dbd98fa648b4536eb727fa7ed6733755ba99f5	--time=00:40:00
 2026-11-23T08:19:47Z	66666537	oqa_fw_lean	-	a1dbd98fa648b4536eb727fa7ed6733755ba99f5	--time=00:20:00
+2026-11-23T08:24:57Z	66666627	oqa_fw_lean	-	a22ea981227feefce46233f281d7f97d6acff143	--time=00:20:00

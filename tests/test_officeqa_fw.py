@@ -544,3 +544,80 @@ def test_the_campaign_learner_is_the_provider_and_the_search_is_a_labelled_diagn
     # and no other function in the module reaches the provider: every mention is inside call()
     mod_src = inspect.getsource(TEACH)
     assert mod_src.count("chat_optimizer") == call_src.count("chat_optimizer") == 2
+
+
+# ── 11. the Lean export, after the compiler refuted it (oqa.fw.lean.v2) ──────
+def test_the_lean_conversion_rule_matches_the_checkers_corrected_one():
+    """2026-11-23: the first compile of OqaFramework.lean disproved 24 `decide` goals. The Lean
+    definition took three inputs and encoded the conversion rule as it was BEFORE the 2026-11-22
+    audit, and the exported tuple did not carry the two fields the corrected rule reads. This test
+    compares the two implementations case by case so a compiler is never again the first to find out."""
+    import itertools
+    import oqa_fw_lean as LN
+    import oqa_fw_stage as ST
+    for has_cell, asked, in_calc, resolved, req, stated in itertools.product(
+            (True, False), (True, False), (True, False), (True, False, None),
+            (None, 0, 3, 6), (None, 0, 3, 6)):
+        t = {"has_cell": has_cell, "licence": True, "resolved": resolved, "asked": asked,
+             "in_calculation": in_calc, "required_exp": req, "stated_exp": stated}
+        got = LN._d_states(t)
+        assert set(got) == set(ST.OBLIGATIONS)
+        if not has_cell:
+            assert all(v == ST.UNKNOWN for v in got.values())
+            continue
+        c = got["conversion_accounted"]
+        # the four properties the audit established, asserted directly
+        if not asked or not in_calc:
+            assert c == ST.NOT_REQUIRED
+        elif resolved is not True:
+            assert c == ST.UNKNOWN, "an unresolved scale is never a missing conversion"
+        elif req is None:
+            assert c == ST.UNKNOWN, "no factor defined between the scales leaves it unsettled"
+        elif req == 0:
+            assert c == ST.NOT_REQUIRED, "a factor of 10^0 demands no written multiplication"
+        elif stated is None:
+            assert c == ST.OUTSTANDING
+        elif stated == req:
+            assert c == ST.DISCHARGED
+        else:
+            assert c == ST.UNKNOWN, "a DIFFERING factor is unsettled, never an accusation"
+        assert c != ST.OUTSTANDING or (asked and in_calc and resolved is True
+                                       and req not in (None, 0) and stated is None)
+
+
+def test_the_exported_tuple_determines_the_state_it_is_recorded_beside():
+    """The hole that let the bad export through: `self_check` only asserted that the tuples'
+    multiplicities summed to the report's totals, never that the tuple's own fields DETERMINE the
+    state written beside it. A tuple that does not determine its state cannot be checked by anything."""
+    import inspect
+    import oqa_fw_lean as LN
+    src = inspect.getsource(LN.self_check)
+    assert "_d_states" in src, "self_check must re-derive each state from the exported fields"
+    assert "state_mismatches" in src and "n_state_mismatches" in src
+    # and `clean` must require that check to pass, not only the other two
+    assert "not state_bad" in src
+    # the export must carry every field the rule reads
+    rows = inspect.getsource(LN.obligation_rows)
+    for field in ("has_cell", "in_calculation", "asked", "required_exp", "stated_exp"):
+        assert field in rows, field
+    assert "0 if req is None else" not in rows, (
+        "a missing required factor must stay None: mapping it to 0 conflates "
+        "'no factor is defined between these scales' with 'the required factor is 10^0'")
+
+
+def test_the_generated_lean_file_is_core_only_and_carries_the_corrected_rule():
+    lean = os.path.join(RESEARCH, "lean", "OqaFramework.lean")
+    text = open(lean, encoding="utf-8").read()
+    assert "def conversionAccounted (asked inCalc : Bool) (resolved : KV) (req : Option Int)" in text
+    assert "hasCell : Bool" in text and "if r.hasCell = false then" in text
+    for name in ("outsideACalculationNeverAccuses", "aDifferingFactorIsNeverAnAccusation",
+                 "unmatchedOperandNeverAccuses", "licenceWithdrawnNeverAccuses"):
+        assert f"theorem {name}" in text, name
+    # core Lean only: this file imports nothing, so a Mathlib-only tactic would not compile
+    for tactic in ("rcases", "omega", "linarith", "aesop", "norm_num", "field_simp"):
+        assert tactic not in text, f"{tactic} is not in the Lean core"
+    assert "import " not in text, "the file must stay self-contained"
+    # the manifest must cover the file as it now stands
+    man = open(os.path.join(RESEARCH, "lean", "MANIFEST.sha256"), encoding="utf-8").read()
+    import hashlib
+    assert hashlib.sha256(text.encode()).hexdigest() in man
