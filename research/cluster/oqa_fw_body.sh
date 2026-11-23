@@ -346,6 +346,12 @@ arm)
     export OFFICEQA_STAGE_REPORT_DIR="$REPORTS/e$EPOCH"
     export OFFICEQA_LC_MODEL="$OQA_MODEL"
     log "contract arm epoch $EPOCH: condition FW, model $(sha256sum "$OQA_MODEL" | cut -c1-16), reports $OFFICEQA_STAGE_REPORT_DIR"
+    # THE SHARED ACTOR ACCOUNT. The rate limit is ACCOUNT-WIDE at about 50 requests a minute and the
+    # ALFWorld session uses the same account. Measured on 2026-11-23 from this campaign's own call log:
+    # workers=4 peaks at 46 requests a minute in its first 60 s (mean 28.3, median latency 3.16 s, so
+    # about 11.5 per worker), and at that rate two AC-2 jobs hit their 429 breakers and stopped while
+    # 23 of my own 72 calls were throttled. The share is therefore a declared setting, not a default.
+    log "actor workers: ${OQA_WORKERS:-4} (about $(( ${OQA_WORKERS:-4} * 115 / 10 )) requests/minute at peak, shared ~50/min account)"
     if [ "$EPOCH" = "1" ]; then
         inject_epoch1
         verify_reuse "$ARM_OUT/steps/step_0001/rollout"
@@ -361,6 +367,7 @@ arm)
         --optimizer_model "${OPTIMIZER_MODEL:-deepseek-flash}" --out_root "$ARM_OUT" \
         --cfg-options "env.split_dir=$OQA_SPLIT4_DIR" "env.data_dirs=$OQA_DOCS_DIR" \
                       "train.num_epochs=$EPOCH" "evaluation.eval_test=false" \
+                      "env.workers=${OQA_WORKERS:-4}" \
         >> "$OUTDIR/job.log" 2>&1 || status=$?
     log "trainer exit $status"
     for f in optimizer_calls.jsonl actor_calls.jsonl; do
@@ -413,6 +420,7 @@ heldout)
         "$OQA_PY" -I scripts/eval_only.py --config "$CFG" --skill "$OQA_SKILL" \
             --split valid_unseen --out_root "$OUT/p$p" \
             --cfg-options "env.split_dir=$OQA_SPLIT4_DIR" "env.data_dirs=$OQA_DOCS_DIR" \
+                          "env.workers=${OQA_WORKERS:-4}" \
             >> "$OUTDIR/job.log" 2>&1 || log "WARNING: held-out pass $p exited $?"
         n=$( [ -f "$OUT/p$p/results.jsonl" ] && wc -l < "$OUT/p$p/results.jsonl" || echo 0 )
         log "pass $p: $n of 30 held-out episodes"

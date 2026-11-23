@@ -70,7 +70,7 @@ FAKE=2000
 
 submit() {  # submit <name> <minutes> <cpus> <mem> <dependency-or-empty> <extra-exports...>
     local name="$1" minutes="$2" cpus="$3" mem="$4" dep="$5"; shift 5
-    local exports="ALL,OQA_BUNDLE=$B,OQA_FW_ROOT=$FW_ROOT"
+    local exports="ALL,OQA_BUNDLE=$B,OQA_FW_ROOT=$FW_ROOT,OQA_WORKERS=${OQA_WORKERS:-4}"
     local kv
     for kv in "$@"; do exports="$exports,$kv"; done
     local depflag=()
@@ -92,6 +92,8 @@ echo "fw root:   $FW_ROOT"
 echo "bundle:    $B  (commit $(cat "$B/COMMIT"))"
 echo "baselines: $OQA_BASE_ROOT  (READ ONLY)"
 echo "gate jobs: ${OQA_DEP:-none passed; the Lean compile and the test suite are NOT wired in}"
+echo "actor workers: ${OQA_WORKERS:-4}  (~$(( ${OQA_WORKERS:-4} * 115 / 10 )) req/min at peak; the"
+echo "  EmpirioLabs limit is ACCOUNT-WIDE at ~50/min and the ALFWorld session shares it)"
 echo
 
 SKIP=1; [ -z "$FROM" ] && SKIP=0
@@ -148,7 +150,7 @@ done
 # The held-out evaluation of the ONE new endpoint. It skips itself when the selected skill is
 # byte-identical to an endpoint the baselines already scored, because that measurement exists.
 if runs heldout; then
-    J=$(submit oqa-fw-ho 90 4 16G "$PREV" "STAGE=heldout" "OQA_SKILL=$ARM_OUT/best_skill.md" \
+    J=$(submit oqa-fw-ho 120 4 16G "$PREV" "STAGE=heldout" "OQA_SKILL=$ARM_OUT/best_skill.md" \
         "OQA_LABEL=contract_arm" \
         "OQA_JOB_CAP_ACTOR_ATTEMPTS=1000" "OQA_JOB_CAP_ACTOR_USD=1.00" \
         "OQA_JOB_CAP_OPT_CALLS=0" "OQA_JOB_CAP_OPT_USD=0.00")
@@ -157,4 +159,4 @@ fi
 
 echo
 echo "last job in the chain: $PREV"
-echo "requested walltime, this chain: 20 + 3x20 + 40 + 3x90 + 90 = 480 min = 8.00 job-hours"
+echo "requested walltime, a full chain: 20 + 3x20 + 40 + 3x90 + 120 = 510 min = 8.50 job-hours"

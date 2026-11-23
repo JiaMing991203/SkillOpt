@@ -749,3 +749,24 @@ def test_the_report_hook_can_verify_a_campaign_shaped_model(tmp_path):
     assert on_disk["frozen_at_epoch"] == 1
     assert R.lc_model_digest(path) == on_disk["sha256"] == fr["sha256"], (
         "the LC verifier must accept a model the framework froze")
+
+
+def test_the_actor_share_is_a_declared_setting_not_a_default():
+    """The EmpirioLabs rate limit is ACCOUNT-WIDE at about 50 requests a minute and a second session
+    uses the same account. Measured 2026-11-23 from this campaign's own call log: workers=4 peaks at
+    46 req/min in its first 60 s, and at that rate two of the other session's jobs hit their 429
+    breakers and stopped while 23 of my own 72 calls were throttled. A share that large must be chosen
+    and logged, not inherited from a config default."""
+    body = open(os.path.join(REPO, "research", "cluster", "oqa_fw_body.sh"), encoding="utf-8").read()
+    sub = open(os.path.join(REPO, "research", "cluster", "oqa_fw_submit.sh"), encoding="utf-8").read()
+    # every stage that makes an actor call passes the share explicitly
+    assert body.count('"env.workers=${OQA_WORKERS:-4}"') == 2, "the arm and held-out stages both"
+    # and logs what it is taking
+    assert "requests/minute at peak, shared ~50/min account" in body
+    assert "ACCOUNT-WIDE" in body
+    # the submit script carries it into the job record and prints it
+    assert "OQA_WORKERS=${OQA_WORKERS:-4}" in sub
+    assert "req/min at peak" in sub
+    # the learn stage makes no actor call, so it must not carry a worker setting at all
+    learn, arm = body.index("\nlearn)"), body.index("\narm)")
+    assert "env.workers" not in body[learn:arm]
