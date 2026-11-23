@@ -2634,3 +2634,75 @@ an accepted rule. The epoch-4 learner abstained outright, proposing `keep` on al
 note *"No new contract is supportable without risk of a vacuous or redundant rule, so model
 unchanged."* Deletion repair, regression checking against earlier evidence, and contract retirement
 are all implemented and tested, and none of them was exercised by this campaign's evidence.
+
+### Every judgement the reports delivered, counted
+
+Over epochs 1, 3 and 4 (the three with complete rollouts), the contract arm's reports delivered
+**2,790 obligation judgements**:
+
+| state | count | share |
+|---|---|---|
+| UNKNOWN | 2,639 | 94.6% |
+| NOT_REQUIRED | 151 | 5.4% |
+| DISCHARGED | **0** | 0% |
+| OUTSTANDING | **0** | 0% |
+
+Not one positive finding and not one accusation in the whole campaign. The soundness property holds —
+the checker never accuses on evidence it does not have, which is what the 2026-11-22 audit was for —
+and so does the uselessness: a report that only ever says "I cannot tell" carries no diagnosis.
+
+### The matched training record, against the executed baseline
+
+| epoch | arm | rollout | candidate gate (12 validation) | action | candidate | best origin |
+|---|---|---|---|---|---|---|
+| 1 | contract | 0.4167 | 0.4167 | **accept_new_best** | `07c190c5f2bf8ca2` | step_0001 |
+| 2 | contract | 0.4167 | 0.2500 | reject | `e26ecb2ba967d353` | step_0001 |
+| 3 | contract | 0.3333 | **0.5000** | **accept_new_best** | `6ca636f141523c81` | step_0003 |
+| 4 | contract | 0.5000 | 0.4167 | reject | `fbee7adfee50eda1` | step_0003 |
+| 1 | baseline | 0.4167 | 0.3333 | reject | `f789a9874a98c621` | initial_skill |
+| 2 | baseline | 0.3333 | 0.3333 | reject | `eca423880790a6c6` | initial_skill |
+| 3 | baseline | 0.2500 | 0.2500 | reject | `1643f368e7f327d1` | slow_update_epoch_02 |
+| 4 | baseline | 0.4167 | 0.2500 | reject | `6677e66792e073fc` | slow_update_epoch_02 |
+
+The contract arm accepted two ordinary candidates; the baseline accepted none and took its endpoint
+from an accepted slow update. **Every margin here is one or two questions of twelve** (one question is
+0.0833), and the recorded draw-to-draw spread on this benchmark is about 1.75 questions per 24. The
+ablation says the reports carried no findings, so the divergence is not attributable to a diagnosis.
+
+**The accepted epoch-3 edits, which are the endpoint.** Six merged edits: prefer a chart's underlying
+data table; commit an answer rather than ending empty; multi-block tables repeat a header and each
+block is a different period; sanity-check an intermediate's order of magnitude; locate a table by
+grepping a distinctive label rather than a guessed line offset; render the value in the exact surface
+format requested. The two ranked edits both carry `source_type: "failure"` and `support_count: 8` —
+they come from the analyst's reading of failures, not from a contract, and none of them cites the
+report.
+
+### Endpoint wording, counted rather than judged
+
+| | bytes | obligation words | optional words | lines leaving an alternative |
+|---|---|---|---|---|
+| S0 | 887 | 0 | 4 | 1 |
+| baseline endpoint | 4,510 | 5 | 12 | 3 |
+| contract endpoint | 5,691 | 10 | 17 | 7 |
+
+More imperative AND more hedged, with more recovery paths left open, so no sign of the distortion
+pattern (a rise in obligation language with no alternative left). **One confound checked and ruled out
+as a differentiator:** both optimized endpoints instruct the actor to always commit an answer — the
+baseline's version is the blunter of the two — and S0 says nothing of the kind. That explains why both
+beat S0 on commitment rate; it does not separate the arms.
+
+### The topic check that sharpens the negative
+
+Phrase hits in each endpoint, over the four topics the report is about:
+
+| topic | baseline endpoint | contract endpoint |
+|---|---|---|
+| **column header identity** | **0** | **0** |
+| money scale / unit | 2 | 8 |
+| citing a position | 0 | 1 |
+| period / row identity | 5 | 19 |
+
+The contract arm's endpoint says more about scales and periods — but the report contained no finding
+about either, so nothing traces. And on **column header identity**, the one subject the contract layer
+exists to adjudicate, **both endpoints say nothing at all.** The report said UNKNOWN 1,346 times about
+exactly that, and the optimizer wrote not one line about it.
