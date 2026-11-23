@@ -178,3 +178,5 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-23T08:35:36Z	66666923	oqa-fw-ho	heldout contract_arm	4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e	90 min, skips itself if the endpoint digest is already evaluated
 2026-11-23T08:41:21Z	66666982	run_tests	-	2346dacff126996992144a5b63e7fc998632e993	--time=00:40:00
 2026-11-23T08:41:21Z	66666983	oqa_fw_lean	-	2346dacff126996992144a5b63e7fc998632e993	--time=00:20:00
+2026-11-23T08:42:49Z	66667001	run_tests	-	371bbe3e02f431023d88bbde0159d3fc25195be3	--time=00:40:00
+2026-11-23T08:42:49Z	66667002	oqa_fw_lean	-	371bbe3e02f431023d88bbde0159d3fc25195be3	--time=00:20:00
