@@ -2505,3 +2505,84 @@ optimizer attempts / $1.9788, 3,462 actor attempts / $1.4378. The chain asks 8.0
 19.583 remaining. Because the ledger was inert for most of the baseline campaign, the caps are set to
 *(ledger-recorded) + (true remaining headroom)*: optimizer 235 attempts / $18.36, actor 17,941 /
 $14.37. The demonstration sublimit (3.08 CPU job-hours, 18 teacher attempts) is separate and untouched.
+
+### Where the report actually reaches the optimizer, measured from the prompts that were sent
+
+Not from a simulation. `oqa_optimizer_input_audit.py` was written for the three-arm era and injects a
+**condition-C** report when it builds its simulated arm-B prompt, so its figure (15,306 characters)
+measures what a different condition would have added. It is not evidence about this campaign and is
+not used. The numbers below come from the campaign's own `optimizer_calls.jsonl`, matching each report
+file by its unique `Attempt \`UID…\` - trace \`…\`` line — the reports share a long preamble, so a
+prefix match counts all twelve whatever the prompt contains, which is a trap worth naming.
+
+| epoch | stage | prompt chars | report chars | share | reports present |
+|---|---|---|---|---|---|
+| 1 | analyst (the 5 successes) | 144,783 | 16,169 | 11.2% | UID0017, 0033, 0063, 0065, 0085 |
+| 1 | analyst (the 7 failures) | 507,845 | 22,230 | 4.4% | UID0014, 0026, 0028, 0030, 0031, 0034, 0079 |
+| 1 | merge | 7,572 | **0** | 0% | — |
+| 2 | analyst (successes) | 170,202 | 15,986 | 9.4% | the same 5 |
+| 2 | analyst (failures) | 459,827 | 22,429 | 4.9% | the same 7 |
+| 2 | merge / ranking / slow_update / meta_skill | 13,377 / 10,902 / 511,218 / 510,024 | **0 each** | 0% | — |
+
+**Two structural facts follow, and both matter for what this arm can possibly demonstrate.**
+
+1. **All twelve items get a report, successes included** — 38,399 characters in epoch 1 and 38,415 in
+   epoch 2, spread over the two analyst calls.
+2. **The report reaches the ANALYST STAGE AND NOWHERE ELSE.** Zero report characters appear in the
+   merge, ranking, slow-update or meta-skill prompts. So the contract layer cannot influence
+   consolidation, ranking or the optimizer's longitudinal memory except through whatever the analyst
+   writes; those stages never see a contract.
+
+**The matched comparison against the executed baseline, epoch 1.** Analyst prompt totals: baseline
+128,374 + 485,279 = **613,653**; contract arm 144,783 + 507,845 = **652,628**. The difference is
+**+38,975 characters (+6.35%)**, which is the 38,399 of report plus the heading wrappers — so the
+contract arm's analyst input is the baseline's plus the reports and nothing else, which is the
+condition the comparison needs.
+
+### What the learner produced, epoch by epoch
+
+| pass | job | attempts | accepted | rendered |
+|---|---|---|---|---|
+| seed e1 | 66667004 | 2, both parsed | 2 | `col_label_present(?c)` whenever `col_child_label_present(?c)` — 265 support, 0 counter; `child_aligned(?t)` whenever `header_split(?t)` — 57 support, 0 counter |
+| evolve e3 | 66667007 | 2, both parsed | 1 | `¬col_child_label_present(?c)` whenever `¬col_label_present(?c)` — 934 support, 0 counter |
+
+Rejected along the way, with the gate's reason: a `col_label_agrees_flat` form (0 support, 171
+undetermined) and a `cell_row_labelled` form (0 support, 8,140 undetermined), both for **no supporting
+case**. Support totals grow across epochs because the gate re-scores over all evidence so far: 265 →
+452 and 57 → 115 by epoch 3.
+
+**THE THIRD RULE IS THE CONTRAPOSITIVE OF THE FIRST**, and the gate took it anyway. Rule 1 is
+`col_child_label_present → col_label_present`; rule 3 is `¬col_label_present → ¬col_child_label_present`.
+Logically equivalent, so it carries no information the model did not already have — and it scored 934
+supporting cases because the contrapositive is determinate on the far more numerous negative columns.
+The learner's own note says so: *"added the contrapositive column rule, which has 934 determinate
+supports."* **The gate tests evidence, not logical independence from the active model, and this
+framework has no check for the latter.** That is a limitation to report, not a result to dress up.
+
+**The learner also diagnosed section 11b unprompted**, from the atom census alone, in its `uncovered`
+field: *"flat_pair_observed is false for every table and col_label_agrees_flat is unknown everywhere,
+so flat_header_authoritative cannot be tested; col_bound stays unknown for all 1066 columns."* It
+added that charts and prose-only answers (UID0030, UID0017, UID0065) introduce no entities the
+vocabulary can relate.
+
+**And amendment F-1b did not rescue the licence.** It widened the licence set so a rule concluding
+`col_child_label_present` *could* make `col_bound` determinate. The learner used that atom as a
+condition instead, and its one rule whose consequence IS that atom concludes it **false**, which
+cannot license reading a label — `licence_rules()` requires `value: true`. So `col_bound` stayed
+UNKNOWN through three epochs, every `column_identified` and `unit_resolved` obligation is UNKNOWN, and
+the delivered reports accuse nobody and discharge nothing. F-1b removed a structural impossibility; it
+did not produce a result.
+
+### The training record so far
+
+| epoch | rollout hard | edits | candidate | gate (12 validation) | action |
+|---|---|---|---|---|---|
+| 1 | 0.4167 | 2 patches → 2 merged → 2 ranked → 2 applied, 4,614 bytes | `07c190c5f2bf8ca2` | 0.4167 vs S0 0.3333 | **accept_new_best** |
+| 2 | 0.4167 | 2 patches → 7 merged → 2 ranked, 5,902 bytes | `e26ecb2ba967d353` | 0.25 vs 0.4167 | reject |
+
+The executed baseline's epoch 1 produced a different candidate (3 edits, 3,916 bytes) and **rejected**
+at 0.3333, so the report did change the optimizer's output. **The margin is one validation question of
+twelve**, and the recorded draw-to-draw standard deviation on this benchmark is about 1.75 questions
+per 24, so a one-question difference is inside noise. It also cannot be credited to a diagnosis: the
+reports contain none. Whatever moved the analyst was the presence of the report, not its findings —
+the information-access confound, and the ablation is what has to separate them.
