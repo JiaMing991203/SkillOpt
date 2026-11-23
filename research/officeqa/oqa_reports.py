@@ -43,12 +43,14 @@ class StageLeak(RuntimeError):
 LC_CONDITION = "LC"
 LC_ACTION = "LC_ACTION"        # arm B, Action Contracts Only
 LC_STAGE = "LC_STAGE"          # arm C, Action Contracts + Stages
-LC_CONDITIONS = (LC_CONDITION, LC_ACTION, LC_STAGE)
+FW_CONDITION = "FW"            # the ported action-and-stage framework (rule OQA-FW-1)
+LC_CONDITIONS = (LC_CONDITION, LC_ACTION, LC_STAGE, FW_CONDITION)
 # The heading the analyst prompt puts the report under. Arm B's must not say "stage": the heading is part of what
 # the optimizer reads.
 LC_HEADINGS = {LC_ACTION: "Action Contract Report",
                LC_STAGE: "Action Contract and Stage Report",
-               LC_CONDITION: "Stage and Action Report"}
+               LC_CONDITION: "Stage and Action Report",
+               FW_CONDITION: "Document Interpretation and Stage Report"}
 
 
 def lc_model_digest(model_path: str) -> str:
@@ -134,6 +136,12 @@ def build_one_lc(pred_root: str, item_id: str, question: str, results_path: str,
       * `model_sha256`  the frozen model whose assumptions licensed its bindings.
     A report is valid only for that (attempt, model version) pair, and `verify_report_provenance` checks it.
     """
+    if condition == FW_CONDITION:
+        # ADDITIVE, 2026-11-22. The ported framework reaches the optimizer through the integration that
+        # is already here - the same env-selected condition, the same cache key, the same answer-key
+        # audit - so no new plumbing enters `skillopt`. The three LC conditions below are untouched.
+        import oqa_fw_report as FW
+        return FW.build_one_fw(pred_root, item_id, question, results_path, model_path)
     _, IR, CHAIN, REPORT, REPLAY, OB = _lc_modules()
     if condition not in LC_CONDITIONS:
         raise ValueError(f"unknown learned-contract condition {condition!r}; expected one of {LC_CONDITIONS}")

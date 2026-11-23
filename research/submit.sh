@@ -3,7 +3,7 @@
 #
 #   research/submit.sh <job> [<commit-ish>] [-- extra sbatch args]
 #     <job>  setup_env | setup_vllm_env | check_compute | run_tests | analysis | measure_envs | smoke
-#            | officeqa (GPU) | oqa_lean (CPU: compile the OfficeQA Lean file)
+#            | officeqa (GPU) | oqa_lean / oqa_fw_lean (CPU: compile an OfficeQA Lean file)
 #   e.g.  STAGE=vllm research/submit.sh smoke
 #         STAGE=tools research/submit.sh officeqa HEAD -- --time=00:30:00
 #         STAGE=rollout ROLLOUT_EPISODES=1 research/submit.sh smoke
@@ -20,7 +20,7 @@ REPO_ROOT="$(dirname "$HERE")"
 # shellcheck disable=SC1091
 source "$HERE/cluster/site.env"
 
-JOB="${1:?usage: submit.sh <setup_env|setup_vllm_env|check_compute|run_tests|analysis|measure_envs|smoke|officeqa|oqa_lean> [commit] [-- sbatch args]}"; shift
+JOB="${1:?usage: submit.sh <setup_env|setup_vllm_env|check_compute|run_tests|analysis|measure_envs|smoke|officeqa|oqa_lean|oqa_fw_lean> [commit] [-- sbatch args]}"; shift
 REV="HEAD"
 if [ $# -gt 0 ] && [ "$1" != "--" ]; then REV="$1"; shift; fi
 [ "${1:-}" = "--" ] && shift
