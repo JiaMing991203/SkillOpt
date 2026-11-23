@@ -1,0 +1,344 @@
+{
+ "files": [
+  {
+   "bytes": 9119,
+   "copied_to": "upstream/v1_core/ir.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "7bf531504c8103dbc6a9bc82ee228dec518c865ddf55c3de2e59ba531cc7321f",
+   "source_mtime_utc": "2026-11-10T06:12:48.599597+00:00",
+   "source_rel": "research/learned_contracts/ir.py",
+   "tracked": false
+  },
+  {
+   "bytes": 15333,
+   "copied_to": "upstream/v1_core/learn.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "dce247e991b35fa5c8d4661638e14a7ac1cd4eaf9422057cb68562965ce1c4f4",
+   "source_mtime_utc": "2026-11-10T06:23:54.896666+00:00",
+   "source_rel": "research/learned_contracts/learn.py",
+   "tracked": false
+  },
+  {
+   "bytes": 8628,
+   "copied_to": "upstream/v1_core/state.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "250fc1b73785fa167088f5ef5c468e2afe1be1c9294e53696f80e06b714bfb39",
+   "source_mtime_utc": "2026-11-10T06:23:54.896045+00:00",
+   "source_rel": "research/learned_contracts/state.py",
+   "tracked": false
+  },
+  {
+   "bytes": 14393,
+   "copied_to": "upstream/v1_core/replay.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "b0cf8398130dbb1cd1534c67e5e222fddb2d1720a34cf82db7f77929d68bbf51",
+   "source_mtime_utc": "2026-11-10T06:13:34.175918+00:00",
+   "source_rel": "research/learned_contracts/replay.py",
+   "tracked": false
+  },
+  {
+   "bytes": 9881,
+   "copied_to": "upstream/v1_core/lean_gen.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "f8a312c83424bbc3870ab1afc77eeccec92e32a46bf6edca3e0bdd4d036007d0",
+   "source_mtime_utc": "2026-11-10T17:19:43.748361+00:00",
+   "source_rel": "research/learned_contracts/lean_gen.py",
+   "tracked": false
+  },
+  {
+   "bytes": 7428,
+   "copied_to": "upstream/v1_core/report.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "110d0435d80c4c84b9117e83667c47a3564a8cabbb215d489d73369b3531bb87",
+   "source_mtime_utc": "2026-11-10T17:19:43.747766+00:00",
+   "source_rel": "research/learned_contracts/report.py",
+   "tracked": false
+  },
+  {
+   "bytes": 18305,
+   "copied_to": "upstream/v1_core/stage_contracts.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "c220efd38ad00f1d1f03c7402d15666a1e2f9aa07ee3194dcb98c0f479baed42",
+   "source_mtime_utc": "2026-11-11T00:26:59.430310+00:00",
+   "source_rel": "research/learned_contracts/stage_contracts.py",
+   "tracked": false
+  },
+  {
+   "bytes": 13404,
+   "copied_to": "upstream/v1_core/stage_tracker.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "bec91eda08dcf9c054ee08385e9ddb4960e040467f70b13b0ae0504b1e520922",
+   "source_mtime_utc": "2026-11-11T02:01:24.449426+00:00",
+   "source_rel": "research/learned_contracts/stage_tracker.py",
+   "tracked": false
+  },
+  {
+   "bytes": 21086,
+   "copied_to": "upstream/v1_core/stage_common.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "570f2049205c7c99d8865a66a7712f64af71e67856f82d377f490ae40692d0e3",
+   "source_mtime_utc": "2026-11-11T02:09:09.176845+00:00",
+   "source_rel": "research/learned_contracts/stage_common.py",
+   "tracked": false
+  },
+  {
+   "bytes": 12613,
+   "copied_to": "upstream/v1_core/fact_ledger.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "c805634fc0e019bab9cdb40670e7deb9e5c80c5d0c6d647e97829404834be605",
+   "source_mtime_utc": "2026-11-11T07:23:34.635366+00:00",
+   "source_rel": "research/learned_contracts/fact_ledger.py",
+   "tracked": false
+  },
+  {
+   "bytes": 11516,
+   "copied_to": "upstream/v1_core/a4_lean.py",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "bd0eaba1aa466fa176628757682b1727fda5f805ef3ed00b0ae34e1ccd2976a1",
+   "source_mtime_utc": "2026-11-11T19:00:58.147731+00:00",
+   "source_rel": "research/learned_contracts/a4_lean.py",
+   "tracked": false
+  },
+  {
+   "bytes": 5588,
+   "copied_to": "upstream/v1_core/LearnedContracts.lean",
+   "git_status": "??",
+   "group": "v1_core",
+   "sha256": "b1bc868f3524f1b6dc531cfc4b70683cdd86bddb48e1e11588f45ddbfc5b4aac",
+   "source_mtime_utc": "2026-11-10T06:19:01.013037+00:00",
+   "source_rel": "research/learned_contracts/lean/LearnedContracts.lean",
+   "tracked": false
+  },
+  {
+   "bytes": 10725,
+   "copied_to": "upstream/v1_vocab/vocab.py",
+   "git_status": "??",
+   "group": "v1_vocab",
+   "sha256": "e857150a39a166bddbac56545648538aa7a7614d26b50559da87d33d54957827",
+   "source_mtime_utc": "2026-11-10T17:26:26.832772+00:00",
+   "source_rel": "research/learned_contracts/vocab.py",
+   "tracked": false
+  },
+  {
+   "bytes": 14798,
+   "copied_to": "upstream/v1_vocab/tor_record.py",
+   "git_status": "??",
+   "group": "v1_vocab",
+   "sha256": "b40c448ebaa07f2eafdf77394c59ef433a64af093d6056047afac97b3e3f7c1c",
+   "source_mtime_utc": "2026-10-28T23:01:48.587814+00:00",
+   "source_rel": "research/trace_only/tor_record.py",
+   "tracked": false
+  },
+  {
+   "bytes": 9656,
+   "copied_to": "upstream/vx1/vx_vocab.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "a63ce811f2ff7b9cc623dbc63e4fe96e035f87e2607dd22b9cb28116cc0e50e6",
+   "source_mtime_utc": "2026-11-19T03:17:38.233711+00:00",
+   "source_rel": "research/vocab_ext/vx_vocab.py",
+   "tracked": false
+  },
+  {
+   "bytes": 10166,
+   "copied_to": "upstream/vx1/vx_state.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "2a1ed4482ddaa5f17609745a20d7e66cdad629f1aed8b859e4ded572a523bb93",
+   "source_mtime_utc": "2026-11-19T03:18:56.903629+00:00",
+   "source_rel": "research/vocab_ext/vx_state.py",
+   "tracked": false
+  },
+  {
+   "bytes": 15184,
+   "copied_to": "upstream/vx1/vx_ir.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "d96ca618bdaf7128455a6ebaa8449af3a16336809c79fdd7c33b7ce96feb8318",
+   "source_mtime_utc": "2026-11-19T04:10:04.867853+00:00",
+   "source_rel": "research/vocab_ext/vx_ir.py",
+   "tracked": false
+  },
+  {
+   "bytes": 14015,
+   "copied_to": "upstream/vx1/vx_check.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "d2c831210ef60276a371cfdee698eb6af416eb2c3cf64214863c028d47a61a24",
+   "source_mtime_utc": "2026-11-19T03:21:13.745590+00:00",
+   "source_rel": "research/vocab_ext/vx_check.py",
+   "tracked": false
+  },
+  {
+   "bytes": 11899,
+   "copied_to": "upstream/vx1/vx_learn.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "3b761c05d8d537edf549e06fb51dcb5d190338cb3b18ae3183b5455ac90e49f2",
+   "source_mtime_utc": "2026-11-19T04:10:46.743960+00:00",
+   "source_rel": "research/vocab_ext/vx_learn.py",
+   "tracked": false
+  },
+  {
+   "bytes": 17685,
+   "copied_to": "upstream/vx1/vx_lean.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "971e1f202e7c0c3083acf0cb078e10fb7dc0589df4cd0ccce7b59712d9acd1f2",
+   "source_mtime_utc": "2026-11-19T03:40:09.574455+00:00",
+   "source_rel": "research/vocab_ext/vx_lean.py",
+   "tracked": false
+  },
+  {
+   "bytes": 15205,
+   "copied_to": "upstream/vx1/vx_eval.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "f4f13ca840d6934fde0020efcd6c8a2616500b7ec1ed1781bc9093a246fcc639",
+   "source_mtime_utc": "2026-11-19T03:36:28.325958+00:00",
+   "source_rel": "research/vocab_ext/vx_eval.py",
+   "tracked": false
+  },
+  {
+   "bytes": 4214,
+   "copied_to": "upstream/vx1/vx_bundle.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "4d591a8403b14c5930421e8b081fb4a71918f1e3f457452e63464edb8110c605",
+   "source_mtime_utc": "2026-11-19T03:39:02.568830+00:00",
+   "source_rel": "research/vocab_ext/vx_bundle.py",
+   "tracked": false
+  },
+  {
+   "bytes": 19341,
+   "copied_to": "upstream/vx1/vx_prompt.py",
+   "git_status": "??",
+   "group": "vx1",
+   "sha256": "4d7aded1f5589297cf1546ca0976743cb4de3e1f000cbdfb6dc056948fee743a",
+   "source_mtime_utc": "2026-11-19T03:23:33.382031+00:00",
+   "source_rel": "research/vocab_ext/vx_prompt.py",
+   "tracked": false
+  },
+  {
+   "bytes": 10652,
+   "copied_to": "upstream/rp1/rp_select.py",
+   "git_status": "??",
+   "group": "rp1",
+   "sha256": "681694b1a8fb4e60729c36eab07459fef9ab3e2d9ad5f414550d7b87642b0313",
+   "source_mtime_utc": "2026-11-21T05:59:26.686747+00:00",
+   "source_rel": "research/vocab_ext/rp_select.py",
+   "tracked": false
+  },
+  {
+   "bytes": 17653,
+   "copied_to": "upstream/rp1/rp_run.py",
+   "git_status": "??",
+   "group": "rp1",
+   "sha256": "d92e1b7e06cf38a4bfd9b356748d74cce1cd7d454782d5aad11dac9cb5e66a80",
+   "source_mtime_utc": "2026-11-21T06:05:50.110890+00:00",
+   "source_rel": "research/vocab_ext/rp_run.py",
+   "tracked": false
+  },
+  {
+   "bytes": 17155,
+   "copied_to": "upstream/rp1/rp_eval.py",
+   "git_status": "??",
+   "group": "rp1",
+   "sha256": "89c44e24b6585a9e5004961f521f57431f107a8f94aa695ebf01858490007c00",
+   "source_mtime_utc": "2026-11-21T06:05:50.111515+00:00",
+   "source_rel": "research/vocab_ext/rp_eval.py",
+   "tracked": false
+  },
+  {
+   "bytes": 12552,
+   "copied_to": "upstream/rp1/rp_audit.py",
+   "git_status": "??",
+   "group": "rp1",
+   "sha256": "6ebf412b5d2b590f27f10ed53349441893b4262c470e95271dc3d1b4d3172782",
+   "source_mtime_utc": "2026-11-21T06:09:50.285741+00:00",
+   "source_rel": "research/vocab_ext/rp_audit.py",
+   "tracked": false
+  },
+  {
+   "bytes": 9492,
+   "copied_to": "upstream/rp1/rp_report.py",
+   "git_status": "??",
+   "group": "rp1",
+   "sha256": "c80f688237b7c2db09a618a9d2d387ae15239667ee93cb7f6ae137fc2626bde9",
+   "source_mtime_utc": "2026-11-21T06:11:35.219356+00:00",
+   "source_rel": "research/vocab_ext/rp_report.py",
+   "tracked": false
+  },
+  {
+   "bytes": 12402,
+   "copied_to": "upstream/eb1/eb_forecast.py",
+   "git_status": "??",
+   "group": "eb1",
+   "sha256": "b0c449d0049ba9064aa8e850ff6396b9e413e110d9c5396721c63e22eef034b6",
+   "source_mtime_utc": "2026-11-22T02:31:46.131274+00:00",
+   "source_rel": "research/eb1/eb_forecast.py",
+   "tracked": false
+  },
+  {
+   "bytes": 24694,
+   "copied_to": "upstream/eb1/eb_reports.py",
+   "git_status": "??",
+   "group": "eb1",
+   "sha256": "a6c074f5b45be7cdfd6527ed591e8f973f8cc75999639d0347bb919896a378be",
+   "source_mtime_utc": "2026-11-22T02:58:14.928752+00:00",
+   "source_rel": "research/eb1/eb_reports.py",
+   "tracked": false
+  },
+  {
+   "bytes": 8293,
+   "copied_to": "upstream/eb1/eb_lean.py",
+   "git_status": "??",
+   "group": "eb1",
+   "sha256": "4447dd73366c72ebf058d1fa3e72f2579df547a904c4e554068df7e259673aab",
+   "source_mtime_utc": "2026-11-22T02:32:26.359128+00:00",
+   "source_rel": "research/eb1/eb_lean.py",
+   "tracked": false
+  },
+  {
+   "bytes": 9169,
+   "copied_to": "upstream/eb1/eb_lean_reports.py",
+   "git_status": "??",
+   "group": "eb1",
+   "sha256": "3684f4d88f396fec78ca82bb58aed5bf479772c398be8b3ece20dad78722117b",
+   "source_mtime_utc": "2026-11-22T03:06:09.439234+00:00",
+   "source_rel": "research/eb1/eb_lean_reports.py",
+   "tracked": false
+  }
+ ],
+ "groups": {
+  "eb1": "EB-1 uncertainty/forecast correction and report conditions (research/eb1)",
+  "rp1": "RP-1 counterexample repair: driver, gate feedback, regression evaluation (research/vocab_ext)",
+  "v1_core": "the frozen lc.vocab.v1 core that VX-1 extends (research/learned_contracts)",
+  "v1_vocab": "the frozen vocabulary the VX-1 one imports as V1 (research/learned_contracts)",
+  "vx1": "VX-1 vocabulary extension: five kinds, typed existentials, guards, Kleene (research/vocab_ext)"
+ },
+ "manifest_sha256": "00a907064018a814efb17abcbc71dc848dc6c4a2dfae85dd90d2295f99424b9b",
+ "note": "A one-time byte copy. Nothing in OfficeQA imports the sibling worktree at run time; research/officeqa/framework imports only these copies. The ALFWorld worktree was opened read-only: no file written, no module imported, no __pycache__ created.",
+ "schema": "lso.officeqa_framework_upstream.v1",
+ "source_branch": "contract/learned-contract",
+ "source_commit": "4a9914a9005a80423175c344632e1deaeb56c2e2",
+ "source_worktree": "/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract",
+ "totals": {
+  "bytes": 412244,
+  "files": 32,
+  "missing": 0,
+  "untracked_in_source": 32
+ },
+ "written_utc": "2026-11-23T00:51:59.311406+00:00"
+}
