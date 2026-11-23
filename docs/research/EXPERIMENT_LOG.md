@@ -2270,3 +2270,77 @@ actor calls; 0 GPUs; held-out sealed; 18 teacher attempts untouched. OfficeQA CP
 **Conclusion.** The generic machinery is substantially equivalent and the OfficeQA LN configuration is
 redundant because of its **target**, not because of a porting bug. The one target-independent code gap is the
 append-only repair interface. Full report: `docs/research/OFFICEQA_PARITY_AUDIT.md`.
+
+## FW-1 — the ported framework's bounded end-to-end test (2026-11-22, workstation only)
+
+**Purpose.** Establish that the ported learned action-and-stage framework learns, checks, repairs and
+delivers a report in OfficeQA, and measure what changes when the learned model is removed.
+
+**Resources. 0 cluster jobs, 0 provider calls, 0 GPU, 0.00 of the 3.08 remaining OfficeQA CPU
+job-hours, 0 of 18 teacher attempts.** All computation local; about 3 minutes of workstation CPU. No
+row in `jobs.tsv`: nothing was submitted. Verified on the cluster at 20:36 EST that the only OfficeQA
+jobs today are the three D-2 submissions that predate this work.
+
+**Commit** `9d0e984`, branch `officeqa-contracts`, not pushed. **Records**: the 48 frozen training
+attempts of `LN_FREEZE.json` (0 trace-digest mismatches) and the completed Original SkillOpt arm at
+`runs/20261121-officeqa-two-baselines/`. Validation and held-out untouched.
+
+**Selection.** Learning on the 23 learn-role attempts minus the reserved `p3/UID0028`; checking on
+that reserved attempt and the 24 check-role attempts. Question overlap `UID0028` (reported); document
+overlap 2; every question appears 4 times in the corpus.
+
+**Verified — learning.** Empty model. Two assumptions proposed and accepted (`index_alignment`,
+directly testable with 0 contradicting records; `table_scale_applies_to_rows`, not directly testable
+and recorded as such). 378 typed candidate hypotheses scored, 3 acceptable. The most general form
+(`col_of(?s,?t) and header_split(?t)`) was **refused**: 6 support, 2 counterexamples, both named —
+`p2/UID0028@17:co:s16:2:0` and `:7`, columns whose sub-label cell is the literal text `nan`. Accepted:
+`col_label_agrees_flat(?s) whenever col_child_label_present(?s)` — 6 support, 0 counterexamples, 2
+consistent, 8 applicable. Model `FW_MODEL.json` v2, digest `8fffff15bf961bcf`.
+
+**Verified — the separation is total.** Over the applicable columns: sub-label present and agrees 24,
+sub-label absent and disagrees 8, mixed **0**, at pairing strengths of 2 and 3 shared rows. At 1
+shared row (what `oqa_lc_cells.pair_tables` accepts) 24 and 68, and the extra 60 are pairings of
+different tables of equal width.
+
+**Verified — prospective check under the frozen model.** Reserved attempt: 16 applicable, **12
+support, 0 counterexamples**, 4 consistent. The 24 check-role attempts: **0 applicable** — the rule is
+never exercised on those questions, reported as no applicable case rather than as confirmation.
+
+**Verified — ablation, 4 cells over all 48 attempts.** Bound columns: A (nothing) 0, B (assumption,
+no rule) **0**, C (assumption + rule) **1,152**, D (assumption + the refused form) 4,887. B is
+identical to A on every obligation total, so the 522 state changes from B to C are the contract's.
+`column_identified` 0 -> 257 DISCHARGED; `unit_resolved` 0 -> 252; `conversion_accounted` 0 -> 13.
+**Accusations 0 in every cell.** D would claim 127 extra column identities. 8 of 48 attempts change
+state; the largest is `p1/UID0014` with 210 — the campaign's actual 1,000x unit error.
+
+**Verified — repair and regression.** Recorded path: the general form is refused on first contact (its
+supporting and refuting columns are in one attempt), so the narrowing answers a refusal; regression 0
+support lost, 2 counterexamples fixed, 0 gained, clean. **Constructed fixture** (labelled, not
+evidence about the corpus): a rule with a superfluous conjunct accepted on F1, refuted on F1+F2 by 3
+`consequence_without_conditions` counterexamples, and repaired by **deleting** that conjunct — 6
+support after, clean regression, model v1 superseded -> v2 active. Deleting the wrong conjunct was
+rejected with 4 counterexamples. The CC/LN `repair` can only append; a test asserts both halves.
+
+**Verified — report delivery.** 12 reports through the existing integration, each bound by trace,
+model and checked-result digests. Matched analyst inputs: control 608,285 characters, treated 653,582,
+**+621 lines, -0**, so the arms differ in the report alone. The native edit-application stage was
+re-executed and **reproduces the recorded candidate skill byte for byte** with matching per-edit
+statuses. Analyst and merge are provider calls and were not run; ranking legitimately did not fire
+(3 edits, budget 4).
+
+**Verified — the control arm already covers all four report topics** (column header identity, money
+scale/unit, citing a position, period/row identity), with its own failure summary naming
+"Table/column semantics misread" x4. **No added value over the control is demonstrated.**
+
+**Not run.** Lean compilation (no `lean` on the workstation; the cluster needs a push):
+`OqaFramework.lean`, 101 examples and 7 theorems, generated, digested, and independently re-derived in
+Python (24/24 rows, 0/12 totals, clean) — which is **not** a compiler result. The full test suite. Any
+actor episode, validation or final evaluation.
+
+**Tests.** 22 new, all passing. 54 of 55 related tests pass locally; the one failure is the
+pre-existing absence of the `openai` package on this workstation.
+
+**Artifacts.** `runs/20261122-officeqa-framework/`: `FW_LEARN` `458d299da3c9e3e3`, `FW_CHECK`
+`682bf27f6d611c82`, `FW_ABLATE` `39cbb119bc5d904d`, `FW_GRID` `ecccb0de68c9bf69`, `FW_REPAIR`
+`9f6d003464be6e07`, `FW_LEAN` `3d8817553c6f3ff8`, `FW_EDIT` `48e485dc368a8f55`, `FW_CAMPAIGN_SPEC`
+`a15a5248c1ba5ab0`, `FW_MODEL` `8fffff15bf961bcf`.

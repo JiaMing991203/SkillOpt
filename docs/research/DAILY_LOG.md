@@ -2120,3 +2120,73 @@ of 192 reads.
 judgement before checking the thing judged: the wall-clock estimate, and the dismissal of a proposal I had read
 hours earlier and then summarised from memory. Re-read the thing you are about to overturn, in full, at the
 moment you overturn it.
+
+## 2026-11-22 (19:50-20:38 EST) — the framework port, and a fourth round of the checker's own accusations
+
+**What happened.** The ALFWorld learned-contract mechanisms are now in OfficeQA as one
+domain-parameterised core with an OfficeQA adapter, and a bounded end-to-end slice runs on the 48
+permitted training attempts: an empty model, a search over 378 typed hypotheses, a refusal with named
+witnesses, an accepted narrowing, a prospective check on a reserved attempt under the frozen model, a
+four-cell ablation, a repair with regression checking, a generated Lean file, and 12 reports delivered
+through the integration that already existed. Report:
+`docs/research/OFFICEQA_FRAMEWORK_PORT.md`. Amendment E-1. Commits `f2eb2a0`, `9d0e984`.
+
+**The upstream gap from PA-1 closed, and it was a missing assumption rather than missing content.**
+PA-1 ended with `scale_binds` producing 0 conclusions on 113 operands because 814 of 814 data cells
+had no bound column header. The cause was that `oqa_lc_cells.bind_columns` requires an ADOPTED
+assumption and the CC/LN generation had dropped the assumption machinery entirely. With
+`index_alignment` adopted, 6,091 of 17,773 cells acquire a bound header; with the flat-header
+assumption too, 12,072. On the operand side, 467 of 497 matched cells move from UNKNOWN to a
+determinate nearer-scale answer. The context was visible in the returned window all along and simply
+unparsed.
+
+**But the assumption alone is not the learned component, and the grid says so.** Four cells over all
+48 attempts: with the assumption adopted and NO rule, 0 columns are bound and every interpretation
+obligation is UNKNOWN — identical to adopting nothing. With the accepted rule, 1,152 columns are bound
+and 522 obligation states change. That is the test the LN generation failed, where removing the rule
+changed four annotation fields. A fourth cell, the general form the gate refused, would have bound
+4,887 columns and claimed 127 extra column identities on exactly the columns the flat renderings
+contradict — so the condition the gate forced the learner to find is a correctness condition.
+
+**Three defects of my own, each found by checking a number rather than trusting it.** (1) The
+unnamed-entity token was missing from the OfficeQA estimator. ALFWorld appends one unnamed instance of
+each type so an existential is never FALSE merely because nothing is named yet; without it
+`fw_ir.evaluate` had nothing to disjoin and returned false, and the general rule scored 0 support and
+8 "consistent" instead of 6 support and 2 counterexamples. (2) The operand's written text was read
+under the wrong key, silently disabling the precision-aware comparison that is one of the two
+corrections this port exists to make. (3) The conversion obligation was raised for every number the
+actor typed.
+
+**On (3): 70 accusations, none of which survived.** The first version of this slice reported 70
+OUTSTANDING states on `p1/UID0014`'s 227 written numbers. 26 sat in a message that writes "divide by
+1,000,000" six times; the rest were in messages that only read the table aloud. After scoping the
+obligation to numbers inside a written calculation and looking for a stated factor across the whole
+prefix, the count is 0 — and 0 in both arms of the ablation. **This is the fourth time in this project
+that a checker's accusations have turned out to be its own parser.** The interpretation I will keep:
+the standing rule is not "audit accusations before publishing them" but "a checker that can accuse
+should be assumed to be accusing itself until each case has been read against the agent's own words".
+
+**A pairing correction that changes a headline.** `oqa_lc_cells.pair_tables` accepts two renderings as
+the same table on ONE shared data row and takes the first match. Measured, that pairs different tables
+of equal width — a trust-fund table judged against a Gross/Refunds/Net-total table — and turns 8 real
+disagreements into 68. The adapter now requires two shared rows and leaves a column UNKNOWN when
+candidate flat renderings disagree with each other. `oqa_lc_cells` is unmodified.
+
+**The unfavourable result, which is the one worth keeping.** On the single real optimization step
+examined, the control arm — no report at all — already produced "Read column headers literally before
+using any cell" and "record each operand with its period and unit", and its failure summary names
+"Table/column semantics misread" with a count of 4. All four topics the framework's report carries are
+already in the control's own output. So the report is not what reveals this failure mode here; what it
+adds is per-number citations, the states they support, and explicit unknowns. Whether that changes the
+edit needs the analyst call, which is a provider call and was not made. This is the third time the
+no-report arm has found something first, and it belongs in the comparison rather than in a footnote.
+
+**A correction to my own report, before anyone else had to make it.** I wrote "571 of the 769 observed
+tables (74%)" from a truncated probe output. Measured exactly: 571 of **757** (75.4%), the other 186
+from grep. Fixed in the report, its mirror and the module docstring. Estimating a number I could count
+is the same habit that produced three withdrawn timestamps in this project.
+
+**What is blocked, and it is one authorization rather than any remaining work.**
+`research/deploy.sh` refuses a commit that is not on `origin`, and pushing is withheld. So compiling
+the Lean file and submitting the contract campaign both wait on the same decision. The campaign is
+prepared and all seven protocol items were verified against the executed baseline's own `config.json`.

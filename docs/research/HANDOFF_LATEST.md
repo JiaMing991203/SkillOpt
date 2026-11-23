@@ -1,927 +1,642 @@
-# Implementation-parity audit: OfficeQA against the accepted learned action-and-stage contract design
+# OfficeQA: the ported learned action-and-stage framework (rule OQA-FW-1)
 
-**Offline. Zero provider calls, zero learner calls, zero optimizer calls, zero actor episodes, zero GPUs, zero
-cluster jobs.** Written 2026-11-22, **01:40-02:05 EST** — times from `date` at the start and from the file and
-commit times at the end (`0b7c44e` is 02:05:19), **not** from an estimate; an earlier draft of this line said
-02:00-03:30 and was wrong. Nothing in the ALFWorld worktree was
-written, executed or modified; every ALFWorld statement below comes from reading its files and its saved reports.
+**Written 2026-11-22, 19:50-20:38 EST (48 minutes). Branch `officeqa-contracts`, commit `9d0e984`.
+Resources used: 0 cluster jobs, 0 provider calls, 0 GPU, 0 CPU job-hours of the OfficeQA allowance.
+All computation local; ~3 minutes of workstation CPU in total.**
 
-- **This worktree:** `/Users/yaojiaming/dev/lean_skillopt/SkillOpt-officeqa`, branch `officeqa-contracts`,
-  HEAD `39a7e33` at the start of this audit, working tree clean, everything tracked.
-- **Read-only reference:** `/Users/yaojiaming/dev/lean_skillopt/SkillOpt-learned-contract`, branch
-  `contract/learned-contract`, HEAD `4a9914a`. **Every learned-contract file there is untracked** (`git status`
-  reports 70 `??` entries), so no commit contains them and digests are the only identity they have. They are
-  recorded in section 2.
-- **Third worktree,** `/Users/yaojiaming/dev/lean_skillopt/SkillOpt` at `4a9914a`: not touched, not read.
-
-**Labels used throughout.** **[FACT]** a recorded datum or a digest. **[MEASURED]** a deterministic computation
-run during this audit on frozen inputs. **[INTERPRETATION]** my judgement. **[PROPOSAL]** not done and not
-authorized.
+Abbreviations on first use: **ALFWorld**, the household-task benchmark the contract machinery was
+built on; **SkillOpt**, the skill-optimization system under study; **Lean**, the proof assistant used
+as an independent checker; **CNF**, conjunctive normal form (an "and" of "or"s); **Kleene logic**,
+three-valued logic in which a third value means *unknown* rather than false; **VX-1 / RP-1 / EB-1**,
+the ALFWorld phases that produced the vocabulary extension, the counterexample repair and the
+uncertainty correction; **LC / CC / LN**, OfficeQA's three earlier contract generations;
+**obligation**, a condition a report says the record either establishes, refutes, or leaves open.
 
 ---
 
-## 1. The four answers
+## 0. The four answers first
 
-### 1.1 Do the branches share the same core implementation? **No. They share no code at all.** [MEASURED]
+1. **Is the core now shared?** Yes, by copy and generalization, not by import. 32 ALFWorld source
+   files are frozen in `research/officeqa/framework/upstream/` with a manifest of digests; the `fw_*`
+   modules are those mechanisms with the ALFWorld vocabulary lifted out into a `Domain` object.
+   Nothing imports the sibling worktree at run time, and a test asserts it.
 
-No OfficeQA module imports anything from the ALFWorld tree, and no name from `research/learned_contracts`,
-`research/vocab_ext`, `research/trace_only` or `research/order_audit` appears anywhere in `research/officeqa/`
-(grep over 105 tracked files returns nothing). The relationship is a **one-time copy in 2026-11-16**, recorded
-per-file in `OFFICEQA_TRANSFER_MANIFEST.json` with each source's sha256, and then two further OfficeQA
-generations written locally on top of it.
+2. **Does the learned layer do real work now?** Yes, and this is the difference from the audited LN
+   generation. A four-cell comparison over all 48 permitted attempts: with the assumption adopted but
+   **no learned rule**, 0 columns are bound and every interpretation obligation is UNKNOWN - exactly
+   the state the previous generation was in. With the accepted rule, 1,152 columns are bound, 257
+   `column_identified` and 252 `unit_resolved` obligations become DISCHARGED, and **522 obligation
+   states change**. The rule is load-bearing, not an annotation.
 
-That is not, by itself, a defect. The question is whether the **behaviour** is equivalent, and for the
-2026-11-16 generation it largely is. I verified the reference has not moved by comparing all nine reference
-copies in `research/officeqa/transferred/` against the live ALFWorld files, byte for byte [MEASURED]:
+3. **Did the learner learn, and could it be wrong?** It proposed, was refused, and was repaired. The
+   most general form of the rule has 6 supporting and **2 refuting** columns in the permitted records,
+   with the refuting columns named; the gate refused it. The narrowed form has 6 supporting, 0
+   refuting, and a clean regression. Under the frozen model, a **reserved** attempt gives 12
+   supporting and 0 refuting. The deletion-type repair - the one ALFWorld's RP-1 accepted and the one
+   OfficeQA's CC/LN generation could not express - is exercised on a labelled constructed fixture.
 
-| module | `transferred/` | live ALFWorld | |
-|---|---|---|---|
-| `ir.py` | `7bf531504c8103db` | `7bf531504c8103db` | same |
-| `learn.py` | `dce247e991b35fa5` | `dce247e991b35fa5` | same |
-| `replay.py` | `b0cf8398130dbb1c` | `b0cf8398130dbb1c` | same |
-| `state.py` | `250fc1b73785fa16` | `250fc1b73785fa16` | same |
-| `fact_ledger.py` | `c805634fc0e019ba` | `c805634fc0e019ba` | same |
-| `stage_contracts.py` | `c220efd38ad00f1d` | `c220efd38ad00f1d` | same |
-| `stage_tracker.py` | `bec91eda08dcf9c0` | `bec91eda08dcf9c0` | same |
-| `lean_gen.py` | `f8a312c83424bbc3` | `f8a312c83424bbc3` | same |
-| `vocab.py` | `e857150a39a166bd` | `e857150a39a166bd` | same |
+4. **Does it help the optimizer?** **Not demonstrated, and the honest reading is unfavourable.** On
+   the one real recorded optimization step examined, the control arm - no report at all - already
+   produced "Read column headers literally before using any cell" and "record each operand with its
+   period and unit". All four topics the framework's report carries are already in the control arm's
+   own output. The report adds per-number citations, the states they support, and explicit unknowns;
+   whether that changes the *edit* needs the analyst call, which is a provider call and was not made.
 
-So the port's own reuse table can be trusted and the comparison below is against the current reference. Those
-fifteen copies are **reference material only**: nothing in `research/officeqa/` imports from `transferred/`
-(grep over all 105 tracked files returns no import).
-
-### 1.2 Are their active learning / checking / repair behaviours equivalent? **No.** [MEASURED]
-
-OfficeQA has **three generations**, and the one the milestone uses is not the faithful port:
-
-| generation | modules | what it can represent | where it ran |
-|---|---|---|---|
-| **LC** (2026-11-16 port) | `oqa_lc_*` | `requires` / `suffices` / `effect`; assumptions; add / revise / **retire** / keep; assumption **adopt / drop**; auto-refutation | the live three-arm campaign (`oqa_lc_arm.seed` / `.evolve`) |
-| **CC** (amendment B-1, 2026-11-17) | `oqa_cc_*` | one kind, `conclusion IF conditions`, entity-bound, four-valued, stage link; repair = **append one condition** | one offline check, never in a campaign |
-| **LN** (amendment D-1, 2026-11-21) | `oqa_ln_*` on `oqa_cc_ir` | the same single kind, one learnable conclusion `operand_sourced` | the milestone and the paired rehearsal |
-
-ALFWorld's current line (VX-1 / RP-1 / EB-1) **extends** its v1 core rather than replacing it — `vx_learn.py`
-literally does `import learn as L1` — and carries five contract kinds (`requires`, `suffices`, `effect`,
-`completes`, `persists`), typed existential variables, guards, and the full keep/add/revise/retire plus
-assumption adopt/drop repair vocabulary.
-
-So the LC generation is close to parity and is the one actually wired into a campaign; the CC/LN generation,
-which is what "the learned-contract milestone" means, is **narrower than the port it descends from** on
-representation and on repair.
-
-### 1.3 Where does OfficeQA's current configuration diverge from the accepted design? **In the learning target, first and worst; then in repair, in what Lean checks, and in what "prediction" means.** [MEASURED]
-
-The decisive finding is about the target, not about portability.
-
-The LN rule is `operand_positions(operand, 1) AND operand_source_tool(operand, grep) -> operand_sourced`.
-`operand_sourced` is the supplied resolver's `SUPPORTED` label. `oqa_occ.bind` sets `SUPPORTED` when a value has
-exactly one observed position **and** at least one supporting corroboration; `oqa_occ.corroborations` sets the
-corroboration `QUERY` when the occurrence's grep pattern tokens meet its line tokens. **A grep returns a line
-because its pattern is on that line.** So the antecedent entails the consequent through supplied code.
-
-Measured over all 48 frozen attempts, corrected (D-2) extraction [MEASURED]:
-
-| unique-position bindings | n | `QUERY` fired | `SUPPORTED` |
-|---|---|---|---|
-| the position came from a **grep** hit | 39 | **39 (100%)** | **39 (100%)** |
-| the position came from a **read** | 19 | 0 | 6 (32%) |
-
-P(`SUPPORTED` | `QUERY` fired) = **39/39 = 1.000**. The rule is a theorem of `oqa_occ.corroborations`, found by a
-paid model in a contingency table. Artifact: `runs/20261122-officeqa-parity/PA2_TARGET.json`,
-sha256 `c471e078923342ab…`.
-
-### 1.4 What is the smallest correction needed before another meaningful experiment? **Change the target, not the codebase.** [INTERPRETATION]
-
-The generic machinery is already shared in substance, and three of the four code gaps below only matter *after*
-the target changes. The one code change that is necessary **independently** of the target is the repair
-interface: `oqa_cc_ir.repair` can only append a condition, so ALFWorld's actual repair — deleting a conjunct —
-is not expressible in OfficeQA at all. Section 7 gives the plan; section 8 gives two candidate targets.
+A fifth answer, unasked: **the checker's accusations were again its own.** The first version of this
+slice reported 70 OUTSTANDING states on one attempt. None survived an audit. After the correction the
+report accuses nobody - 0 OUTSTANDING in both arms - and what it contributes is provenance and unit
+resolution, not blame.
 
 ---
 
-## 2. Terms, and the exact versions compared
+## 1. The transferred snapshot
 
-**Terms, on first use.** A **contract** is a structured, checkable claim about an action or a document, with a
-version and recorded evidence. **LC / CC / LN** are the three OfficeQA generations in the table above. **VX-1**
-is ALFWorld's vocabulary-extension study, **RP-1** its counterexample-repair pilot, **EB-1** its editing
-comparison, **CR-1** its consolidation study. An **obligation** is a task requirement a checker tries to
-discharge; its states here are DISCHARGED, VIOLATED, OUTSTANDING, UNKNOWN. **Provenance labels** mark where a
-clause came from: TASK (the question sentence), GIVEN (supplied structure), MATH (a definition), OBS (an
-observation or the actor's own message), LEARNED (an empirical hypothesis). The **resolver** is
-`oqa_occ.bind`, supplied deterministic code that tries to bind a number the actor wrote to an observed cell.
-An **ablation** runs the pipeline with a component ABSENT, holding everything else fixed.
+`research/officeqa/framework/upstream/MANIFEST.json`, digest `00a907064018a814`. Source worktree
+`SkillOpt-learned-contract`, branch `contract/learned-contract`, commit `4a9914a9005a`.
+**32 files, 412,244 bytes, 0 missing, and all 32 are untracked in the source**, so their hashes are
+their only identity - the manifest records each file's sha256, byte count, source modification time
+and git status.
 
-### 2.1 The accepted design and its amendments [FACT]
-
-v0.1 plus amendments A1-A5 is the current agreed design; there is no document labelled v0.2. Digests at the time
-of this audit, so a later session can tell whether the reference moved:
-
-| document | sha256 (first 16) | bytes |
+| group | what it is | files |
 |---|---|---|
-| `docs/LEARNED_CONTRACT_DESIGN.md` (v0.1) | `b115079e6ea7cc82` | 15,542 |
-| `..._AMENDMENT_A1.md` (information access) | `f2a583610aafd8e4` | 5,925 |
-| `..._AMENDMENT_A2.md` (stage-plus-action architecture) | `be7c1f80ebcaa8a5` | 10,968 |
-| `..._AMENDMENT_A3.md` (corrected diagnostics) | `cc96cf76513e0f37` | 11,130 |
-| `..._AMENDMENT_A4.md` (fact ledger, propagation) | `bbbb1de5827bdc75` | 24,093 |
-| `docs/research/VX1_AMENDMENT_A5.md` (vocabulary extension) | `b1f4ba2bcf108540` | 23,926 |
+| `v1_core` | the frozen v1 core VX-1 extends: representation, learner gate, estimator, reveal-order guard, Lean generation, stage contracts and tracker, fact ledger | 12 |
+| `v1_vocab` | the vocabulary VX-1 imports as `V1`, and its record reader | 2 |
+| `vx1` | VX-1: five kinds, typed existential variables, guards, Kleene evaluation, checker, gate, Lean, prompt builder | 9 |
+| `rp1` | RP-1 counterexample repair: selection, driver, evaluation, audit, report | 5 |
+| `eb1` | EB-1 uncertainty/forecast correction and report conditions | 4 |
 
-The first five match the digests the 2026-11-16 port note recorded, so **the accepted design has not changed
-since the port**. A5 is newer than the port and is the one OfficeQA has never seen.
+**The ALFWorld worktree was not touched.** It was opened read-only (`open(..., 'rb')`), no module was
+imported from it, so no byte-compilation cache was created there. Verified after the copy: commit
+still `4a9914a`, 0 modified tracked files, and every `__pycache__` in the two source directories
+predates today.
 
-### 2.2 ALFWorld implementation files, as read [FACT]
+The snapshot is **importable in isolation**, which is why the parity tests below can compare the
+ported core against the real implementation rather than against a description of it.
 
-All untracked at HEAD `4a9914a`. Digests and last-modified times taken during this audit. The VX-1 and RP-1
-files were last modified 2026-11-21 between 00:59 and 01:11 EST and did not change while I read them; the
-`research/eb1/` and `research/cr1/` files are being worked on by the ALFWorld session and are recorded here only
-as the version I read.
+### Capabilities now active in OfficeQA
 
-| file | sha256 (first 16) | bytes |
+| capability | where | active in the first slice? |
 |---|---|---|
-| `research/learned_contracts/ir.py` | `7bf531504c8103db` | 9,119 |
-| `research/learned_contracts/learn.py` | `dce247e991b35fa5` | 15,333 |
-| `research/learned_contracts/replay.py` | `b0cf8398130dbb1c` | 14,393 |
-| `research/learned_contracts/state.py` | `250fc1b73785fa16` | 8,628 |
-| `research/learned_contracts/fact_ledger.py` | `c805634fc0e019ba` | 12,613 |
-| `research/learned_contracts/stage_contracts.py` | `c220efd38ad00f1d` | 18,305 |
-| `research/learned_contracts/lean_gen.py` | `f8a312c83424bbc3` | 9,881 |
-| `research/vocab_ext/vx_vocab.py` | `a63ce811f2ff7b9c` | 9,656 |
-| `research/vocab_ext/vx_ir.py` | `d96ca618bdaf7128` | 15,184 |
-| `research/vocab_ext/vx_learn.py` | `3b761c05d8d537ed` | 11,899 |
-| `research/vocab_ext/vx_check.py` | `d2c831210ef60276` | 14,015 |
-| `research/vocab_ext/vx_lean.py` | `971e1f202e7c0c30` | 17,685 |
-| `research/vocab_ext/rp_run.py` | `d92e1b7e06cf38a4` | 17,653 |
-| `research/vocab_ext/rp_eval.py` | `89c44e24b6585a9e` | 17,155 |
-| `research/eb1/eb_forecast.py` | `b0c449d0049ba906` | 12,402 |
+| necessary / sufficient / effect kinds | `fw_ir.FIELDS` | declared, unused |
+| completion relation (`completes`) | `fw_ir`, `fw_check.verdict_at` | declared, unused (OfficeQA has no completion atom) |
+| **`concludes`** - `completes` generalized from "the task is complete" to a named consequence | `fw_ir`, `fw_check.conclusions_at` | **yes, this is the slice's kind** |
+| typed entity bindings, existential and **subject** (universal) variables | `fw_ir.bindings`, `evaluate_pointwise` | yes |
+| typed atom arguments | `fw_ir.validate_lit` | yes - it cut the search space from 3,358 candidates to 378 |
+| guards | `fw_ir`, `fw_check` | declared, unused |
+| explicit assumptions with adopt / drop, direct-contradiction testing, regression gating | `fw_learn.apply_proposal` | **yes** |
+| unknown values with provenance (what each value rests on) | `fw_kleene` | yes |
+| temporal scope: `all` / `introduced` / `once` | `fw_ir`, `fw_check.settle_step` | yes - `once` |
+| persistence, invalidation and recovery | `fw_state._persist_value` | declared, unused |
+| frozen model versions and prefix-only checking | `fw_ir.freeze`, `fw_state.Estimator.value` | yes |
+| keep / add / revise / **retire**, four statuses including `refuted` | `fw_learn`, `fw_ir.STATUSES` | yes |
+| repair including **deletion of a condition** | `fw_ir.drop_conjunct`, `fw_repair` | yes (fixture) |
+| counterexamples and regression checks against earlier evidence | `fw_repair.regression` | yes |
+| action-to-stage connections | `oqa_fw_stage` | yes |
+| Lean checks of the model's application and the evidence counts | `oqa_fw_lean` | generated, **not compiled** |
+| binding of the checked result to the delivered report | `oqa_fw_report.verify_binding` | yes |
 
-### 2.3 OfficeQA implementation files [FACT]
+A capability that is declared and unused here is not removed from the framework. ALFWorld's own
+vocabulary declares no `concludes` and no subject variables; OfficeQA declares no `persists`. That
+asymmetry is what a benchmark-specific adapter is for.
 
-All tracked and committed on `officeqa-contracts`; the last commit that touched each is given, so a later
-session can see which generation a file belongs to.
+### Behavioural parity with the snapshot, asserted rather than assumed
 
-| file | sha256 (first 16) | bytes | last commit |
-|---|---|---|---|
-| `oqa_lc_ir.py` | `44ff3e9e24585ec3` | 12,362 | `60983a9` |
-| `oqa_lc_learn.py` | `d6cced16da3ccd88` | 21,651 | `fc26cdc` |
-| `oqa_lc_replay.py` | `dd86a4fb49e40b7e` | 16,304 | `60983a9` |
-| `oqa_lc_chain.py` | `8262c94557f01a6c` | 39,703 | `82a48d0` |
-| `oqa_lc_arm.py` | `f430a6219b85fc35` | 21,287 | `60983a9` |
-| `oqa_cc_ir.py` | `cdcb0604e18c471f` | 12,408 | `95e5437` |
-| `oqa_cc_learn.py` | `1786c6bef73d0d3c` | 18,086 | `f44afc1` |
-| `oqa_cc_check.py` | `4d30165d15cd417b` | 25,096 | `f80ec8d` |
-| `oqa_ln_vocab.py` | `a68dfc305de2c480` | 6,200 | `95e5437` |
-| `oqa_ln_learn.py` | `ceafabe277a0e4fe` | 18,340 | `652931f` |
-| `oqa_ln_check.py` | `ba7bfeade961a042` | 36,057 | `652931f` |
-| `oqa_ln_evidence.py` | `0ee9fd12c06b4f4f` | 32,714 | `652931f` |
-| `oqa_ln_lean.py` | `61d4880a89b11eeb` | 23,210 | `90ef7cf` |
-| `oqa_occ.py` | `258e96844e32a0b9` | 21,386 | `652931f` |
-| `oqa_obligations.py` | `f71992d733a2981d` | 7,701 | `10a413a` |
+`tests/test_officeqa_fw.py` imports the snapshot and the port side by side:
 
-### 2.4 Saved models and records used [FACT]
+* `k_and` / `k_or` agree on **all** 1- to 3-argument inputs over {true, false, unknown};
+* `merge` (which unites the assumptions, learned ids and steps a derived value rests on) agrees on
+  every combination of five representative facts and all three values;
+* `gate` agrees on every combination of support, counterexample and consistent counts for all five
+  ALFWorld kinds.
 
-| artifact | identity |
-|---|---|
-| frozen record set | `runs/20261121-officeqa-learner/v1_freeze/LN_FREEZE.json`, 48 attempts, 12 questions, six learning / six checking |
-| LN model r1 | `v2_learn/r1_model_v1.json`, contract `operand.sourced@v1` |
-| LN model r2 | `v2_learn/r2_model_v1.json` |
-| CC model | `CC_MODEL_v1.json` sha256 `96c3d1bd9aad6f4d…` (cluster path; its check output is local) |
-| LC campaign models | `runs/20261118-officeqa-status/pull/contracts/{model_M0,arm_B/*,arm_C/*}.json` |
-| D-2 ablation | `runs/20261121-officeqa-learner/v5_d2/D2_RULE_r1.json`, 25 attempts, 2x2 |
-| this audit's probes | `runs/20261122-officeqa-parity/PA1_CALLPATH.json` `55a71d3140fe9d99…`, `PA2_TARGET.json` `c471e078923342ab…` |
+Shared ancestry proves nothing; these three are the functions where a silent divergence would change
+every downstream number, so they are compared against the real code.
 
 ---
 
-## 3. The parity matrix
+## 2. The OfficeQA adapter, and two extraction corrections it needed
 
-Classification vocabulary, used once per row: **SHARED** (literally the same code), **EQUIVALENT SEPARATE**
-(different code, same behaviour), **ADAPTER** (a difference the benchmark requires), **RESTRICTION** (the library
-can do it, the active configuration forbids it), **BYPASSED/MISSING** (the component exists but no conclusion
-depends on it, or it is absent), **UNVERIFIED**.
+Entities are document structure, named by **stable observation references**: `tb:s12:1` is the second
+table of the observation at conversation item 12, `co:s12:1:3` its fourth column, `ce:s12:1:4:3` a
+data cell, `op:s13:2` the third number the actor wrote in message 13.
 
-Throughout, "OfficeQA" means the **LN generation** unless a row says otherwise, because that is what the
-milestone, the Lean file and the paired rehearsal actually ran.
+**Correction 1: a cell from an unnumbered read can now be cited.** The LN generation recorded the
+assumption "an occurrence exists only where an observation line carries a line number and
+pipe-delimited fields; a read without line numbers yields no position". Measured over the 48 frozen
+attempts: **every `read` observation is unnumbered, and reads carry 571 of the 757 observed tables
+(75.4%)**; the other 186 come from grep, which numbers its lines. Three quarters of the document
+content could not be cited, and a cell that cannot be cited
+cannot witness anything. A reference here needs no line number, and a citation reads
+`step 6, table 1, row '1941', column 'Individual' [thousands]`.
 
-### 3.1 Permitted information and extraction
+**Correction 2: numbers are compared at the precision they were written to.** `oqa_ln_evidence._near`
+is `abs(x - y) <= max(0.5, abs(y) * 1e-6)`. That absolute floor of 0.5 makes **1.8 equal to 2.0**, and
+makes `x * 0.6 = x` an "identity". `oqa_fw_extract.near` compares at half a unit in the last written
+place. `oqa_ln_evidence` is **not modified** - the frozen D-2..D-5 outputs stay reproducible - and
+`near_legacy` is kept beside the correction so the difference can be measured rather than asserted.
 
-| | |
-|---|---|
-| **Intended role** | Turn a permitted trace into typed entities, observations, identity and time, with unknowns kept explicit (design §4.A). |
-| **ALFWorld** | `vx_vocab.parse_obs` / `vx_vocab.parse_command` -> `vx_state.EstimatorX`. Entry point `vx_check.verdict_at` / `predict_episode`. The learner's view is the analyst view only: task, task type, command, observation, outcome. Typed entities (objects, receptacles), event atoms `activated/picked/released`, the state atom `on(X)`, the derived `co_located(X)`, three-valued facts each carrying the assumptions and rule ids it depends on. |
-| **OfficeQA** | `oqa_ln_evidence.extract` + `oqa_occ.observed_occurrences`. Entry point `oqa_ln_check.stage_report`. Permitted input is `conversation.json` plus the saved prompts; `ground_truth`, `soft`, `hard` and provider `reasoning_content` are excluded. Entities are tables, headers, cells, values, calculations. Occurrences are `(document, line, field)` with the rendered `field_text` kept as context (D-2). |
-| **Shared?** | **EQUIVALENT SEPARATE** for the discipline; **ADAPTER** for the content. The information boundary, the unknown-by-default rule and the "latest record is not physical state" distinction are preserved in both. |
-| **Restriction / gap** | **MISSING, and it is the binding constraint on OfficeQA's one task-relevant contract.** `oqa_cc_check` cannot resolve a data cell's **column header** in a read window: of 113 operands checked under the CC model, 50 produced a binding attempt and **all 50 had `header_known: false`** (`column_basis: "UNKNOWN"`, `column_leaf_basis: "LEAF_ONLY"`). The other 63 had no cell match at all. |
-| **Witness** | `runs/20261121-officeqa-contract/v6_lean/CC_CHECK_descriptive.json`; the clause row reads `"why": "not observed for this cell: column header; absence cannot be asserted"`. [MEASURED] |
+Both corrections are under a new version (`oqa.fw.extract.v1`), as instructed.
 
-### 3.2 Contract representation
+### Three defects of my own, each found by checking rather than assuming
 
-| | |
-|---|---|
-| **Intended role** | Necessary conditions, sufficient conditions, effects, persistence and completion relations, with directions explicit (design §4.B; A5 §3.3). |
-| **ALFWorld** | `vx_ir.py`: five kinds — `requires`, `suffices`, `effect` (with a guard), `completes` (scope = a verb or "any"), `persists` — plus typed existential variables `?o`, `?l` declared in an `exists` map, Kleene three-valued evaluation, and per-value dependency on assumptions and rule ids. |
-| **OfficeQA, LC** | `oqa_lc_ir.py`: `requires` / `suffices` / `effect`, 0-ary atoms, model assumptions, Kleene logic. A faithful port of `ir.py`. |
-| **OfficeQA, LN** | `oqa_cc_ir.contract` has exactly **one** kind, `"binding"`: a `conclusion` plus a conjunction of `conditions`, with entity arguments and a provenance label per clause. No `effect`, no `completes`, no `persists`, no `exists`, no guard. |
-| **Shared?** | **ADAPTER** for dropping `requires`/`suffices`: OfficeQA's document tools almost never report failure, so condition-based success prediction is UNKNOWN at PRE by construction, and the port note records this with a test. **RESTRICTION** for dropping `effect`: the LC generation had effect contracts and the LN generation has no way to state what a tool call returns. |
-| **Witness** | `oqa_cc_ir.py` lines 113-126 (the constructor hard-codes `"kind": "binding"`); `vx_ir.py` module docstring lists the five kinds. |
+1. **The unnamed-entity token was missing.** ALFWorld's `entities_of_type` appends one unnamed
+   instance of the type, so an existential is never decided *false* merely because nothing has been
+   named yet. I dropped it. The consequence was silent and total: with an empty pool `fw_ir.evaluate`
+   has nothing to disjoin and returns **false**, so every rule's condition was false before its
+   entities appeared. The general rule scored 0 supporting and 8 "consistent" cases; with the token
+   restored it scores **6 supporting and 2 refuting**, which is the real picture. A test now asserts
+   that an existential over an empty pool is UNKNOWN.
 
-### 3.3 Learning
+2. **The operand's written text was read under the wrong key.** `oqa_cc_extract.operands` calls it
+   `raw`; I read `text`, got `None`, and the precision-aware comparison fell back to integer
+   comparison - the very defect the correction exists for - while the report printed `None` where the
+   number should be.
 
-| | |
-|---|---|
-| **Intended role** | An LLM proposes a hypothesis in a fixed vocabulary; deterministic code validates, scores and gates it. The target must be an environmental or task-relevant relationship, not a label another supplied module already computes. |
-| **ALFWorld** | `vx_llm` proposes; `vx_learn.apply_proposal` gates. Targets: *is the task complete after this step* (label from the analyst-visible outcome plus the declared harness rule) and *does a lamp stay on* — both facts about the environment that no supplied module computes from the prefix. |
-| **OfficeQA** | `oqa_ln_learn` shows DeepSeek a deterministic contingency table over the learning records and asks for one condition in `oqa_ln_vocab.LEARNER_CONDITIONS`; `oqa_ln_vocab.validate` rejects a proposal that names a predicate outside the vocabulary or relabels a provenance. The machinery is sound. |
-| **Shared?** | **EQUIVALENT SEPARATE** for the machinery. **The target is the divergence.** |
-| **Restriction / gap** | `operand_sourced` **is** the resolver's `SUPPORTED` label, and one of the rule's two conditions, `operand_positions(operand, 1)`, is the first conjunct of the resolver's own definition. The second, `operand_source_tool(grep)`, entails the `QUERY` corroboration that is sufficient for the label. 39/39 grep-sourced bindings confirm it. Agreement is the ceiling; the rule cannot add a conclusion. |
-| **Witness** | `oqa_occ.bind` lines 295-299 (`SUPPORTED if supporting else UNKNOWN`), `oqa_occ.corroborations` lines 254-263 (`QUERY` when pattern tokens meet line tokens), `oqa_occ.SUPPORTING = ("ROW_LABEL", "QUERY")`; `PA2_TARGET.json`. [MEASURED] |
+3. **The conversion obligation was raised for every number the actor typed.** 70 of one attempt's 227
+   written numbers were reported OUTSTANDING. **Not one survived the audit.** 26 of them sat in a
+   message that writes "divide by 1,000,000" six times; the rest were in messages that only *read the
+   table aloud* ("I can see the Individual column, which contains ..."). Two fixes: the obligation now
+   applies only to a number that is an operand or result of a written binary calculation, and a stated
+   factor is looked for across the whole prefix rather than in the operand's own message. A differing
+   factor is now UNKNOWN, not a violation, because which numbers a factor was applied to is not
+   recorded.
 
-### 3.4 Model state
+This is the fourth time in this project that a checker's accusations have evaporated on audit. The
+standing rule - read every accusing state against the agent's own words before reporting it as a
+diagnosis channel - earned its place again.
 
-| | |
-|---|---|
-| **Intended role** | Versions, parent links, evidence, assumptions, accepted and rejected hypotheses, nothing deleted (design §4.E). |
-| **ALFWorld** | `vx_ir` / `vx_learn`: statuses active / refuted / retired / superseded / rejected, with counterexamples kept; model assumptions `distinct_locations`, `init_empty_hands`, `init_off`, `persistence`; semantic digest; parent chain. |
-| **OfficeQA, LC** | `oqa_lc_ir` + `oqa_lc_learn`: the same five statuses, the same assumption set discipline, `normalize`/`semantic_sha`, freeze-by-digest. **Full parity.** |
-| **OfficeQA, LN** | `oqa_cc_ir` has **two** statuses, `active` and `superseded`; no assumption set at all; `model_sha`, `freeze` (chmod 0444) and `load_frozen` verify the digest, and `parent_sha256` chains model versions. |
-| **Shared?** | **EQUIVALENT SEPARATE** at LC. **RESTRICTION** at LN: refuted / retired / rejected have no representation, and a model with no assumptions cannot record an assumption drop — which is exactly the repair ALFWorld performed. |
-| **Witness** | `grep -n '"retire"\|"revise"\|"drop"\|assumption' oqa_cc_ir.py oqa_ln_vocab.py oqa_ln_learn.py` returns **nothing**; the same grep on `oqa_lc_learn.py` returns the full operation set at lines 9, 123, 128, 162-206. [MEASURED] |
+### What is kept apart, by vocabulary category
 
-### 3.5 Checking and prediction
+Every atom carries exactly one category, and only two of them belong to the learner:
 
-| | |
-|---|---|
-| **Intended role** | Freeze the model, build features from the prefix only, commit the prediction, then reveal the next observation (design §4.D). |
-| **ALFWorld** | `vx_check.predict_episode`: at step *t* it builds a **synthetic post-state** from the learned effect contracts of command *t* and evaluates the completion relation on it, committing through `replay.Revealer`'s hash chain **before observation *t* is revealed**. The forecast is explicitly conditional ("if the command has its learned effects, is the task complete?") and never predicts whether the command succeeds. RP-1 §9.2 verified it empirically: withholding every observation from the forecast step changed **0** of 2 x 1,369 checking forecasts. |
-| **OfficeQA** | `oqa_ln_check.predict` writes one prediction per operand from the contract and the features alone, digests it over content (not the clock), and only then `resolve` reads the resolver's verdicts. The order is enforced by two files and two digests. |
-| **Shared?** | **EQUIVALENT SEPARATE** for commit-before-reveal. **DIVERGENT in what is revealed.** |
-| **Restriction / gap** | ALFWorld reveals *the environment's next observation*. OfficeQA reveals *a deterministic label computed by supplied code from the same prefix the features came from*. `n_positions_in_prefix` and the resolver's `match` are both derived from the same `observed_occurrences` call. A commit-before-reveal protocol over a label that is a function of the committed inputs is a real protocol about a target that cannot surprise it. |
-| **Handling of missing effects** | ALFWorld had a genuine defect here and fixed it: F1 treated "no learned effect" as "nothing changes", producing confident NOTs; `eb_forecast` (F2) makes those facts UNKNOWN under a declared `REPORT_SCOPE` frame assumption, removing every unsupported confident NOT and introducing 0 false completion claims. **OfficeQA has no counterpart because the LN generation has no effect contracts at all** — there is no forecast whose missing effect could be mishandled. |
-| **Witness** | `oqa_ln_evidence.py` lines 255-266 (the feature block) and `oqa_occ.bind`; `vx_check.py` docstring; `eb_forecast.py` docstring. |
+* **TASK** - what the question requires (the money scale it asks for).
+* **GIVEN / OBS** - what a saved record literally shows (a table appeared; its header is split; its
+  sub-label row has one cell per column; a flattened rendering of the same table was also observed).
+* **MATH** - supplied arithmetic (the factor of ten between two scales).
+* **MACHINERY** - supplied extraction and logic (which cell is in which column; the tri-state
+  "is there a nearer unit annotation?"; Kleene evaluation).
+* **LEARNED** - an empirical hypothesis the learner proposed and the gate accepted.
+* **ASSUMPTION** - a named reading of document structure that is adopted, never established.
 
-### 3.6 Repair
-
-| | |
-|---|---|
-| **Intended role** | Keep / add / revise / retire, widen or narrow, driven by explicit counterexamples, with earlier records re-scored (design §4.E). |
-| **ALFWorld** | `vx_learn.apply_proposal` accepts assumption ops, persists ops and contract ops; the gate is identical for every source; every still-active contract that acquires a counterexample becomes `refuted` and is kept. **The repair it actually performed was a deletion**: both RP-1 attempts removed the conjunct `not released(?o)`. |
-| **OfficeQA, LC** | `oqa_lc_learn.apply_proposal` has the same operation set, plus two deliberate additions the port recorded: `assumption_recheck` (nothing re-tested an assumption adopted before its counterexample arrived) and `mech_repair` targeting **refuted** contracts rather than active ones. |
-| **OfficeQA, LN** | `oqa_cc_ir.repair(c, extra_condition, reason, counterexamples)` deep-copies the contract, marks the old version `superseded`, and returns a new version whose `conditions` are `list(c["conditions"]) + [extra_condition]`. **Append only.** |
-| **Shared?** | **ACTIVE RESTRICTION.** The question "Is OfficeQA's repair interface restricted to adding an extra condition?" — **yes, literally**. |
-| **What it cost** | The LN repair call fired once per frozen model (r1 and r2) and in both the learner correctly **abstained**: the counterexample's feature vector was identical to four correct predictions, so no added condition could separate them. It replied `{"extra_condition": null, "separable": false}`. Even had a widening or a deletion been the right repair, the interface could not have expressed it. |
-| **Witness** | `oqa_cc_ir.py` lines 184-205; `runs/20261121-officeqa-learner/v2_learn/r1_call2_repair.json` (prompt: "add ONE further condition"; reply: `separable: false`). [FACT] |
-
-### 3.7 Stage connections
-
-| | |
-|---|---|
-| **Intended role** | Task-defined, supplied and learned conditions kept apart; an action result establishes a stage result; recovery, invalidation and alternative orders handled (design §4.C; A2). |
-| **ALFWorld** | EB-1's C condition binds a **MANUAL** (supplied) stage procedure to instances and takes **the GOAL from the LEARNED completion relation**. The learned contract therefore supplies the predicate that decides whether the final stage is met; removing it removes the goal. |
-| **OfficeQA** | Four obligations — `lookup_observed`, `source_traced`, `arith_recorded`, `answer_traced` — derived from the question sentence by `oqa_obligations.derive` (TASK) and resolved by `oqa_ln_check.stage_report`. A superseded calculation stops supporting the answer, which is the recovery control. |
-| **Shared?** | **BYPASSED on the OfficeQA side, and this is the duplication point the instruction asks for.** |
-| **The exact point** | `oqa_ln_check.classify_operand(operand, verdict, dep_row, q_nums)` decides every operand's origin. Its **first line** is `if verdict["sourced"]: return {"class": SOURCED, ...}` — the supplied resolver's label, read directly. The function **does not take the contract as an argument** and nothing it is handed carries it. The learned rule is consulted in a different place, `_applies(contract, operand["features"])`, and its result is used only to (a) set the annotation column `contract_predicted_sourced`, and (b) raise a `model_refutation` when the rule predicted a source the resolver did not confirm, which pushes `source_traced` to UNKNOWN. **The learned rule's only possible effect on its own obligation is to suppress it.** |
-| **Witness** | `oqa_ln_check.py` lines 190-193 and 341-396; `PA1_CALLPATH.json`. [MEASURED] |
-
-### 3.8 Lean and report linkage
-
-| | |
-|---|---|
-| **Intended role** | Compile what is claimed; state the trusted inputs; make the verified model correspond to the report actually delivered (design §5). |
-| **ALFWorld** | `vx_lean` / the RP-1 files export the evidence rows and **recompute the learned model's gate tuple in Lean by `decide`** — for `completes`: (support, false completions, missed completions, consistent NOT, undetermined). Lean recomputes `on(X)` itself from the recorded events and the learned `persists` rule. Each count is also asserted equal to the Python gate's before export. The old rule's file proves `(23, 0, **1**, 1523, 40)` — the one missed completion **is** the counterexample. 15 files, all rc 0. |
-| **OfficeQA** | `oqa_ln_lean` exports, per attempt, a small record of booleans and counts (`has_supporting`, `channel`, `refuted`, `n_unsettled`, `n_ambiguous`, `committed`, `needs_arithmetic`, `n_unrepresented`, `fragment`, `consistent`, `n_abandoned`) and proves theorems **about the stage resolution algebra** over them. Job 66599377, Lean 4.20.0, rc 0, 0 errors, 0 warnings, 272 examples. |
-| **Shared?** | **EQUIVALENT SEPARATE for the toolchain discipline** (`run_lean`, `parse_results`, the Python-mirror rule, core-only, no `sorry`, no `native_decide`); **MISSING for the learned model**. |
-| **Restriction / gap** | `refuted` enters OfficeQA's Lean as a **single exported boolean**. The learned contract's conditions, its evidence counts and its gate are not in Lean at all, so Lean cannot check that the model was scored correctly — only that the stage algebra over a trusted summary is consistent. That is a real guarantee and it is correctly scoped in `oqa_ln_lean.SCOPE`, but it is a weaker claim than ALFWorld's. |
-| **Report correspondence** | Both branches generate the readable report from the same structured result that Lean was exported from, and both bind the digests. OfficeQA additionally preserves the historical delivered report and labels regenerated ones REGENERATED (D-2 §6). |
-
-### 3.9 SkillOpt integration
-
-| | |
-|---|---|
-| **Intended role** | A real report hook into a real optimizer request, inside repeated skill evolution, with contract knowledge persisting independently of whether a candidate skill is accepted. |
-| **ALFWorld** | RP-1's optimizer view is explicitly **"an example only: not sent"** — no optimizer call, no skill edited. EB-1 went further: **12 analyst requests through SkillOpt's own analyst, merge, ranking and edit-application code, producing 3 candidate skills**, one per report condition. Its frozen release rule then **failed**, so the behaviour test was not run and 0 actor episodes were collected. |
-| **OfficeQA** | Two kinds of integration, and the stronger one is on the LC generation. (a) **`oqa_lc_arm`** implements the full repeated loop — `seed()` learns M0 on the shared epoch-1 rollout, `evolve()` produces M_N from M_{N-1} and that arm's own epoch-N traces, with the order `rollout -> reports under M_{N-1} -> analyst -> gate -> END OF EPOCH -> evolve`. The model bank is frozen per epoch and persists independently of whether the gate accepted a skill. (b) **The LN paired rehearsal**: 2 real DeepSeek analyst calls on one attempt, ordinary vs contract-assisted, inputs identical except the report, edit budget 4, 2 edits each, in SkillOpt's own patch format. No merge, no ranking, no gate, no episodes. |
-| **Shared?** | **EQUIVALENT SEPARATE, and OfficeQA is ahead on the loop while ALFWorld is ahead on one epoch of real editing.** Neither branch has closed the full loop: ALFWorld has no repeated model evolution across epochs, OfficeQA has no merge/ranking/gate for its contract reports. |
-| **What the loop actually carried** | The models `oqa_lc_arm` evolved barely moved: arm C's model is still at `epoch 1` with the same 5 active contracts at epochs 2, 3 and 4; arm B retired one contract at epoch 3 and then froze. And the contracts themselves are `grep.effect.1 -> pattern_in_every_line` (true of grep by construction), `sub_row_aligned` (a property of the window the actor happened to request), and `read.effect.2/3 -> col_path_sound = False` / `col_leaf_sound = False` — a recorded measurement of **the extraction's own limitation**, not a fact about documents. |
-| **Witness** | `runs/20261118-officeqa-status/pull/contracts/arm_C/model_armC_epoch0{2,3,4}.json` (identical, `epoch: 1`); `runs/20261121-officeqa-learner/v4_rehearse/LN_REHEARSAL.json` (`paid_calls: 2`, `edit_budget: 4`, `inputs_identical_except_the_report: true`); RP-1 §8; EB-1 §1. [FACT] |
+Reporting a MATH or MACHINERY fact as a discovery is the specific error this split exists to prevent,
+and it is the error the LN generation made.
 
 ---
 
-## 4. Where a learned model reaches a conclusion, side by side
+## 3. The execution path actually taken
 
 ```mermaid
-flowchart TB
-  subgraph AL["ALFWorld (VX-1 / RP-1 / EB-1)"]
-    direction TB
-    A1["permitted trace<br/>task, command, observation, outcome"] --> A2["vx_state.EstimatorX<br/>three-valued facts + assumptions"]
-    A2 --> A3{"vx_check.verdict_at<br/><b>completion verdict</b>"}
-    A4["LEARNED completes.any.1<br/>LEARNED persists.1<br/>LEARNED use.effect.1"] ==>|"supplies the goal predicate"| A3
-    A2 --> A5["eb_forecast F2<br/>pre-action forecast"]
-    A4 ==>|"supplies the effects"| A5
-    A3 --> A6["MANUAL stage procedure<br/>GOAL = the learned relation"]
-    A6 --> A7["report conditions P / A / C"]
-    A7 --> A8["SkillOpt analyst, merge,<br/>ranking, edit application<br/>(EB-1: 12 requests, 3 candidates)"]
-    A3 --> A9["Lean: recomputes on(X)<br/>and the gate tuple by decide"]
-  end
+flowchart TD
+  OBS["saved record: conversation.json + the two saved prompts<br/>(no score, no answer key, no held-out data)"]
+  EX["oqa_fw_extract: tables, columns, cells, operands<br/>named by STABLE OBSERVATION REFERENCES"]
+  EST["oqa_fw_domain.OfficeQAEstimator<br/>prefix-only: value(t, atom, args) sees steps 0..t-1"]
+  ASSUM{"assumption<br/>index_alignment<br/>adopted?"}
+  RULE{"an ACTIVE learned rule<br/>covering this column?"}
+  LIC["col_bound = TRUE<br/>basis inferred; rests on the assumption AND the rule"]
+  UNK["col_bound = UNKNOWN<br/>never false"]
+  NEAR["nearer_unit_stated  PRESENT / ABSENT / UNKNOWN<br/>(supplied; UNKNOWN when the scope was not observed)"]
+  SCALE["cell_scale_resolved<br/>(supplied, under table_scale_applies_to_rows)"]
+  OB["oqa_fw_stage: column_identified, unit_resolved,<br/>conversion_accounted - with what each rests on"]
+  REP["oqa_fw_report: the delivered text,<br/>bound by trace + model + result digests"]
+  AN["skillopt.gradient.reflect.fmt_minibatch_trajectories<br/>(UNCHANGED; the report is appended under its heading)"]
+  OPT["analyst -> merge -> rank -> apply -> candidate skill -> gate"]
 
-  subgraph OQ["OfficeQA (LN generation)"]
-    direction TB
-    B1["permitted trace<br/>conversation.json + prompts"] --> B2["oqa_ln_evidence.extract<br/>oqa_occ.observed_occurrences"]
-    B2 --> B3["oqa_occ.bind<br/><b>SUPPLIED resolver</b><br/>SUPPORTED / UNKNOWN"]
-    B2 --> B4["operand features<br/>incl. n_positions_in_prefix"]
-    B4 -.->|"same occurrence list"| B3
-    B3 ==>|"verdict['sourced'] decides"| B5{"classify_operand<br/><b>origin class</b>"}
-    B6["LEARNED operand.sourced@v1"] -.->|"annotation only:<br/>contract_predicted_sourced,<br/>provenance tag"| B7
-    B6 -.->|"only path to a state:<br/>suppress to UNKNOWN"| B7
-    B5 --> B7["stage obligations<br/>lookup / source / arith / answer"]
-    B7 --> B8["report"]
-    B8 --> B9["2 DeepSeek analyst calls<br/>(no merge, no ranking, no gate)"]
-    B7 --> B10["Lean: stage algebra over<br/>exported booleans; 'refuted' is one bit"]
-  end
+  OBS --> EX --> EST --> ASSUM
+  ASSUM -- no --> UNK
+  ASSUM -- yes --> RULE
+  RULE -- no --> UNK
+  RULE -- yes --> LIC
+  LIC --> NEAR
+  UNK --> NEAR
+  NEAR --> SCALE --> OB --> REP --> AN --> OPT
 ```
 
-**Read the arrow styles.** A thick arrow (`==>`) is a dependency: remove the source and the target cannot be
-computed. A dotted arrow (`-.->`) is an annotation or a shared input. In ALFWorld the learned model is on two
-thick arrows — it supplies the completion predicate and the forecast effects. In OfficeQA every thick arrow into
-a conclusion starts at the **supplied** resolver; the learned contract reaches the report on dotted arrows only,
-and its single route to a state change is to suppress `source_traced` to UNKNOWN.
+**The takeaway from the diagram.** There are two gates on the licence, not one, and they fail
+differently from how a reader might expect: the adopted assumption alone changes nothing (measured: 0
+bound columns), because the licence also requires an active rule whose conditions hold at *this*
+column. Everything downstream of the licence resolves to UNKNOWN when it is withdrawn - never to a
+complaint about the agent. That is the property Lean is asked to check.
 
-**The measurement behind the diagram** [MEASURED]. `oqa_pa_parity.callpath` ran all 48 frozen attempts twice,
-with the contract and with it absent (the checker's own `None` path, so both sides come from the same code):
+---
 
-| | |
-|---|---|
-| attempts | 48 |
-| attempts that reach the operand loop at all | **9** (the other 39 have no readable supporting calculation) |
-| calls into `oqa_ln_learn.applies` | **18** (2 per reaching attempt; 0 in the absent condition) |
-| calls into `classify_operand` | 36 (18 + 18) |
-| calls where `classify_operand` could see the contract | **0** |
-| obligation states identical with and without the rule | **48 of 48** |
-| operand classes identical | **48 of 48** |
-| fields that ever differ | `contract`, `learned_rule_applied`, `obligations`, `supporting_operands` |
+## 4. The bounded test: what was learned, and on what evidence
 
-Exhaustively, the differing fields are three strings and one boolean:
+**Permitted records.** The 48 frozen attempts of the two-baseline training split (12 questions x 4
+passes), freeze `LN_FREEZE.json`. Every trace digest matched the freeze (0 mismatches). The validation
+split and the held-out set were not read.
 
-| field | with the rule | without |
+**Split, and its overlap reported plainly.** Learning used the 23 learn-role attempts **minus one
+reserved attempt**, `p3/UID0028`. Checking used that reserved attempt and the 24 check-role attempts.
+
+* question overlap: **`UID0028` is in both** - the reserved record is a different *attempt* of a
+  learned question, on the same documents, with a different trajectory;
+* document overlap: 2 of 12 learn documents and 10 check documents;
+* repeated attempts: all 12 questions appear 4 times in the corpus.
+
+**This is the weakest part of the test and it is not disguised.** The rule needs a split rendering and
+an independently observed flat rendering of the *same* table, and in these 48 attempts only `UID0028`
+ever produced both. The corpus is all the training material there is - 12 questions x 4 passes - so
+there was no third option that keeps validation sealed.
+
+**The empirical model started empty.** Nothing was preloaded; the desired rule was not written by me.
+
+**Batch 1, assumptions.** The learner proposed adopting two. Both accepted:
+
+| assumption | decision | why |
 |---|---|---|
-| `source_traced.provenance` | `LEARNED` | `OBS` |
-| `source_traced.witnessed_by` | `operand.sourced@v1` | `the supplied resolver alone; no learned rule was applied` |
-| `supporting_operands[i].contract_predicted_sourced` | `True` | `False` |
-| report header `contract` / `learned_rule_applied` | the id / `true` | `null` / `false` |
+| `index_alignment` - in a split header, the sub-label row's k-th cell is the sub-label of the k-th column | accepted, **directly testable** | no record contradicts it: no split table has a sub-label row of the wrong width |
+| `table_scale_applies_to_rows` - a scale in a heading applies to the rows below it | accepted, **not directly testable** | recorded as challengeable only through contract counterexamples |
 
-This **extends** the D-2 ablation, which ran the 2x2 on 25 attempts and found all 50 effects ALREADY_SUPPLIED,
-to the learning side as well, and it adds the call counts that say *why*: the function that decides an operand's
-origin never receives the contract.
+**Batch 2, the contract search.** 378 typed candidate hypotheses were scored; **3 were acceptable**.
+The search offers the most general first, so a refusal comes before a narrowing.
 
----
+*Refused, with its witnesses named* (6 supporting columns, **2 refuting**):
 
-## 5. Walkthrough A — ALFWorld: a learned completion relation, refuted and repaired
+> after any step, for every `?s:column`: `col_label_agrees_flat(?s)` holds whenever for some
+> `?t:table`: `col_of(?s,?t)` and `header_split(?t)`
 
-**ALFWorld evidence.** Source: `docs/research/RP1_REPORT.md` in the reference worktree, and the artifacts it
-cites under `runs/20261121-rp1/`. Nothing was re-run.
+Gate: `2 counterexample(s) in the evidence so far: p2/UID0028@17:co:s16:2:0,
+p2/UID0028@17:co:s16:2:7`. Both are columns whose sub-label cell is the literal text `nan` - pandas'
+empty cell printed out - where the merge falls back to the spanning parent and lands on the wrong
+label. 234 of the corpus's 1,465 non-empty sub-label cells are that text.
 
-**5.1 The old hypothesis** [FACT]. EXT2 M4's `completes.any.1` v1:
+*Accepted* (support 6, counterexamples 0, consistent 2, applicable 8):
 
-```json
-{"kind": "completes", "scope": "any", "exists": {"?l": "LTYPE", "?o": "OTYPE"},
- "condition": [[{"atom":"holding","args":["?o"],"value":true}],
-               [{"atom":"is_a","args":["?o","OTYPE"],"value":true}],
-               [{"atom":"released","args":["?o"],"value":false}],
-               [{"atom":"on","args":["?l"],"value":true}],
-               [{"atom":"is_a","args":["?l","LTYPE"],"value":true}],
-               [{"atom":"co_located","args":["?l"],"value":true}]]}
-```
-"after any step, the task is complete exactly when for some ?l:LTYPE, ?o:OTYPE: holding(?o) and is_a(?o,OTYPE)
-and **not released(?o)** and on(?l) and is_a(?l,LTYPE) and co_located(?l)".
+> after any step, for every `?s:column`: `col_label_agrees_flat(?s)` holds whenever
+> `col_child_label_present(?s)`
 
-**5.2 The observations that contradict it** [FACT]. Natural episode tr:0215, task directory
-`look_at_obj_in_light-Pencil-None-DeskLamp-307`, raw trace sha256 `5d2ffb4a8b0e85aa…`, training split:
+In words: **where a split table's sub-label row has a real label of its own at a column's index, the
+index merge names that column correctly** - checked against independently observed flat renderings of
+the same table. The condition the learner had to find is that the *sub-label's own cell* is filled,
+as distinct from the merged label, which falls back to a spanning parent that is printed only at its
+first column.
 
-    [1] take pencil 1 from desk 1  ->  You pick up the pencil 1 from the desk 1.
-    [2] move pencil 1 to desk 1    ->  You move the pencil 1 to the desk 1.
-    [3] take pencil 1 from desk 1  ->  You pick up the pencil 1 from the desk 1.
-    ...
-    [26] go to sidetable 1  ->  ... you see a alarmclock 3, a alarmclock 2, a cd 3, a desklamp 1, and a pen 1.
-    [27] use desklamp 1    ->  You turn on the desklamp 1.          (episode ends: success)
+Model: `FW_MODEL.json`, version 2, digest `8fffff15bf961bcf`, vocabulary digest `1367b93cba6b15e1`.
 
-At the post-state of step 27 every conjunct holds **except** `not released(pencil 1)`, which is false because of
-the put-down at step 2. The old model therefore says NOT at the completing step, and NOT at every step. The
-conflict comes only from the record fact `released(pencil 1)` — not from extraction (each fact is a direct
-reading of an observation sentence) and not from location inference (the lamp's place is observed at step 26).
+**The separation is total.** Over the applicable columns there is no case of
+sub-label-present-and-disagreeing, and no case of sub-label-absent-and-agreeing. Measured under three
+pairing strengths:
 
-**5.3 The learner's proposal** [FACT]. Two independent attempts from the same frozen model, through the
-unchanged VX-1 learning interface and gate, 2 DeepSeek calls, $0.027 upper bound. Both removed the conjunct
-`not released(?o)` in their first round. Attempt A's own words: *"'released' is monotonic … so it is not a
-correct proxy for 'currently held' — that role is already played by holding(?o)."* Attempt B additionally added
-a supported effect, "after a successful `use R`: on(R)".
+| pairing requires | applicable | sub-label present & agrees | sub-label absent & disagrees | mixed |
+|---|---|---|---|---|
+| 1 shared data row (what `oqa_lc_cells.pair_tables` accepts) | 92 | 24 | 68 | **0** |
+| **2 shared rows (used here)** | 32 | 24 | 8 | **0** |
+| 3 shared rows | 32 | 24 | 8 | **0** |
 
-**5.4 Acceptance and regression checking** [MEASURED, by RP-1]. The gate accepted both: 0 counterexamples, 24
-supporting cases over the 84 learning records plus the counterexample. On the VX-1 learning (1,559 states) and
-checking (1,369 states) records, both candidates give the same verdict as the old model at **every** state — 0
-regressions. No false completion claim anywhere across 4,902 states. On a 63-episode natural follow-up set
-outside the counterexample's task, both candidates recognise 35/35 completions against the old model's 29/35,
-including **6/6 put-down / re-take successes against 0/6**, with 0 false claims on the 9 put-down / re-take
-failures. The repaired relation is semantically identical to the other learner stream's (`edacc137`), which
-neither attempt was shown.
+**A pairing correction, and it changes the numbers a great deal.** `oqa_lc_cells.pair_tables` accepts
+a pair on **one** shared data row and takes the first match. Measured here, that accepts pairings in
+which the two renderings are different tables of equal width - in one case a trust-fund table judged
+against a Gross/Refunds/Net-total table - and it turns 8 real disagreements into 68. The adapter
+therefore requires two independent shared rows, and when several candidate flat renderings disagree
+*with each other* at an index the column is left UNKNOWN rather than judged against an arbitrary one.
+`oqa_lc_cells` is not modified; the guard is in the layer above.
 
-**5.5 The changed conclusion.** This is the part OfficeQA has no counterpart for: **removing the learned
-contract removes the verdict.** The completion predicate *is* the learned relation; there is no supplied module
-that computes "the task is complete" from the prefix. The old and repaired models disagree on 6 recorded
-successes.
+**Prospective check under the frozen model.**
 
-**5.6 Its report and downstream delivery, with the studies kept apart** [FACT].
-- RP-1 generated `REPAIR_REPORT_{A,B}.md` and `OPTIMIZER_VIEW_{A,B}.txt` from the same structured result, and
-  classified the finding as **model refutation**, not actor error. The optimizer view is marked
-  *"an example only: not sent"* — **no optimizer call was made and no skill was edited in RP-1**.
-- **EB-1 is the separate study** that ran SkillOpt's own analyst, merge, ranking and edit application: 12
-  requests, 3 candidate skills (P / A / C). Its frozen release rule failed — no applied instruction was judged
-  by both blinded reviewers as fully supported, relevant and absent from another condition's candidate — so the
-  behaviour test was not run and **0 actor episodes** were collected. EB-1 also found that the two lamp facts A
-  and C carried into their candidates **were also derived by the P analysts**, because all three conditions
-  received the same learned-facts block.
-
-**What this walkthrough establishes, and what it does not** [INTERPRETATION]. It establishes that a learned
-contract can be refuted by a permitted observation, repaired by the learner, and that the repair changes 6
-recorded verdicts without a single regression — a demonstrated learned increment at the **model** level. It does
-**not** establish downstream value: the one study that reached SkillOpt's editing machinery found no supported
-difference between the report conditions, and no actor episode has been run under any of it. The counterexample
-was also researcher-identified and shown to the learner explicitly, so this tests the learner's *response* to a
-stated contradiction, not autonomous discovery.
-
----
-
-## 6. Walkthrough B — OfficeQA: the current source rule, end to end
-
-**6.1 Proposal** [FACT]. `runs/20261121-officeqa-learner/v2_learn/r1_call1_propose.json`. DeepSeek was shown a
-deterministic contingency table over the six learning questions and replied with one contract. Its stated
-reason: *"The table shows operands with exactly one position in the prefix and source tool grep are almost
-always corroborated as sourced (13/13, 10/10, and 4/5), while operands with no positions or non-grep tools are
-never sourced."*
-
-**6.2 Stored model** [FACT]. `r1_model_v1.json`, contract `operand.sourced@v1`, validated by
-`oqa_ln_vocab.validate` against the frozen vocabulary bundle `v10`, frozen by digest:
-
-```
-operand.sourced@v1 [active]
-    operand_sourced(operand)  [LEARNED]
-    IF  operand_positions(operand, 1)  [OBS]
-      AND operand_source_tool(operand, grep)  [OBS]
-    WITNESSES stage obligation source_traced
-```
-
-**6.3 Prediction** [FACT]. `oqa_ln_check.predict` writes one prediction per operand from the contract and the
-prefix-only features, with a content digest, **before** `resolve` reads any verdict. The protocol is sound. What
-it predicts is the next paragraph's problem.
-
-**6.4 Resolver output** [MEASURED]. `oqa_occ.bind`:
-
-```python
-key, occurrence = next(iter(positions.items()))
-found = corroborations(occurrence, written[value])
-supporting = [c for c in found if c in SUPPORTING]        # SUPPORTING = ("ROW_LABEL", "QUERY")
-bindings.append({... "binding": SUPPORTED if supporting else UNKNOWN, ...})
-```
-and
-```python
-def corroborations(occurrence, message_tokens):
-    found = []
-    if set(occurrence["line_tokens"]) & message_tokens:  found.append("ROW_LABEL")
-    pattern = set(occurrence["pattern_tokens"])
-    if pattern and (pattern & set(occurrence["line_tokens"])):  found.append("QUERY")
-    ...
-```
-A grep occurrence carries the call's pattern tokens, and it is on that line **because** the pattern matched it,
-so `pattern & line_tokens` is non-empty by construction. One concrete witness, from
-`PA2_TARGET.json`:
-
-| attempt | value | position | pattern tokens | also on the line | corroborations |
+| set | applicable | support | counterexamples | consistent | undetermined |
 |---|---|---|---|---|---|
-| p1/UID0063 | 81,774 | `treasury_bulletin_1990_06.txt` line 5450 field 3 | `german`, `marks` | `german`, `marks` | ROW_LABEL, **QUERY**, SOLE_IN_ROW |
+| learning evidence (23 attempts) | 8 | 6 | 0 | 2 | 2,823 |
+| **reserved attempt `p3/UID0028`** | **16** | **12** | **0** | 4 | 595 |
+| the 24 check-role attempts | **0** | 0 | 0 | 0 | 2,063 |
 
-Over all 48 attempts: **39 of 39** unique-position bindings whose position came from a grep fired QUERY and were
-SUPPORTED; of the 19 from a read, 6 were SUPPORTED (32%). P(SUPPORTED | QUERY) = 1.000.
+The reserved attempt is a real prospective confirmation under a frozen model, and a weak one: same
+question, same documents, different trajectory. **The 24 check-role attempts contain no applicable
+case at all** - the rule is simply never exercised on those questions, and that is reported as no
+applicable case rather than as confirmation.
 
-**6.5 Stage inference — the exact point where supplied logic duplicates and bypasses the learned conclusion**
-[MEASURED]. `oqa_ln_check.classify_operand`, first statement:
-
-```python
-def classify_operand(operand: dict, verdict: dict, dep_row: dict, q_nums: set) -> dict:
-    if verdict["sourced"]:
-        return {"class": SOURCED, "settled": True,
-                "why": "a unique observed position with an independent corroboration"}
-```
-
-The contract is not a parameter. In the caller it appears only here:
-
-```python
-cls = classify_operand(operand, v, deps.get(supporting, {}).get(oi, {}), q_nums)
-applies, _why = _applies(contract, operand["features"])
-refuted = bool(applies is True and not v["sourced"])
-```
-
-`cls` — the origin class that drives the obligation — is computed **before** the contract is consulted and
-without it. `applies` feeds exactly two things: the annotation `contract_predicted_sourced`, and a
-`model_refutation` that pushes `source_traced` to UNKNOWN. The provenance tag is then chosen by
-`V.LEARNED if contract is not None else IR.OBS`.
-
-**6.6 Report** [FACT]. `runs/20261121-officeqa-learner/v4_rehearse/DELIVERED_REPORT.md`, 3,129 bytes. The D-2
-audit established that the unresolved-operand warning in it is **byte-identical** with the rule removed.
-
-**6.7 The actual optimizer request** [FACT]. `LN_REHEARSAL.json`: attempt p1/UID0063, 2 paid DeepSeek calls,
-`inputs_identical_except_the_report: true`, edit budget 4, 2 edits in each condition, route
-`https://api.deepseek.com` / `deepseek-flash`. The contract-assisted analyst's own failure summary names the
-real finding:
-
-> "Operand 86,000 had no unique, checkable origin: it appears in two columns of the Polish-zlotys row and was
-> never cited by line/field, leaving source_traced outstanding even though the final arithmetic
-> (86,000 − 81,774 = 4,226) was correct."
-
-That finding comes from `verdict["match"] == SEVERAL_POSITIONS`, which is the **supplied resolver**. The learned
-rule contributed the word `LEARNED` on the provenance line.
-
-**6.8 The repair** [FACT]. `r1_call2_repair.json`. The prompt instructs: *"REPAIR THE HYPOTHESIS by adding ONE
-further condition…"*. The learner abstained and said why:
-
-```json
-{"extra_condition": null, "separable": false,
- "reason": "No available predicate can exclude the counterexample without also excluding a
-            correct-prediction group: the counterexample has the exact same feature vector as
-            4 operands where the contract predicted sourced and was right."}
-```
-
-That is the correct answer to the question it was asked. And the D-2 audit later showed the counterexample
-itself was a **parse artifact** — a numeral inside label text treated as a numeric cell — so after the D-2
-correction the rule's precision is 1.000 and the counterexample is gone. Neither fact rescues the rule: a rule
-with no counterexample that changes no conclusion is still a rule that changes no conclusion.
+**Explicit unknowns are the common case and are labelled as such.** 2,063 of the check set's column
+entities are undetermined because no flat rendering of their table was ever observed. The report says
+so, by count and by reason, and calls them gaps in the record or in the checker rather than findings
+about the agent.
 
 ---
 
-## 7. Does any saved OfficeQA model supply a task-relevant learned consequence that changes a justified conclusion?
+## 5. What changed when the learned model was removed
 
-I enumerated every saved OfficeQA model by scanning every JSON under `runs/` for a contract object. Three
-generations exist and all three were checked. [MEASURED]
+Four cells, all 48 attempts, same code path, the component **absent** rather than false.
 
-### 7.1 LN — `operand_sourced`
+| cell | bound columns | `column_identified` | `unit_resolved` | `conversion_accounted` |
+|---|---|---|---|---|
+| **A** nothing adopted, no rule | 0 | UNKNOWN 2,581 | UNKNOWN 2,457 / NOT_REQUIRED 124 | UNKNOWN 2,215 / NOT_REQUIRED 366 |
+| **B** assumption adopted, **no rule** | **0** | UNKNOWN 2,581 | UNKNOWN 2,457 / NOT_REQUIRED 124 | UNKNOWN 2,215 / NOT_REQUIRED 366 |
+| **C** assumption + the accepted rule | **1,152** | **DISCHARGED 257** / UNKNOWN 2,324 | **DISCHARGED 252** / UNKNOWN 2,205 / NOT_REQUIRED 124 | **DISCHARGED 13** / UNKNOWN 2,202 / NOT_REQUIRED 366 |
+| **D** assumption + the **refused** general form | 4,887 | DISCHARGED 384 | DISCHARGED 260 | DISCHARGED 13 |
 
-Covered above. The conclusion is the supplied resolver's own label; 0 of 48 attempts change state when the rule
-is removed. **Does not qualify.**
+Three readings, and the first is the one that matters:
 
-### 7.2 CC — `scale_binds`: a genuinely task-relevant claim that is never evaluable
+1. **B is identical to A.** The adopted assumption on its own changes nothing: not one column is
+   bound, and every obligation stays UNKNOWN. So the 522 obligation-state changes from B to C are the
+   **contract's** contribution, not the assumption's, and the contract is not a pass-through. This is
+   the test the LN generation failed: there, removing the rule changed four annotation fields and
+   nothing else.
 
-`CC_MODEL_v1.json` (sha256 `96c3d1bd9aad6f4d…`), rule OQA-CC-1:
+2. **C -> D costs 135 obligation states.** The refused general form would bind 4,887 columns instead
+   of 1,152 and claim 127 extra `column_identified` discharges - on exactly the columns where the flat
+   renderings show the merge is wrong. The condition the gate forced the learner to find is a
+   correctness condition, not a formality.
 
-```
-scale.binds@v1 [active]
-    scale_binds(table, cell, scale)  [LEARNED]
-    IF  table_states_scale(table, scale)  [OBS]
-      AND cell_in_table(cell, table)  [GIVEN]
-      AND NOT nearer_scale_between(table, cell)  [OBS]
-    WITNESSES stage obligation unit_match
-```
+3. **Accusations: 0 with the model, 0 without it.** The slice establishes provenance and resolves
+   units; it reports no failure of the agent at all. After the audit in section 2 this is the honest
+   state of it, and it is a smaller claim than the first version of this report made.
 
-**This is the right shape.** "A table's stated money scale applies to a cell unless a nearer scale annotation
-intervenes" is an empirical claim about how these documents are laid out; it is refutable by an observation; no
-supplied module computes it; and it witnesses a stage obligation that decides whether the actor's number is in
-the units the question asked for. It is the one OfficeQA hypothesis that matches the accepted design's intent.
+Per attempt: 8 of 48 attempts have at least one state change; the largest is `p1/UID0014` with 210,
+whose first changed row is
 
-**It has never produced a single conclusion** [MEASURED], from
-`runs/20261121-officeqa-contract/v6_lean/CC_CHECK_descriptive.json`:
+> `column_identified` DISCHARGED -> UNKNOWN, step 6, table 1, row `'1941'`, column `'Individual'`
+> [thousands], resting on assumption `index_alignment` and learned rule
+> `concludes.any.col_label_agrees_flat.1`
 
-| | n |
-|---|---|
-| operands checked | 113 |
-| no cell match at all | 63 |
-| a binding was attempted | 50 |
-| of those, truth = **UNKNOWN** | **50** |
-| truth = HOLDS | **0** |
-| truth = VIOLATED | **0** |
-| data cells with no bound header | 814 of 814 |
+`p1/UID0014` is the campaign's actual 1,000x unit error, so the slice's resolutions land on the
+attempt the whole unit question came from.
 
-Every one of the 50 fails on the same clause, for the same reason, recorded in the clause's own evidence
-pointer:
+---
 
-```json
-{"pred": "nearer_scale_between", "satisfied": null, "observed": null,
- "evidence_pointer": {"column_basis": "UNKNOWN", "column_observed": false,
-                      "why": "not observed for this cell: column header; absence cannot be asserted"}}
-```
+## 6. Repair, regression, and what is constructed
 
-The extraction cannot resolve which column a data cell is in, so it cannot assert the absence of a nearer scale
-annotation, so Kleene conjunction gives UNKNOWN. The contract is correct to abstain. This is the category the
-instruction calls **insufficient observable evidence**, and it is not a porting bug: it is one missing
-extraction output.
+### The recorded path
 
-**[INTERPRETATION] This is the causal chain worth recording.** The CC target was task-relevant and yielded
-nothing because the evidence was missing. The LN target was chosen to be guaranteed evaluable — and the only
-things guaranteed evaluable from this extraction are the labels the supplied pipeline already computes. The
-redundancy is a *response* to the extraction gap, not an independent mistake.
+On the real 48 attempts the over-general form is **refused on first contact** rather than accepted and
+later refuted: its 6 supporting and 2 refuting columns are in the same attempt. So the narrowing
+answers a refusal, and it passes with a clean regression:
 
-### 7.3 LC — the campaign contracts
+| | support | counterexamples | consistent | undetermined |
+|---|---|---|---|---|
+| general form | 6 | **2** | 0 | 2,823 |
+| narrowed | 6 | **0** | 2 | 2,823 |
 
-`model_M0.json` and the arm B / arm C models, schema `oqa.lc.model.v1`, five contracts:
+Regression: 0 supporting cases lost, 2 counterexamples fixed, 0 gained, 0 newly undetermined -
+`clean: true`. **The accept-then-refute-then-repair sequence does not occur naturally in this corpus**,
+and that is stated rather than simulated.
 
-| contract | content | reading |
+### The constructed fixture - labelled, and not evidence about the corpus
+
+Two synthetic records (`FIXTURE/F1_scaled`, `FIXTURE/F2_unscaled`) exercise the machinery the recorded
+path could not reach. Both are tagged
+`CONSTRUCTED FIXTURE - not evidence about the corpus` in the artifact.
+
+1. **Accepted on F1** (3 supporting, 0 refuting), carrying a superfluous conjunct, stated as a
+   biconditional:
+   `col_label_agrees_flat(?s)` exactly when `col_of(?s,?t)` and **`scale_stated(?t)`** and
+   `col_child_label_present(?s)`.
+2. **Refuted on F1+F2** by the gate's own re-scoring: 3 counterexamples of kind
+   `consequence_without_conditions` - F2's columns agree with their flat rendering while the rule's
+   conditions do not hold, because F2 states no scale.
+3. **Every repair the framework can express, each through the ordinary gate:**
+
+| candidate | decision | support after | regression |
+|---|---|---|---|
+| **delete the `scale_stated` conjunct** | **accepted** | **6** | 0 lost, 3 fixed, 0 gained - clean |
+| delete the `col_of` conjunct | accepted | 3 | clean, but keeps half the evidence |
+| delete `col_child_label_present` | **rejected** | - | 4 counterexamples; gained 1 - not clean |
+| narrow by adding `col_label_present` | **rejected** | - | fixes nothing |
+| retire the rule | accepted | - | always available; a refuted rule is a finding |
+
+4. **Selection policy, stated rather than left to enumeration order:** among the repairs the gate
+   accepts with a clean regression, take the one that keeps the most evidence, then the simplest. The
+   first-enumerated candidate keeps half the support, so taking it would have been arbitrary. The
+   model goes v1 `superseded` -> v2 `active`, `operation: revise`.
+
+**This is the repair the OfficeQA CC/LN generation could not express.** Its `repair()` returns
+`new["conditions"] = list(c["conditions"]) + [extra_condition]` - append only - and a test asserts
+both that the framework deletes and that the old module does not.
+
+---
+
+## 7. Lean
+
+**Generated, not compiled.** `research/officeqa/lean/OqaFramework.lean`, 18,394 bytes, digest in
+`research/officeqa/lean/MANIFEST.sha256`. There is no `lean` on this workstation, and compiling on the
+cluster needs a deployed snapshot, which needs a push. **No Python mirror is substituted for the
+compiler and nothing here is reported as a Lean result.**
+
+What it is written to check, and the first item is what the previous generation did *not* do:
+
+* **the learned model's application, not an exported verdict.** Every scored column is exported as its
+  **literal values** - the Kleene value of each literal of each clause, and of the consequence - and
+  Lean recomputes the CNF, the three-valued conjunction and disjunction, and the pointwise class from
+  them. 24 such columns, one `example ... := by decide` each. An exported `refuted` boolean would have
+  been checked against nothing.
+* **the gate's counts**, re-derived by folding over the recomputed classes: support 18, consistent 6.
+  A gate decision rests on those counts.
+* **the stage algebra over the exported tuples of all four ablation cells**, so the headline numbers of
+  section 5 are re-derived by the same definitions: 77 further examples.
+* **7 general theorems**, among them `licenceWithdrawnNeverAccuses` (a withdrawn licence leaves every
+  downstream obligation UNKNOWN, for *arbitrary* required and stated factors),
+  `unknownNeverOutstanding`, `undeterminedWhenConditionUnknown`, `impliesNeverCounterOnFalseCondition`
+  and `iffIsStrictlyStronger`.
+
+101 examples and 7 theorems. Proof forms were copied from the file the cluster already compiled with 0
+errors (job 66599377), not invented, since I cannot type-check here.
+
+**An independent re-derivation in Python** re-computes every exported class and every weighted total
+with a second, deliberately naive implementation: 24 of 24 rows agree, 0 of 12 total mismatches,
+`clean: true`. This is **not** a substitute for the compiler; it catches the one failure the compiler
+could not - an export that disagrees with what the checker recorded, in which case Lean would
+faithfully verify the wrong numbers.
+
+**What compiling it would not establish:** that the extraction found the right table, column or cell
+(a trusted input); that the empirical rule is true of the Treasury corpus (measured, with its support
+and scope, in section 4); that any reported state caused a task outcome.
+
+---
+
+## 8. Delivered optimizer inputs and candidate edits
+
+### The integration is the one that already existed
+
+One additive branch in `oqa_reports.build_one_lc` for condition `FW`, selected by the environment
+variable the frozen campaign already uses. No new plumbing enters `skillopt`: the same arm variable,
+the same cache key (which already includes the trace *and* the frozen model digest, so a second epoch
+cannot be handed a first-epoch report), the same answer-key audit, which raises rather than warns. A
+test asserts the `FW` branch returns **before** the three existing LC conditions' path, and that their
+headings are unchanged.
+
+### The matched comparison
+
+One real recorded optimization step of the completed Original SkillOpt arm: step 1, epoch 1, 12
+trajectories, starting skill `skill_v0000.md`, 2 patches, 3 merged edits, edit budget 4, fixed
+learning-rate control, support counts [7, 7, 5].
+
+Both analyst inputs were built by the **unchanged** native formatter
+`skillopt.gradient.reflect.fmt_minibatch_trajectories` over the same 12 items and the same prediction
+directory, differing only in whether the report variable was set:
+
+* control 608,285 characters, treated 653,582 characters;
+* **+621 lines added, 0 removed** -> the control input is a prefix-preserving subsequence of the
+  treated one, so the arms differ in the report and in nothing else. The harness asserts this rather
+  than claiming it.
+
+### Which native stages ran
+
+| stage | ran | what happened |
 |---|---|---|
-| `grep.effect.1` | a successful grep returns an observation where `pattern_in_every_line` | true of grep **by construction** — the same tautology as `operand_sourced`, two generations earlier |
-| `grep.effect.2`, `read.effect.1` | `sub_row_aligned` | a property of whatever window the actor happened to request |
-| `read.effect.2`, `read.effect.3` | `col_leaf_sound = False`, `col_path_sound = False` | a recorded measurement of **the extraction's own limitation** — the same gap that blocks `scale_binds` |
+| analyst | **no** | a provider call; SkillOpt runs on the cluster in this project. Both request bodies are built and digested at zero cost; the control arm's recorded patches are used as its output. |
+| merge | **no** | `skillopt.gradient.aggregate.merge_patches` calls the optimizer. The control arm's recorded merge is read. |
+| rank | **no, and it legitimately did not fire** | 3 merged edits against an edit budget of 4, so `rank_and_select` was never reached in the recorded step either. Recorded as not-fired; no patch was fabricated to force it. |
+| **apply** | **yes, for real** | `skillopt.optimizer.skill.apply_patch_with_report` is pure Python. Re-executed here on the recorded merged patch, it **reproduces the recorded candidate skill byte for byte** and its three per-edit statuses match the recorded ones. |
 
-Arm C's model is identical at epochs 2, 3 and 4 and still carries `epoch: 1`; arm B retired one contract at
-epoch 3 and then froze. **Does not qualify**: none of these changes a justified conclusion about the task, and
-two of them are about the checker rather than about the world.
+To import the two native stages on a workstation without the `openai` package, a stub is installed
+that **raises on every attribute**, so a stage that tried to reach a provider would fail loudly rather
+than proceed quietly. Whether the stub was installed is recorded in the artifact.
 
-### 7.4 Answer
+### The trace, end to end, for the control arm
 
-**No qualifying OfficeQA example is currently available.** One saved model states a task-relevant learned
-consequence (`scale_binds`), and it changes no conclusion because the evidence its condition needs is not
-extracted; the other two state tautologies of the tools or properties of the extraction.
+> **observation** `step 6` of `p1/UID0014`: a read returns a split-header table, `(in thousands of
+> dollars)`, sub-label row aligned
+> -> **learned contract** `concludes.any.col_label_agrees_flat.1` covers column `co:s6:...` because
+> its sub-label cell reads `Individual`
+> -> **checked consequence** `col_bound = TRUE` (basis `inferred`; rests on `index_alignment` and that
+> rule) -> `nearer_unit_stated = ABSENT` -> `cell_scale_resolved = TRUE` -> `column_identified` and
+> `unit_resolved` **DISCHARGED**, citation `step 6, table 1, row '1941', column 'Individual'
+> [thousands]`
+> -> **delivered report** `UID0014.<key>.md`, bound by `trace d7c13ba5428e913f`, model
+> `8fffff15bf961bcf`, checked result `44217c8079e58b5b`
+> -> **proposed edit** (control arm, no report): `insert_after` - "Read column headers literally
+> before using any cell: 'net' often means gross minus refunds ..."
+> -> **final candidate instruction**: that line, in `candidate_skill.md`, which the gate then
+> **rejected** (candidate 0.333 against a 0.417 rollout).
 
-I did not invent a rule by hand, did not insert a mandatory learned-rule gate, and did not weaken any supplied
-checker to make the ablation come out differently.
+12 reports were generated and delivered through the native integration.
 
----
+### The uncomfortable part, measured
 
-## 8. The smallest faithful port
+All four topics the framework's report carries are **already present in the control arm's own output**,
+produced from the raw traces with no report at all:
 
-**A statement first, because it governs the whole plan.** [INTERPRETATION] **The main issue is the learning
-target, not code portability.** Two of the three OfficeQA generations already reproduce the ALFWorld machinery
-closely enough that no refactor is justified, and the third's gap is one extraction output plus one repair
-operation. I am **not** proposing a common library: the two implementations are not behaviourally equivalent
-yet, and the design note's own rule is to establish parity before unifying. Nothing below moves code between
-worktrees.
-
-### 8.1 Reusable core — already shared or reusable with no semantic change
-
-| component | OfficeQA module | status |
+| topic | already in the control arm? | the control's own phrases |
 |---|---|---|
-| contract schema, provenance labels, validation, semantic digest, freeze-by-digest, `load_frozen` verification | `oqa_cc_ir` (and `oqa_lc_ir` for the three-kind form) | behaviourally equivalent to `ir.py`; `transferred/ir.py` is still byte-identical to the reference |
-| the gate: schema valid, zero determinate counterexamples over **all** evidence, at least one supporting case, auto-refutation of actives, nothing deleted | `oqa_lc_learn.apply_proposal` | full parity with `learn.py`, **already in this repository**, merely unused by the LN line |
-| commit-before-reveal, hash-chained order log, discrepancy taxonomy | `oqa_lc_replay`, `oqa_ln_check.predict`/`resolve` | parity |
-| fact kinds OBSERVED / INFERRED / FORECAST, four-valued statuses, obligation reopening on contradiction | `oqa_lc_chain` | A4 §3.1 semantics preserved |
-| `run_lean` / `parse_results`, the Python-mirror rule, core-only, no `sorry`, no `native_decide` | `oqa_lc_lean`, `oqa_ln_lean` | parity of discipline |
-| repeated per-arm model evolution: `seed` once on a shared rollout, `evolve` per arm per epoch, reports under M_{N-1} | `oqa_lc_arm` | **no ALFWorld counterpart; keep it** |
+| column header identity | **yes** | "column header", "headers literally", "header block" |
+| money scale / unit | **yes** | "unit", "divide by" |
+| citing a position | **yes** | "record each operand", "operand with its" |
+| period / row identity | **yes** | "fiscal year", "annual", "monthly" |
 
-### 8.2 OfficeQA adapters — differences that are legitimate and should stay
+The control analyst's failure summary names "Table/column semantics misread: 'net' = gross-refunds
+(not receipts-outlays)" with a count of 4. So on this step the framework's report is **not** what
+reveals the failure mode. What it adds is per-number citations, the states those citations support,
+and explicit unknowns. Whether that changes the *edit* is exactly what the unrun analyst call would
+decide.
 
-| difference | why it is legitimate |
-|---|---|
-| entities are table / header / cell / value / calculation, not objects and receptacles | the benchmark's ontology; the instruction explicitly does not require ALFWorld's vocabulary |
-| `requires` / `suffices` effectively vacuous | OfficeQA's document tools almost never report failure, so success prediction is UNKNOWN at PRE by construction; the port recorded this with a test |
-| no machine-readable goal; `oqa_obligations.derive` reads the question sentence and labels each requirement STATED or UNKNOWN | OfficeQA has no PDDL goal to trust |
-| cells persist as *availability from the step that returned them*, not as world state | an OfficeQA atom is a property of one observation; there is no physical state to carry |
-| `context.answer_kinds` instead of `context.task_types` | the same role, the benchmark's own type system |
-| mathematics, question requirements and supplied parsing rules are labelled MATH / TASK / GIVEN and are **not** learnable | the contract audit's central complaint was ordinary arithmetic presented as a discovery; this must not be undone by demanding that such primitives be learned |
+### Does the candidate's wording survive? (control arm, counted not judged)
 
-### 8.3 Missing or mismatched behaviour — the smallest changes
-
-Each entry gives the exact module and function, current behaviour, required behaviour, why, a verification
-example, and whether it touches information access, actor behaviour or comparability. **P-1 is independent of
-the target. P-2 is what makes a new target evaluable. P-3 and P-4 only matter once a target exists.**
+The starting skill contains **no** obligation words. The candidate adds `critical` 1, `do not` 3,
+`never` 1, while optional vocabulary rises from `if` 3 to `if` 11. Two of the three edits mix
+obligation and optional vocabulary in one block. Recovery language **is** preserved - "If the needed
+figure is absent, answer from the best available evidence and commit", "Give the best qualitative
+answer instead of searching indefinitely". So the one candidate examined hardens the skill without
+closing off recovery, and the gate rejected it anyway.
 
 ---
 
-**P-1. `oqa_cc_ir.repair` — the repair interface cannot delete.** *(necessary regardless of the target)*
+## 9. Verification: what ran, and what did not
 
-- **Current:** `repair(c, extra_condition, reason, counterexamples)` returns a new version whose conditions are
-  `list(c["conditions"]) + [extra_condition]`. Statuses are only `active` and `superseded`. There is no retire,
-  no revise, no widen, no assumption set and therefore no assumption drop.
-- **Required:** the operation set `oqa_lc_learn.apply_proposal` already implements — add / revise / **retire** /
-  keep, plus assumption adopt / drop — lifted to the CC/LN contract form, keeping every superseded version with
-  its counterexamples and re-scoring survivors over all earlier evidence.
-- **Why:** ALFWorld's only successful repair to date was a **deletion** of one conjunct. OfficeQA cannot express
-  it, so a whole class of correct repairs is invisible to the learner and to the gate. The LN repair call's
-  abstention is the right answer to the wrong question.
-- **Verification example:** replay the deletion shape on `operand.sourced@v1` — drop
-  `operand_source_tool(grep)` — and show a version chain `v1 (superseded) -> v2 (active)` with the gate
-  re-scored over all 48 attempts and both frozen models, no retraining. The expected result is recorded first.
-- **Touches:** nothing actor-visible, no information access, no comparability. Pure checker-side.
+**22 new tests, all passing** (`tests/test_officeqa_fw.py`), run with the scratchpad pytest. They
+assert the snapshot's digests, that nothing imports the sibling worktree, three-way behavioural parity
+with the snapshot, that deletion-repair exists here and not in the old generation, the unnamed-token
+property, both extraction corrections, that a withdrawn licence never accuses, that a narrated number
+carries no conversion obligation, the Lean file's theorem names and manifest digest, report hygiene,
+and that the three LC conditions were left alone.
 
----
+**54 of 55 related tests pass locally.** The one failure,
+`test_officeqa_three_arm.py::test_the_budget_and_the_running_code_agree_on_the_prompt_limit`, fails on
+`ModuleNotFoundError: No module named 'openai'` inside `skillopt/model/azure_openai.py` - a
+pre-existing limitation of this workstation, unrelated to any change here. **The full suite
+(2,615 tests at the last cluster run) has not been run against these changes**, because that needs a
+deployed snapshot.
 
-**P-2. `oqa_cc_check` / `oqa_ln_evidence` — a data cell's column header is never observed.** *(the binding gap)*
-
-- **Current:** 50 of 50 attempted cell bindings carry `header_known: false`, `column_basis: "UNKNOWN"`,
-  `column_leaf_basis: "LEAF_ONLY"`; 814 of 814 data cells have no bound header. Amendment B-4 already recorded
-  that the column **leaf** is recoverable from a split header while the column **path** is not.
-- **Required:** when the returned read window contains the header band for the rows it also returns, resolve the
-  cell's column path from it; when it does not, keep UNKNOWN **and say which of the two it is** — "the window
-  did not include the header" is a different state from "the header is ambiguous".
-- **Why:** it is the single clause that makes OfficeQA's one task-relevant contract unevaluable, and it is also
-  what any new target about units, periods or columns will need.
-- **Verification example:** rerun `oqa_cc_check` descriptively over the same 24 items and report the 50
-  bindings' truths. Success is **not** "50 HOLDS"; success is that each of the 50 moves to HOLDS, VIOLATED, or
-  an UNKNOWN with a stated cause, and that the count of each is reported before the contract is re-scored.
-- **Touches:** extraction only. It reads the same returned observations — no new information reaches the actor,
-  no document rendering changes, no actor-visible tool changes. **It does change what the checker can see, so
-  any arm comparison must re-run both conditions under the same extraction version.**
+**Not run:** Lean compilation; the analyst and merge stages; any actor episode; any validation or
+final evaluation; the campaign.
 
 ---
 
-**P-3. `oqa_ln_check.predict` — the thing predicted is a function of the committed inputs.** *(contingent on a new target)*
-
-- **Current:** the prediction's features and the revealed verdict are both derived from the same
-  `observed_occurrences` call on the same prefix. Commit-before-reveal is enforced, but the target cannot
-  surprise the features.
-- **Required:** what `vx_check.predict_episode` does — commit a claim about the **next observation** (what the
-  environment returns), then reveal it. This follows automatically if a target from section 9 is adopted; it is
-  not a separate piece of engineering.
-- **Verification example:** ALFWorld's own test, ported — withhold observation *k* from the forecast at step *k*
-  and show the forecast is unchanged. RP-1 ran exactly this and got 0 changes of 2 x 1,369.
-- **Touches:** nothing actor-visible.
-
----
-
-**P-4. `oqa_ln_lean` — Lean does not check the learned model.** *(contingent on P-1 or a new target)*
-
-- **Current:** `_lean_inputs` exports a per-attempt record of booleans and counts; `refuted` is a single bit.
-  Lean proves theorems about the stage resolution algebra over that summary and nothing about the contract.
-- **Required:** what `vx_lean` and the RP-1 files do — export the evidence rows and recompute the contract's
-  gate tuple (support, counterexamples, undetermined) in Lean by `decide`, asserting equality with the Python
-  gate before export.
-- **Why:** it is the cross-check that has already earned its keep once in this project by **failing** and
-  exposing a false accusation in the Python checker. Over a one-bit summary it cannot fail that way.
-- **Verification example:** a `decide` theorem that `operand.sourced@v1`'s tuple over the 48 attempts equals the
-  Python gate's, and a deliberately wrong exported count that makes the file fail to compile.
-- **Touches:** nothing actor-visible.
-
----
-
-**Not proposed.** A broad table-parser rewrite; any change to actor-visible tools, document rendering or
-scoring; a common library across the two worktrees; porting ALFWorld's object vocabulary or lamp rules;
-inserting a mandatory learned-rule gate so that removing the rule changes an output; any change to ALFWorld
-files, jobs, state notes or experiments.
-
----
-
-## 9. If the issue is the target: two narrowly grounded options
-
-**It is the target.** [INTERPRETATION] Both candidates below predict **what the environment returns given a
-choice the actor makes**, which is the structural property ALFWorld's working targets have and OfficeQA's have
-never had. Neither is adopted; each is stated so Codex and you can reject it.
-
-**On the test "not another supplied checker label".** The honest form of the test is not "no supplied code
-computes it" — ALFWorld's completion label is computed by supplied code too, from the outcome plus the declared
-harness rule. The test is whether it is computable **from the information the prediction is allowed to use**.
-`operand_sourced` fails that test: features and target come from one `observed_occurrences` call on one prefix.
-Both options below pass it: the label lives in the observation that has not happened yet.
-
-**Base rates, measured on the 48 frozen attempts** [MEASURED]
-(`runs/20261122-officeqa-parity/PA3_TARGET_BASIS.json`, sha256 `c8450584d0f4e323…`). 536 tool steps.
-The two detectors are coarse text tests declared in the artifact, not the extraction: a multi-level column
-header is an observation containing `" > "`; a stated money scale is a caption such as `(In thousands of
-dollars)`.
-
-| verb | calls | returned nothing | returned a table row | multi-level header | stated money scale | header **and** scale |
-|---|---|---|---|---|---|---|
-| `grep` | 261 | **99 (38%)** | 99 | 45 (17%) | **0 (0%)** | 0 |
-| `read` | 192 | 0 | 142 | 50 (26%) | 36 (19%) | **21 (11%)** |
-| `glob` | 76 | **61 (80%)** | — | — | — | — |
-| `answer` | 7 | — | — | — | — | — |
-
----
-
-### Target A — will this call return the context that governs its own rows?
-
-- **What is unknown before the action.** Whether the observation the actor is about to receive will carry the
-  column header band and the scale caption that govern the data rows it returns, or only the rows.
-- **What permitted evidence establishes the outcome.** The returned observation itself, read by the extraction.
-  It is a property of the **next** observation, so it is not computable from the prefix the forecast uses.
-- **Why it is not another supplied checker label.** `oqa_occ`/`oqa_cc_check` compute it *after* the call. No
-  supplied module predicts it from the request.
-- **How it reaches a stage or an instruction.** Directly: it is the clause that makes `scale_binds` UNKNOWN 50
-  times out of 50, and it is what `unit_match` and `cell_bound` need. The instruction it supports is concrete —
-  *a grep gives you the row and never the units; before computing, read the range that begins at the table's
-  caption.* The 0-of-261 figure is the evidence for the first half of that sentence.
-- **What a later counterexample could challenge it.** One grep whose returned window does carry a scale caption
-  refutes the strong form; a read spanning the caption whose cell still cannot be bound refutes the claim that
-  carrying the caption is sufficient. Both are cheap to look for in the same records.
-- **Available evidence and the simple baseline it must beat.** 192 reads and 261 greps. The baseline is the
-  constant-per-verb predictor ("grep: never; read: 19%"), which is already strong for grep. A learned rule earns
-  its place only by conditioning on something available **before** the call — for instance whether the read
-  range begins within a few lines of a caption the prefix already revealed.
-- **Honest caveat.** Target A is **blocked on P-2**: with 814 of 814 data cells carrying no bound header, the
-  downstream label is nearly constant today, and a near-constant target is unlearnable for the same reason
-  abandonment was. P-2 first, then measure the base rate again, then decide.
-
----
-
-### Target B — will this call return anything at all?
-
-- **What is unknown before the action.** Whether the pattern or glob the actor is about to issue returns
-  `[no matches]`.
-- **What permitted evidence establishes the outcome.** The returned observation. Nothing else is needed, and
-  **this one is measurable today** — no P-2, no extraction change.
-- **Why it is not another supplied checker label.** The supplied resolver says nothing about a call that has not
-  been made. Emptiness is a fact about the corpus and the pattern, not about the checker.
-- **How it reaches a stage or an instruction.** `lookup_observed` is UNKNOWN whenever the occurrence channel was
-  never available, and 10 of 25 attempts in the D-2 stage set are in exactly that state. It is also OfficeQA's
-  analogue of ALFWorld's avoidable-work account, which is what the editing comparison is actually about: 99
-  wasted greps and 61 wasted globs across 48 attempts is a large, countable cost the skill could reduce.
-- **What a later counterexample could challenge it.** Any pattern satisfying the learned condition that returns
-  nothing; or, in the other direction, a condition so narrow it covers almost no call.
-- **Available evidence and the simple baseline it must beat.** 261 greps (38% empty) and 76 globs (80% empty) —
-  a genuinely uncertain target with a lot of evidence. The baseline is the per-verb constant and the obvious
-  supplied heuristic "the pattern's tokens already appeared in an earlier observation". A learned rule must beat
-  **both**, measured on the checking questions only.
-
----
-
-### A correction to my own first draft of this section
-
-My first draft of this section said the D-2 packet's §14b target was "withdrawn" because it "conflates
-formatting with evidence". **That was unfair and I withdraw the withdrawal.** Re-reading §14b against this
-audit's own measurement:
-
-- §14b predicts, from the query as the agent writes it and the prefix before it, whether a tool call will
-  return a line-numbered, pipe-delimited observation. That is a forecast about **the next observation**, which
-  is the structural property this section asks for. §14b argues the point explicitly and correctly.
-- Its measurement and `PA3_TARGET_BASIS.json` are the **same measurement**. §14b's grep row is
-  "261 calls, 99 return nothing, 63 numbered with no cells, 99 numbered pipe cells"; PA3's grep row is
-  "261 calls, 99 returned nothing, 99 returned a table row". **Target B above is therefore a restatement of
-  §14b from the other side, not a replacement for it** — for grep the two targets partition the same 261 calls
-  identically.
-- §14b also already names the honest risk ("the regularity may be close to *read never cites, grep sometimes
-  does*") and locates the real empirical content in the same place Target B does: what distinguishes the 99
-  greps that return a cell from the 162 that do not.
-
-So the live options are **two, not three**: §14b/Target B (one target, two descriptions) and Target A. What this
-audit genuinely adds is **Target A**, which §14b does not cover: a citable cell is not the same thing as the
-*context that interprets it*. A grep hit can be perfectly citable and still carry no units — 0 of 261 greps
-returned a stated money scale, against 36 of 192 reads — and `unit_match` needs the units, not the line number.
-Target A is the complement of §14b, and it is the one blocked on P-2.
-
-**What I am not proposing, in any form:** a third repetition of a proxy-label classifier, or any target whose
-label the supplied pipeline computes from the same prefix the features come from.
-
----
-
-## 10. What was and was not changed
-
-**Changed in this worktree** (three files, all additive):
-
-| file | what it is |
-|---|---|
-| `research/officeqa/oqa_pa_parity.py` | new. The two probes of section 4 and section 1.3. Read-only with respect to every existing artifact; writes only into `runs/20261122-officeqa-parity/`. |
-| `tests/test_officeqa_pa.py` | new. 7 tests, all passing. They assert the facts the audit rests on: `classify_operand` takes no contract argument and no forbidden name appears in its body; the absent condition is the checker's own `None` path; a grep hit entails `QUERY`; `oqa_cc_ir.repair` can only append and the words `retire` / `revise` / `drop` / `widen` do not occur in that module; and the probe module names no answer key, no held-out record and no provider field and imports no `skillopt` module. |
-| `docs/research/OFFICEQA_IMPLEMENTATION_AMENDMENTS.md` | amendment **D-6**, recorded before the module was used for any conclusion. |
-
-**Not changed.** No existing OfficeQA module's behaviour, no vocabulary, no stage semantics, no extraction rule,
-no Lean definition, no report text, no frozen model, no run artifact, no state note of another track. No file in
-either sibling worktree was written or executed. No skill edit was applied. No validation or actor episode ran.
-No held-out score or trajectory was opened. No baseline was rerun. ALFWorld's files, jobs and experiments are
-untouched, and its owner was not asked for anything.
-
-**Test evidence** [MEASURED]. `tests/test_officeqa_pa.py` 7 passed; `tests/test_officeqa_d2.py` +
-`tests/test_officeqa_pa.py` together **63 passed, 2 skipped** in 4.1 s, local Python 3.12. The full repository
-suite cannot run on this machine — 35 collection errors, all from tests that import `skillopt`, which the local
-interpreter cannot load; that suite runs on the cluster and last passed there at **2,615 passed / 0 failed**
-(job 66599377, D-2). No new Lean was written, so no Lean compile was needed; the existing receipt stands.
-
-## 11. Provenance of every snapshot used
-
-| snapshot | identity | when |
-|---|---|---|
-| OfficeQA worktree | `officeqa-contracts` @ `39a7e33`, clean, all tracked | start of this audit, 2026-11-22 01:40 EST |
-| ALFWorld worktree | `contract/learned-contract` @ `4a9914a`, **70 untracked files**, digests in §2.2 | read 2026-11-22 01:41-01:52 EST |
-| accepted design | v0.1 + A1-A5, digests in §2.1; the first five match the 2026-11-16 port note | unchanged since the port |
-| frozen OfficeQA records | `LN_FREEZE.json`, 48 attempts, content digest recorded in D-2 | 2026-11-21 |
-| LN models | `r1_model_v1.json`, `r2_model_v1.json` | 2026-11-21 19:33 EST (= 2026-11-22 00:33 UTC; the `utc` fields are UTC and are **not** evidence of a call during this audit) |
-| CC model check | `CC_CHECK_descriptive.json`, model sha `96c3d1bd9aad6f4d…` | 2026-11-21 |
-| LC campaign models | arm B / arm C epochs 2-4 | 2026-11-18 pull |
-| ALFWorld RP-1 | `RP1_REPORT.md` + `runs/20261121-rp1/`; rp modules last modified 2026-11-21 01:05-01:11 EST | read, not run |
-| ALFWorld EB-1 / CR-1 | `EB1_REPORT.md`, `CR1_REPORT.md`; those modules are being worked on by the ALFWorld session, so only the version read on 2026-11-22 is cited | read, not run |
-| this audit's artifacts | `runs/20261122-officeqa-parity/`: `PA1_CALLPATH.json` `55a71d3140fe9d99…`, `PA2_TARGET.json` `c471e078923342ab…` (both 01:52:14), `PA3_TARGET_BASIS.json` `c8450584d0f4e323…` (02:01:20) | 2026-11-22 |
-
-**One caution about ALFWorld digests.** Its learned-contract work is entirely untracked, so a digest is the only
-identity those files have, and the session that owns them is actively editing `research/eb1/` and
-`research/cr1/`. Every ALFWorld claim here is anchored to the digests in §2.2 and to the saved reports, not to a
-commit, and should be re-verified against those digests before being relied on later.
-
-## 12. Resources
+## 10. Resources and what is sealed
 
 | | |
 |---|---|
-| authorized for this audit | at most **2.00** requested CPU job-hours from the verified OfficeQA remainder |
-| **used** | **0.00** — every measurement ran locally on this machine; no job was submitted |
-| remaining OfficeQA CPU allowance | **3.08** requested job-hours, unchanged |
-| provider / learner / optimizer / actor calls | **0** |
-| GPUs | **0** |
-| teacher attempts | 18, untouched |
-| held-out records | sealed, not opened |
-| wall time | **25 minutes** (01:40:50 to 02:05:19 EST, from `date` and the commit time) |
+| cluster jobs submitted | **0** |
+| provider calls | **0** |
+| GPU | **0** |
+| OfficeQA CPU job-hours consumed | **0.00** of the 3.08 remaining |
+| teacher attempts consumed | **0** of 18 |
+| local workstation CPU | about 3 minutes in total (the 378-candidate search runs in 6 s) |
 
-## 13. Open questions I could not settle offline
+Verified on the cluster at 20:36 EST: the only OfficeQA jobs today are the three D-2 submissions that
+predate this work (66598457 and 66599047 cancelled while PENDING at zero cost; 66599377 COMPLETED in
+00:04:03 on one core). Today's other jobs - `ac2-pfl`, `ac2-pfx`, `ac2-pre`, `ac2-leanprobe`,
+`lc-rank` - belong to the ALFWorld session's AC-2 campaign and are not mine to touch. The budget
+ledger reads `verdict: PASS`.
 
-1. **Whether P-2 is a small change.** I established that the column header is never bound and that amendment
-   B-4 already distinguishes the recoverable leaf from the unrecoverable path. I did **not** establish that
-   resolving the path from a header band present in the window is cheap; that needs a reading of
-   `oqa_cc_extract` against real windows, which is a further task.
-2. **Whether a paid learner would propose anything on Target A or B that a deterministic enumeration would
-   not.** This is the same open question the 2026-11-16 port note recorded, still open.
-3. **Whether either branch's contract reports change a skill that survives a gate.** Neither has shown it.
-   ALFWorld's one attempt (EB-1) failed its own release rule; OfficeQA has never run merge, ranking or a gate on
-   a contract report.
-4. **The CC model file itself.** Only its check output is local; `CC_MODEL_v1.json` lives on the cluster. I used
-   the rendered contract and the model digest recorded in `CC_BUNDLE_v9.json`, which agree with the check
-   output's `model_sha256`, but I did not read the file's bytes.
+**Sealed and untouched:** the 30 final questions and their scores, the 12 validation scores, the
+held-out trajectories. The baselines were **not** rerun, and did not need to be: no actor, tool,
+document-rendering or scorer change was made, and the three existing report conditions dispatch
+exactly as before.
 
 ---
 
-*End of audit. No contract performance campaign, no new paid rehearsal, no learning experiment, no baseline
-rerun and no held-out unsealing follows from this document.*
+## 11. The campaign, prepared and verified but not submitted
+
+`FW_CAMPAIGN_SPEC.json`, digest `a15a5248c1ba5ab0`. Every protocol item was checked against the
+executed baseline's own `config.json` rather than against the instruction's description of it, and
+**all seven match**: 4 epochs, 6 slow-update samples, slow update on, gate on, edit budget 4, fixed
+learning-rate control, split directory with seed 42. The campaign bank starts **empty** again; the
+demonstration's model is evidence about the machinery, not a prior.
+
+Estimate, from the completed Original SkillOpt arm on the same splits and settings: 16 optimizer calls
+and about 873,000 optimizer prompt tokens (the measured +7.4% report overhead included; the report
+itself costs no model call), 673 actor calls, 60 final-evaluation attempts, no GPU, and about 1.5 CPU
+job-hours for the controller. The Lean job is 1 CPU, 4 GB, 20 minutes, about 0.34 CPU job-hours.
+
+**What blocks submission is one authorization, not any remaining implementation work.**
+`research/deploy.sh` refuses a commit that is not on `origin`, and pushing is recorded as withheld. So
+the Lean compile and the campaign both wait on the same decision.
+
+---
+
+## 12. Limitations, stated plainly
+
+1. **The learning evidence is narrow.** All 32 applicable columns come from one question, `UID0028`,
+   and the prospective check is a reserved *attempt* of that same question on the same documents. The
+   rule's separation is perfect (24/24 and 8/8, with no mixed case at any pairing strength), but it is
+   perfect on a small set.
+2. **The 24 check-role attempts contain no applicable case.** The rule is not exercised on them at
+   all.
+3. **No added value over the control is demonstrated.** The no-report arm already produced the
+   column-header instruction. The comparison that would settle it needs the analyst call.
+4. **Lean has not been compiled.** The file is generated, digested and self-checked against a second
+   Python implementation; nothing is claimed about the compiler.
+5. **The full test suite has not run against these changes.**
+6. **`conversion_accounted` resolves to DISCHARGED only 13 times** across all 48 attempts. The slice
+   touches the unit question's provenance much more than its arithmetic, because a stated factor's
+   application to a particular number is not recorded.
+7. **A differing stated factor is reported UNKNOWN**, deliberately. Calling it a violation would
+   repeat the error the D-2 audit found 13 times.
+8. **The report is long** - about 14,000 characters for an attempt with 227 written numbers. It grew
+   the analyst's input by 7.4% on the measured step. Whether that is a good trade is unmeasured.
+
+---
+
+## 13. Provenance
+
+| artifact | digest |
+|---|---|
+| `runs/20261122-officeqa-framework/FW_LEARN.json` | `458d299da3c9e3e3` |
+| `FW_CHECK.json` | `682bf27f6d611c82` |
+| `FW_ABLATE.json` | `39cbb119bc5d904d` |
+| `FW_GRID.json` | `ecccb0de68c9bf69` |
+| `FW_REPAIR.json` | `9f6d003464be6e07` |
+| `FW_LEAN.json` | `3d8817553c6f3ff8` |
+| `FW_EDIT.json` | `48e485dc368a8f55` |
+| `FW_CAMPAIGN_SPEC.json` | `a15a5248c1ba5ab0` |
+| `FW_MODEL.json` (frozen, read-only) | `8fffff15bf961bcf` |
+| `OqaFramework.lean` | `a26e48a1a31a154825cd77968846d24444a29369a3bcc57d55bb348dd5a78786` |
+| `framework/upstream/MANIFEST.json` | `00a907064018a814` |
+
+Source: branch `officeqa-contracts`, commit `9d0e984`, tree clean, **not pushed**. ALFWorld reference:
+`contract/learned-contract` at `4a9914a9005a`, unmodified. Records: the frozen training split
+`LN_FREEZE.json` and the completed Original SkillOpt arm at
+`runs/20261121-officeqa-two-baselines/`. Every digest above excludes the clock, so re-deriving an
+artifact reproduces its digest.
+
+**Labels used throughout:** *recorded evidence* is a measurement over the 48 saved attempts;
+*constructed test* is the labelled fixture of section 6 and the in-process fixtures of the test file;
+*interpretation* is any sentence that explains why a number is what it is. The four answers in section
+0 are measurements except answer 4, whose second half is interpretation of a single step.

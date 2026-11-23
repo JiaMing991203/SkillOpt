@@ -6,7 +6,8 @@ WHAT IS NEW HERE, and both items are extraction corrections the earlier generati
   1. STABLE OBSERVATION REFERENCES. The LN generation's recorded assumption was
      "an occurrence exists only where an observation line carries a line number and pipe-delimited
      fields; a read without line numbers yields no position". Measured over the 48 frozen attempts,
-     EVERY `read` observation is unnumbered, and reads carry 571 of the 769 observed tables (74%). So
+     EVERY `read` observation is unnumbered, and reads carry 571 of the 757 observed tables
+     (75.4%); the other 186 come from grep, which numbers its lines. So
      three quarters of the document content could not be cited at all, and a cell that cannot be cited
      cannot witness anything. A reference here is (step index, table index, row index, column index)
      taken from the observation's own structure - `s12:tb1:r4:c3` - plus the row and column LABELS for

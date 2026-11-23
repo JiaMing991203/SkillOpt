@@ -1,27 +1,63 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-22 19:45 EST (compaction prep). PA-1 implementation-parity audit ran
-01:40-02:05 EST and is complete; D-2..D-5 before it.** Branch
-`officeqa-contracts`, worktree `SkillOpt-officeqa`. The tree is clean, so HEAD is exactly what this
-note describes — a note that records its own commit always lags by one, so read the commit with
-`git log --oneline -1`, and the count with
-`git log --oneline origin/officeqa-contracts..HEAD | wc -l` (200+). **NOT pushed**; pushing remains
-unauthorized.
+**Last update: 2026-11-22 20:40 EST. FW-1 — the ALFWorld learned-contract framework is PORTED,
+integrated and end-to-end tested on saved records (19:50-20:38 EST). PA-1 parity audit before it,
+D-2..D-5 before that.** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`. The tree is clean,
+so HEAD is exactly what this note describes — a note that records its own commit always lags by one,
+so read the commit with `git log --oneline -1` and the count with
+`git log --oneline origin/officeqa-contracts..HEAD | wc -l` (200+). **NOT pushed.**
 
-**NO OfficeQA JOB RUNNING OR QUEUED** (last verified 01:40 EST; see CLUSTER ACCESS - the SSH master
-dropped at some point before 19:37 EST and this can no longer be re-checked from here).
-Job 66599377 `oqa-ln-d2` COMPLETED in 00:04:03 of 0:25 on one
-core: **Lean 4.20.0 rc 0, 0 errors, 0 warnings, 272 examples, source `ec5e8ee905465b76`; suite 2,615
-passed / 0 failed.** Two earlier submissions (66598457, 66599047) were cancelled while still PENDING,
-at zero cost, to fix a Lean receipt field and then two Lean proofs. The six live `e3m-*` jobs are
-held Experiment 3 GPU jobs on another track and are not mine to touch.
+**ONE DECISION BLOCKS EVERYTHING THAT REMAINS, AND IT IS A PUSH.** `research/deploy.sh` refuses a
+commit that is not on `origin`, so compiling the Lean file and submitting the contract campaign both
+wait on authorization to push. No implementation work remains for either. See
+`docs/research/OFFICEQA_FRAMEWORK_PORT.md` sections 7 and 11, and `FW_CAMPAIGN_SPEC.json`.
 
-**THE AUDIT REPRODUCES ON THE WORKSTATION**, and the cluster rebuilt it independently from the FROZEN
-records and agreed on every headline figure. Results in `runs/20261121-officeqa-learner/v5_d2/` and
-`v5_lean/`.
+**NO OfficeQA JOB RUNNING OR QUEUED** (verified 2026-11-22 20:36 EST, SSH master restored by the user
+at ~20:30). Today's only OfficeQA jobs are the three D-2 submissions that predate this work: 66598457
+and 66599047 cancelled while PENDING at zero cost, 66599377 COMPLETED 00:04:03 on one core (**Lean
+4.20.0 rc 0, 0 errors, 272 examples, suite 2,615 passed / 0 failed**). Today's `ac2-*` and `lc-rank`
+jobs are the ALFWorld session's AC-2 campaign on the shared cluster and are **not mine to touch**;
+the six held `e3m-*` jobs are Experiment 3 GPU jobs on a third track.
 
-## START HERE -> `docs/research/OFFICEQA_PARITY_AUDIT.md` (newest), then the D-2 packet
+**RESOURCES: 0.00 of the 3.08 remaining OfficeQA CPU job-hours and 0 of 18 teacher attempts are
+spent.** FW-1 submitted nothing, called no provider and used no GPU; all of it ran on the workstation
+in about 3 minutes of CPU. The budget ledger reads `verdict: PASS`.
 
+## START HERE -> `docs/research/OFFICEQA_FRAMEWORK_PORT.md` (newest), mirrored at `HANDOFF_LATEST.md`
+
+**FW-1 (2026-11-22) is the port the PA-1 audit asked for, and it works — but it does not yet beat the
+no-report control.** Amendment E-1. Artifacts in `runs/20261122-officeqa-framework/`. In seven lines:
+
+* **The mechanisms are shared by copy and generalization.** 32 ALFWorld files frozen in
+  `research/officeqa/framework/upstream/` with a digest manifest (source commit `4a9914a`, all 32
+  untracked there); `fw_*` is those mechanisms with the vocabulary lifted into a `Domain` object.
+  Nothing imports the sibling worktree at run time and a test asserts it. The ALFWorld worktree was
+  not touched — verified: still `4a9914a`, 0 modified tracked files, no new `__pycache__`.
+* **PA-1's evidence gap was a missing ASSUMPTION, not missing content.** `scale_binds` yielded 0
+  conclusions because `oqa_lc_cells.bind_columns` needs an adopted assumption and the CC/LN generation
+  had dropped assumptions entirely. Adopt `index_alignment` and 6,091 of 17,773 cells gain a bound
+  header; 467 of 497 operand-matched cells move from UNKNOWN to a determinate nearer-scale answer.
+* **But the assumption alone does nothing, and that is the headline.** Four-cell grid over all 48
+  attempts: assumption adopted and NO rule binds **0** columns and leaves every obligation UNKNOWN —
+  identical to adopting nothing. With the accepted rule, **1,152** columns bound and **522 obligation
+  states change**. That is the test the LN generation failed.
+* **The learner was refused, then narrowed.** 378 typed candidates, 3 acceptable. The general form has
+  6 support and **2 named counterexamples** (columns whose sub-label cell is the text `nan`); the
+  accepted form adds `col_child_label_present` — 6 support, 0 counterexamples, clean regression.
+  Reserved attempt `p3/UID0028` under the frozen model: **12 support, 0 counterexamples**.
+* **The DELETION repair now exists** (`fw_ir.drop_conjunct`), and is exercised on a labelled fixture:
+  accepted on F1, refuted on F1+F2, repaired by deleting the superfluous conjunct, v1 superseded ->
+  v2 active. CC/LN's `repair` could only append.
+* **The report accuses nobody — 0 OUTSTANDING in both arms.** The first version reported 70
+  accusations on one attempt and **none survived the audit**; see DAILY_LOG for the fourth occurrence
+  of that pattern in this project.
+* **No added value over the control is demonstrated.** On the one real optimization step examined the
+  no-report arm already wrote "Read column headers literally before using any cell" and names
+  "Table/column semantics misread" x4. All four topics the report carries are already in its output.
+  The native edit-application stage was re-run and reproduces the recorded candidate byte for byte;
+  the analyst and merge calls were not made.
+
+## Then -> `docs/research/OFFICEQA_PARITY_AUDIT.md` (PA-1), then the D-2 packet
 **PA-1 (2026-11-22) answers why the learned layer is redundant, and it is NOT a porting bug.** Zero
 cluster jobs, zero provider calls; 0.00 of the 2.00 authorized CPU job-hours, so the remainder is
 still 3.08. In five lines:
@@ -65,16 +101,11 @@ Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it aud
   the checking side); §14a records why, so it is not proposed again.
 
 ## CLUSTER ACCESS
-**SSH MASTER IS DOWN as of 2026-11-22 19:37 EST.** `ssh -O check gl` reports no such socket and a
-fresh non-interactive attempt is refused with `Permission denied (publickey,keyboard-interactive)`.
-**Great Lakes needs Duo 2FA**, so a session cannot restore it: the user must run
-`ssh -M -S ~/.ssh/cm_gl -fN gl` and approve the push.
-
-**So cluster state cannot be verified from a resuming session until that is done.** The last verified
-reading is 2026-11-22 01:40 EST: **no OfficeQA job queued or running**, 66599377 COMPLETED 00:04:03,
-and the six live `e3m-*` jobs are held Experiment 3 GPU jobs on another track. Nothing has been
-submitted since — the PA-1 audit ran entirely on the workstation — so nothing of mine can be running.
-Re-check with `squeue -u $USER` before believing any of this.
+**The SSH master is UP.** The user restored it at about 20:30 EST on 2026-11-22 after it had dropped
+(Great Lakes needs Duo 2FA, so a session cannot restore it itself: the command is
+`ssh -M -S ~/.ssh/cm_gl -fN gl`). Verified at 20:36 EST with `ssh -O check gl` (Master running),
+`squeue -u $USER` and `sacct -S 2026-11-22`. **Re-check before believing any of this** — the socket
+has dropped once already today.
 
 ## THE COMPLETED TWO-BASELINE COMPARISON IS PRESERVED AND SEALED
 `docs/research/OFFICEQA_BASELINE_LAUNCH.md` is its complete report. Endpoints `9d377d1c2906` (S0),
@@ -152,6 +183,61 @@ PENDING, cancel it before rebuilding the bundle: a submission cancelled before i
 nothing (66598457 and 66599047 both did).
 
 ### NEXT ACTIONS
+
+**0. THE ONE DECISION (2026-11-22, FW-1).** Everything below item 1 is now either done or waiting on
+   this. `research/deploy.sh` refuses a commit that is not on `origin`, so **may I push
+   `officeqa-contracts` to the research fork?** Two things follow immediately and nothing else does:
+   * `research/submit.sh oqa_fw_lean <commit> -- --time=00:20:00` — 1 CPU, 4 GB, 20 min, about
+     **0.34** CPU job-hours of the remaining 3.08. Compiles `OqaFramework.lean` (101 examples, 7
+     theorems). Until it runs, **no Lean claim is made** about the port.
+   * `research/submit.sh run_tests <commit>` — the full suite against these changes. 22 new tests pass
+     locally; 54 of 55 related tests pass, the one failure being this workstation's missing `openai`.
+   And then, separately, the **contract campaign**: `FW_CAMPAIGN_SPEC.json` (digest `a15a5248c1ba5ab0`),
+   all seven protocol items verified against the executed baseline's own `config.json`. Estimate from
+   the completed Original SkillOpt arm: 16 optimizer calls, ~873k optimizer prompt tokens (including
+   the measured +7.4% report overhead), 673 actor calls, 60 final-evaluation attempts, no GPU, ~1.5
+   CPU job-hours. Campaign bank starts EMPTY; the demonstration model is not carried in.
+
+**0b. The judgement I would like checked before the campaign runs.** The integration is complete by
+   the stated bar — the learner is connected and the report is not inert (522 obligation states change
+   when the rule is removed). But two things argue for thinking before spending: the learning evidence
+   is **one question's worth** (all 32 applicable columns come from `UID0028`, and the prospective
+   check is a reserved attempt of that same question), and the no-report control already produced the
+   column-header instruction on the step examined. The campaign would measure whether the report
+   changes the EDIT, which is the open question — so it is defensible — but it is not a strong prior.
+   **Do NOT read this as a recommendation to abandon.** `OFFICEQA_FRAMEWORK_PORT.md` §12 lists the
+   eight limitations plainly.
+
+1. **FW-1 is DONE** (2026-11-22). Report `docs/research/OFFICEQA_FRAMEWORK_PORT.md`, amendment E-1,
+   artifacts `runs/20261122-officeqa-framework/`. The three extraction/stage defects it found in its
+   own first version are fixed and recorded; the 70 accusations it first reported were all artifacts.
+
+2. **PA-1 and D-2..D-5 are DONE.** `OFFICEQA_PARITY_AUDIT.md`, then
+   `OFFICEQA_D2_AUDIT_PACKET.md`. PA-1's **P-2** extraction gap is now **CLOSED** by FW-1: the cause
+   was a dropped assumption, not missing document content, and `oqa_fw_extract` also fixes the
+   `max(0.5, |x|·1e-6)` tolerance PA-1 named (under a new version; `oqa_ln_evidence` is untouched and
+   `near_legacy` is kept so the difference stays measurable).
+
+3. **D-2 packet §14b still STANDS** as a target option, unchanged by FW-1: predict from a prefix
+   whether a tool call will return a citable cell (536 calls; for grep, 99 of 261 return a citable
+   cell and 99 return nothing). FW-1 did not pursue it — it pursued the document-structure target
+   instead, which is §14b's complement rather than its competitor. The audit's **Target A** (a citable
+   cell is not the context that interprets it; 0 of 261 greps returned a stated money scale against 36
+   of 192 reads) is **no longer blocked**: the FW extraction binds headers and cites unnumbered reads.
+
+4. **Still yours to decide, unchanged:** when to unseal the three held-out results; whether the
+   one-question validation margin justifies a larger validation set; the historical 44-hour CPU
+   convention.
+
+5. **Still not recommended:** a broader parser change, an actor-interface change, a third learner
+   repetition, a common library across the two worktrees (the snapshot plus a `Domain` object is the
+   cheaper half of that and is now in place), or any contract performance arm before the matched
+   analyst comparison has actually been run.
+
+---
+
+### EARLIER NEXT ACTIONS (pre-FW-1, kept for the reasoning)
+
 1. **D-2 is DONE** (2026-11-22) and so are D-3, D-4 and D-5. The result is in
    `docs/research/OFFICEQA_D2_AUDIT_PACKET.md`. Read §1 first: all thirteen of the checker's
    accusing states were its own artifacts, and the learned layer adds nothing a 2x2 can detect.

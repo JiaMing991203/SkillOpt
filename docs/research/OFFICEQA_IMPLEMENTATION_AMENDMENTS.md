@@ -1151,3 +1151,68 @@ measurement does: over all 48 frozen attempts the contract is consulted 18 times
 classifier is called 36 times and sees the contract 0 times, and every obligation state and every
 operand class is identical with and without it. That extends the D-2 2x2 — which ran on 25 attempts —
 to the learning side as well.
+
+---
+
+## E-1 (2026-11-22, 19:50-20:38 EST) — the ALFWorld framework ported into OfficeQA, rule `OQA-FW-1`
+
+**Why.** PA-1 established that the two branches shared no code and that OfficeQA's milestone used the
+narrowest of its three generations: one kind, two statuses, no assumptions, and a repair that could
+only append a condition. The instruction that follows PA-1 asks for one learned action-and-stage
+framework across benchmarks with benchmark-specific adapters, and for an end-to-end slice rather than
+another audit.
+
+**What is added.**
+
+* `research/officeqa/framework/upstream/` — a one-time byte copy of 32 ALFWorld sources (v1 core, its
+  vocabulary, VX-1, RP-1, EB-1) with `MANIFEST.json`: per-file sha256, byte count, source mtime and
+  git status, plus the source commit `4a9914a9005a`. All 32 are untracked in the source, so their
+  hashes are their only identity. The copy was read-only on that worktree: no file written, no module
+  imported, no byte-compilation cache created there, verified afterwards.
+* `research/officeqa/framework/fw_{kleene,domain,ir,state,check,learn,repair}.py` — those mechanisms
+  with the ALFWorld vocabulary lifted out into a `Domain` object. Function-level provenance is in each
+  module docstring.
+* `research/officeqa/oqa_fw_{extract,domain,learn,stage,report,run,repair,lean,edit}.py` — the
+  OfficeQA adapter: document entities, the first slice, the report, the drivers.
+* `research/cluster/oqa_fw_lean.sbatch`, registered in `research/submit.sh`. Deliberately separate
+  from `oqa_lean.sbatch`, which the frozen D-1 receipt points at.
+* `tests/test_officeqa_fw.py` — 22 tests, all passing.
+
+**Three additions to the framework beyond a copy**, each available to every domain:
+
+* the kind `concludes` — `completes` generalised from "the task is complete" to a named consequence,
+  with `subject` variables it is checked POINTWISE over. A document-interpretation rule is a claim
+  about every cell, not about some cell.
+* `subject_scope` — temporal scope, `all` / `introduced` / `once`. `once` checks each entity at the
+  first state where the record settles both sides of the rule, which matters here because the
+  rendering that adjudicates a column can arrive thirty steps after the column did.
+* typed atom arguments — an atom position naming an entity type admits only a variable declared with
+  that type. This is a schema check, and it cut the first slice's hypothesis space from 3,358
+  candidates to 378.
+
+**What is NOT changed.** No ALFWorld file. No actor, tool, document rendering, scorer or frozen
+baseline artifact. `oqa_lc_cells`, `oqa_cc_extract`, `oqa_ln_evidence`, `oqa_cc_ir` and `oqa_ln_check`
+keep their behaviour byte-for-byte: the pairing guard, the precision-aware numeric comparison and the
+new report all live in the layer above, under a new version. `oqa_reports.py` gains ONE additive
+branch for condition `FW` that returns before the three existing LC conditions' path, with a test
+asserting that order and their unchanged headings. Nothing new enters `skillopt`.
+
+**The two extraction corrections**, both under `oqa.fw.extract.v1` and both measured:
+
+* stable observation references, so a cell from an unnumbered `read` can be cited. Every `read`
+  observation in the 48 frozen attempts is unnumbered and reads carry **571 of the 757 observed
+  tables (75.4%)**; the LN generation could cite only line-numbered grep output.
+* comparison at the written precision. `oqa_ln_evidence._near`'s absolute floor of 0.5 makes 1.8 equal
+  to 2.0; `near_legacy` is kept beside the correction so the difference is measurable.
+
+**Three defects of mine, recorded because each was invisible until something re-derived a number.**
+The unnamed-entity token was missing, so an existential was FALSE before its entities appeared instead
+of UNKNOWN — which turned a rule with 6 supporting and 2 refuting columns into one with 0 and 0. The
+operand's written text was read as `text` where `oqa_cc_extract` writes `raw`, silently disabling the
+precision correction. And the conversion obligation was raised for every number the actor typed: 70 of
+one attempt's 227 were reported OUTSTANDING and **none survived the audit**, so the obligation is now
+scoped to numbers inside a written calculation, a stated factor is sought across the whole prefix, and
+a differing factor resolves to UNKNOWN rather than to a violation.
+
+**Full report:** `docs/research/OFFICEQA_FRAMEWORK_PORT.md`, mirrored at `HANDOFF_LATEST.md`.
+Artifacts: `runs/20261122-officeqa-framework/`.
