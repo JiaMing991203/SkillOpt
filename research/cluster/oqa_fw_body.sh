@@ -232,6 +232,17 @@ learn)
     require_live_ledger
     load_optimizer_key                       # the learner is an OPTIMIZER-side call; no actor key here
     export SKILLOPT_REQUIRE_ROUTE="$OPT_ROUTE;target=none"
+    # THE CONTENT FALLBACK, AND ONLY IN THIS STAGE. This provider returns its reasoning in
+    # `reasoning_content` and its reply in `content`, and a reply cut off by the completion budget can
+    # leave `content` empty with a usable JSON block sitting in the reasoning field. `reasoning_text`
+    # promotes that field when content is empty; for a learner that is safe, because the only thing
+    # read out of it is a JSON object that then faces the whole gate.
+    #
+    # IT MUST NOT LEAK INTO THE ARM STAGE. There the same variable governs the ACTOR, where promoting
+    # reasoning text into an answer would change what the scorer sees and would no longer be the
+    # baselines' actor. The arm stage therefore keeps `committed_answer`, the value the baselines ran
+    # under, and no actor key is loaded here at all, so this setting cannot reach a rollout.
+    export SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK=reasoning_text
     export OPTIMIZER_OPENAI_COMPATIBLE_CALL_LOG="$OUTDIR/optimizer_calls.jsonl"
     MODE="evolve"; PREV_ARG=()
     if [ "$EPOCH" = "1" ]; then

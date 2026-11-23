@@ -58,7 +58,12 @@ SEED_ASSUMPTIONS = ("index_alignment", "table_scale_applies_to_rows")
 SEED_WHY = ("seed: binding a figure to a column and a unit is not possible without reading a split "
             "header's own sub-label row, nor without carrying a table's stated scale to its rows")
 TEACHER_ROUNDS = 3              # paid attempts per learner pass, including the feedback rounds
-TEACHER_CAP = 8000              # completion tokens per call
+# THE COMPLETION CAP COVERS THE MODEL'S REASONING AS WELL AS ITS REPLY, and this provider puts its
+# reasoning in `reasoning_content` and its reply in `content`. At 8,000 the first campaign attempt
+# (job 66666916) produced finish_reason "length", 31,393 characters of reasoning and an EMPTY content.
+# 16,000 is just under the 16,384 the config allows, and the backend sends min(requested, configured),
+# so asking for more than the config permits would be silently clamped rather than honoured.
+TEACHER_CAP = 16000
 
 
 # ── records ───────────────────────────────────────────────────────────────────
@@ -117,8 +122,16 @@ def _teacher_pass(model: dict, recs: list, dom, ev, epoch: int, *, rounds: int, 
         if rec["problem"] or not rec["parsed"]:
             events.append({"phase": "teacher", "round": rnd, "called": True, "parsed": False,
                            "problem": rec["problem"] or "no JSON object in the reply",
-                           "usage": rec.get("usage"), "decisions": []})
-            break
+                           "finish_reason": rec.get("finish_reason"),
+                           "usage": rec.get("usage"), "decisions": [],
+                           "retrying": rnd < rounds})
+            # A REPLY WITH NO JSON IS RETRIED, not treated as an abstention. Job 66666916 reasoned
+            # until its completion budget ran out and returned empty content; the rounds exist for
+            # exactly this, and the corrective message is short on purpose.
+            if rnd >= rounds:
+                break
+            msgs = TEACH.retry_messages(msgs, rec)
+            continue
         comp = TEACH.compile_ops(rec["parsed"], dom)
         model, dec = LN.apply_proposal(model, {"contract_ops": comp["contract_ops"],
                                                "assumption_ops": comp["assumption_ops"]},

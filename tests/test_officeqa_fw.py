@@ -644,3 +644,65 @@ def test_the_learner_configures_and_proves_its_route_before_sending():
     # a missing config is a refusal, not a fallback to the ambient environment
     assert "cannot find" in conf_src
     assert TEACH.CONFIG == "configs/research/officeqa_base2.yaml"
+
+
+# ── 12. the empty-completion failure, and the retry that answers it ──────────
+def test_an_empty_reply_is_retried_not_recorded_as_an_abstention():
+    """Job 66666916: the campaign's first paid learner call returned finish_reason "length", EMPTY
+    content and 31,393 characters of reasoning_content - the model reasoned until its completion
+    budget ran out and never wrote the JSON block. "Proposed nothing" and "was cut off" are different
+    findings, and the second one is an operational failure the rounds exist to absorb."""
+    import inspect
+    import oqa_fw_arm as ARM
+    import oqa_fw_teacher as TEACH
+    src = inspect.getsource(ARM._teacher_pass)
+    i = src.index('not rec["parsed"]')
+    tail = src[i:]
+    assert "retry_messages" in tail, "an unparseable reply must start a corrective round"
+    assert tail.index("if rnd >= rounds") < tail.index("retry_messages"), (
+        "the retry must be bounded by the round budget")
+    assert '"retrying"' in tail, "the artifact must say whether a round was retried"
+    # the corrective message is SHORT and names the cause
+    rec = {"reply": "", "problem": "ValueError: empty reply", "finish_reason": "length",
+           "usage": {"completion_tokens": 8000}}
+    msgs = TEACH.retry_messages([{"role": "system", "content": "s"},
+                                 {"role": "user", "content": "u"}], rec)
+    last = msgs[-1]["content"]
+    assert len(last) < 1200, "a corrective round must not be another wall of evidence"
+    assert "whole completion budget" in last and "ONLY the ```json block" in last
+    assert "empty proposal is a legitimate answer" in last
+    # an empty assistant turn is never sent
+    assert msgs[-2]["role"] == "assistant" and msgs[-2]["content"].strip()
+
+
+def test_the_completion_cap_is_inside_what_the_config_allows():
+    """The backend sends min(requested, configured), so a request above the configured ceiling is
+    silently CLAMPED rather than honoured - the same silent-clamp shape as the actor's output cap."""
+    import re
+    import oqa_fw_arm as ARM
+    cfg = open(os.path.join(REPO, "configs", "research", "officeqa_api.yaml"),
+               encoding="utf-8").read()
+    m = re.search(r"optimizer_openai_compatible_max_tokens:\s*(\d+)", cfg)
+    ceiling = int(m.group(1)) if m else 16384
+    assert 8000 < ARM.TEACHER_CAP <= ceiling, (ARM.TEACHER_CAP, ceiling)
+    assert ARM.TEACHER_ROUNDS >= 3
+
+
+def test_the_learner_content_fallback_never_reaches_the_actor():
+    """`reasoning_text` promotes a provider's reasoning field into content when content is empty. For
+    the learner that is safe - the only thing read out of it is a JSON object that then faces the whole
+    gate. For the ACTOR it would change what the scorer sees and the arm would no longer be the
+    baselines' actor, so the arm stage must keep the value the baselines ran under."""
+    body = open(os.path.join(REPO, "research", "cluster", "oqa_fw_body.sh"),
+                encoding="utf-8").read()
+    learn = body.index("\nlearn)")
+    arm = body.index("\narm)")
+    heldout = body.index("\nheldout)")
+    assert learn < arm < heldout
+    assert "SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK=reasoning_text" in body[learn:arm], (
+        "the learner stage sets the permissive policy")
+    assert "reasoning_text" not in body[arm:], "it must not appear in the arm or held-out stages"
+    # and the preamble, which every stage inherits, keeps the baselines' value
+    assert "SKILLOPT_OPENAI_COMPATIBLE_CONTENT_FALLBACK=committed_answer" in body[:learn]
+    # the learn stage loads NO actor key, so the setting cannot reach a rollout even in principle
+    assert "load_actor_key" not in body[learn:arm]

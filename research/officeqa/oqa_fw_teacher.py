@@ -140,7 +140,16 @@ feedback. Then propose operations:
   item.
 - Cite witnesses as "<record id> <reference>", e.g. "e1/UID0014 co:s12:1:3".
 
-## Output
+## Output — read this before you start thinking
+BEGIN YOUR REPLY WITH THE ```json BLOCK. Write nothing before it. Keep your reasoning short and put
+whatever of it matters into the "reason" fields and into "notes" - a few sentences, not an essay.
+
+This is not a style preference. The completion budget is a few thousand tokens and it covers your
+reasoning AND your reply: a first attempt at this task spent the entire budget on analysis, was cut
+off mid-sentence, and returned no content at all, which counts as nothing proposed. A short, decided
+answer with one well-supported operation is worth more than a long deliberation that never lands.
+If the records do not settle a question, say so in "uncovered" and move on.
+
 Return ONE JSON object inside a ```json fenced block, with exactly these keys:
 {"assumption_ops": [{"op": "adopt"|"drop", "name": "...", "reason": "..."}],
  "contract_ops": [{"op": "add", "contract": {...}, "reason": "...", "witnesses": ["..."]},
@@ -400,6 +409,41 @@ def build_messages(model: dict, recs: list, ev, dom, *, batch: int, n_batches: i
     return msgs
 
 
+def retry_messages(prev: list, rec: dict) -> list:
+    """A SHORT corrective round after a reply that produced no JSON object.
+
+    The first campaign attempt (job 66666916) returned `finish_reason: "length"`, empty content and
+    31,393 characters of `reasoning_content`: the model reasoned until the completion budget ran out
+    and never wrote the block. That is an operational failure, not an abstention, and the right
+    response is one more round with the instruction sharpened - not a larger prompt, and not a quieter
+    record.
+    """
+    usage = rec.get("usage") or {}
+    truncated = str(rec.get("finish_reason") or "") == "length" or not str(rec.get("reply") or "").strip()
+    lines = [f"Your previous reply produced no JSON object"
+             + (f": {rec.get('problem')}" if rec.get("problem") else ".")]
+    if truncated:
+        lines.append(f"It used its whole completion budget "
+                     f"({usage.get('completion_tokens', '?')} tokens) before writing any content, so "
+                     f"it was cut off and nothing was proposed.")
+    lines += ["",
+              "Reply NOW with ONLY the ```json block. Put nothing before it. Do not restate the "
+              "evidence, do not weigh alternatives in prose, and keep every \"reason\" to one or two "
+              "sentences.",
+              "",
+              "An empty proposal is a legitimate answer and costs nothing:",
+              '```json',
+              '{"assumption_ops": [], "contract_ops": [], "uncovered": ["..."], "notes": "..."}',
+              '```',
+              "Send either that or your best-supported operation, in that format, immediately."]
+    msgs = list(prev) + [{"role": "assistant",
+                          "content": str(rec.get("reply") or "")[:4000]
+                                     or "(no content was returned: the reply was cut off)"},
+                         {"role": "user", "content": "\n".join(lines)}]
+    leak_check(msgs)
+    return msgs
+
+
 def feedback_messages(prev: list, reply: str, decisions: list) -> list:
     bad = [d for d in decisions if d.get("decision") in ("rejected", "refuted")]
     lines = ["The code checked your proposal against every record seen so far."]
@@ -599,12 +643,14 @@ def call(messages: list, *, stage: str, cap: int = 8000, retries: int = 2,
     text, usage = chat_optimizer_messages(messages, max_completion_tokens=cap, retries=retries,
                                           stage=stage)
     raw = str(text or "")
+    finish = (usage or {}).get("finish_reason") or ""
     parsed, problem = None, ""
     try:
         parsed = parse_reply(raw)
     except Exception as exc:                               # noqa: BLE001 - recorded, not raised
         problem = f"{type(exc).__name__}: {exc}"
     return {"stage": stage, "utc": _utc(), "n_messages": len(messages), "route": route,
+            "finish_reason": finish,
             "prompt_sha256": sha("".join(m["content"] for m in messages)),
             "prompt_chars": sum(len(m["content"]) for m in messages),
             "max_completion_tokens": cap, "reply": raw, "reply_chars": len(raw),
