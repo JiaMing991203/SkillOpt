@@ -1,7 +1,9 @@
 # Implementation-parity audit: OfficeQA against the accepted learned action-and-stage contract design
 
 **Offline. Zero provider calls, zero learner calls, zero optimizer calls, zero actor episodes, zero GPUs, zero
-cluster jobs.** Written 2026-11-22, 02:00-03:30 EST (times from `date`). Nothing in the ALFWorld worktree was
+cluster jobs.** Written 2026-11-22, **01:40-02:05 EST** — times from `date` at the start and from the file and
+commit times at the end (`0b7c44e` is 02:05:19), **not** from an estimate; an earlier draft of this line said
+02:00-03:30 and was wrong. Nothing in the ALFWorld worktree was
 written, executed or modified; every ALFWorld statement below comes from reading its files and its saved reports.
 
 - **This worktree:** `/Users/yaojiaming/dev/lean_skillopt/SkillOpt-officeqa`, branch `officeqa-contracts`,
@@ -856,7 +858,7 @@ interpreter cannot load; that suite runs on the cluster and last passed there at
 | snapshot | identity | when |
 |---|---|---|
 | OfficeQA worktree | `officeqa-contracts` @ `39a7e33`, clean, all tracked | start of this audit, 2026-11-22 01:40 EST |
-| ALFWorld worktree | `contract/learned-contract` @ `4a9914a`, **70 untracked files**, digests in §2.2 | read 2026-11-22 02:00-02:40 EST |
+| ALFWorld worktree | `contract/learned-contract` @ `4a9914a`, **70 untracked files**, digests in §2.2 | read 2026-11-22 01:41-01:52 EST |
 | accepted design | v0.1 + A1-A5, digests in §2.1; the first five match the 2026-11-16 port note | unchanged since the port |
 | frozen OfficeQA records | `LN_FREEZE.json`, 48 attempts, content digest recorded in D-2 | 2026-11-21 |
 | LN models | `r1_model_v1.json`, `r2_model_v1.json` | 2026-11-21 19:33 EST (= 2026-11-22 00:33 UTC; the `utc` fields are UTC and are **not** evidence of a call during this audit) |
@@ -864,7 +866,7 @@ interpreter cannot load; that suite runs on the cluster and last passed there at
 | LC campaign models | arm B / arm C epochs 2-4 | 2026-11-18 pull |
 | ALFWorld RP-1 | `RP1_REPORT.md` + `runs/20261121-rp1/`; rp modules last modified 2026-11-21 01:05-01:11 EST | read, not run |
 | ALFWorld EB-1 / CR-1 | `EB1_REPORT.md`, `CR1_REPORT.md`; those modules are being worked on by the ALFWorld session, so only the version read on 2026-11-22 is cited | read, not run |
-| this audit's artifacts | `runs/20261122-officeqa-parity/`: `PA1_CALLPATH.json` `55a71d3140fe9d99…`, `PA2_TARGET.json` `c471e078923342ab…`, `PA3_TARGET_BASIS.json` `c8450584d0f4e323…` | 2026-11-22 |
+| this audit's artifacts | `runs/20261122-officeqa-parity/`: `PA1_CALLPATH.json` `55a71d3140fe9d99…`, `PA2_TARGET.json` `c471e078923342ab…` (both 01:52:14), `PA3_TARGET_BASIS.json` `c8450584d0f4e323…` (02:01:20) | 2026-11-22 |
 
 **One caution about ALFWorld digests.** Its learned-contract work is entirely untracked, so a digest is the only
 identity those files have, and the session that owns them is actively editing `research/eb1/` and
@@ -882,7 +884,7 @@ commit, and should be re-verified against those digests before being relied on l
 | GPUs | **0** |
 | teacher attempts | 18, untouched |
 | held-out records | sealed, not opened |
-| wall time | about 1 h 50 m |
+| wall time | **25 minutes** (01:40:50 to 02:05:19 EST, from `date` and the commit time) |
 
 ## 13. Open questions I could not settle offline
 

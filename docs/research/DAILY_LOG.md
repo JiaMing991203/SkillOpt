@@ -2037,7 +2037,7 @@ still PENDING, at zero cost, to fix a Lean receipt field and then two Lean proof
 
 ---
 
-## 2026-11-22, 02:00-03:35 EST — implementation-parity audit: OfficeQA against the accepted design
+## 2026-11-22, 01:40-02:05 EST — implementation-parity audit: OfficeQA against the accepted design
 
 **Question.** Do the OfficeQA and ALFWorld learned-contract implementations share a core, are their active
 behaviours equivalent, and where does OfficeQA diverge? The instruction warned explicitly not to assume the
@@ -2091,3 +2091,15 @@ returns anything at all.
 **Cost: 0 CPU job-hours of the 2.00 authorized, 0 provider calls, 0 GPUs, nothing written in either sibling
 worktree.** Remaining allowance still 3.08. Report: `docs/research/OFFICEQA_PARITY_AUDIT.md`; probes
 `research/officeqa/oqa_pa_parity.py` with 7 tests; artifacts `runs/20261122-officeqa-parity/`.
+
+**Timestamp correction, written 19:45 EST the same day.** The entry above and the audit document first said
+"02:00-03:35" and "about 1 h 50 m". Both were estimates and both were wrong: `date` gave 01:40:50 at the start
+and the last commit `0b7c44e` is 02:05:19, so the audit took **25 minutes**. Corrected in place in both files.
+This is the third time an estimated time has had to be withdrawn in this project; the rule stands — take record
+times from `date` or from file and commit times, never from a sense of how long something felt.
+
+**The SSH ControlMaster has since dropped** (`ssh -O check gl`: no such socket; a fresh non-interactive attempt
+is refused with `Permission denied (publickey,keyboard-interactive)`). So cluster state **cannot** be verified
+from this session any more. The last verified reading stands at 01:40 EST: no OfficeQA job queued or running,
+66599377 COMPLETED 00:04:03, the six live `e3m-*` jobs are held Experiment 3 GPU jobs on another track. The
+parity audit submitted nothing, so nothing of mine can be running.

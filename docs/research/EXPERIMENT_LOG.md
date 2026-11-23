@@ -2242,7 +2242,7 @@ artifacts are preserved unmodified.
 
 ---
 
-## PA-1 — implementation-parity audit, 2026-11-22 (offline, zero jobs)
+## PA-1 — implementation-parity audit, 2026-11-22 01:40-02:05 EST (offline, zero jobs)
 
 **Scope.** OfficeQA `officeqa-contracts` @ `39a7e33` against the accepted design v0.1 + A1-A5 and the ALFWorld
 reference worktree `contract/learned-contract` @ `4a9914a` (all 70 contract files untracked; digests recorded in

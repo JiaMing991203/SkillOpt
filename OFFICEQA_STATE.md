@@ -1,14 +1,16 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-22 03:35 EST, PA-1 implementation-parity audit, complete (D-2..D-5 before
-it).** Branch
+**Last update: 2026-11-22 19:45 EST (compaction prep). PA-1 implementation-parity audit ran
+01:40-02:05 EST and is complete; D-2..D-5 before it.** Branch
 `officeqa-contracts`, worktree `SkillOpt-officeqa`. The tree is clean, so HEAD is exactly what this
 note describes — a note that records its own commit always lags by one, so read the commit with
 `git log --oneline -1`, and the count with
 `git log --oneline origin/officeqa-contracts..HEAD | wc -l` (200+). **NOT pushed**; pushing remains
 unauthorized.
 
-**NO OfficeQA JOB RUNNING OR QUEUED.** Job 66599377 `oqa-ln-d2` COMPLETED in 00:04:03 of 0:25 on one
+**NO OfficeQA JOB RUNNING OR QUEUED** (last verified 01:40 EST; see CLUSTER ACCESS - the SSH master
+dropped at some point before 19:37 EST and this can no longer be re-checked from here).
+Job 66599377 `oqa-ln-d2` COMPLETED in 00:04:03 of 0:25 on one
 core: **Lean 4.20.0 rc 0, 0 errors, 0 warnings, 272 examples, source `ec5e8ee905465b76`; suite 2,615
 passed / 0 failed.** Two earlier submissions (66598457, 66599047) were cancelled while still PENDING,
 at zero cost, to fix a Lean receipt field and then two Lean proofs. The six live `e3m-*` jobs are
@@ -63,8 +65,16 @@ Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it aud
   the checking side); §14a records why, so it is not proposed again.
 
 ## CLUSTER ACCESS
-SSH master UP. **Great Lakes needs Duo 2FA**, so a session that finds `~/.ssh/cm_gl` gone cannot
-restore it; the user must run `ssh -M -S ~/.ssh/cm_gl -fN gl`.
+**SSH MASTER IS DOWN as of 2026-11-22 19:37 EST.** `ssh -O check gl` reports no such socket and a
+fresh non-interactive attempt is refused with `Permission denied (publickey,keyboard-interactive)`.
+**Great Lakes needs Duo 2FA**, so a session cannot restore it: the user must run
+`ssh -M -S ~/.ssh/cm_gl -fN gl` and approve the push.
+
+**So cluster state cannot be verified from a resuming session until that is done.** The last verified
+reading is 2026-11-22 01:40 EST: **no OfficeQA job queued or running**, 66599377 COMPLETED 00:04:03,
+and the six live `e3m-*` jobs are held Experiment 3 GPU jobs on another track. Nothing has been
+submitted since — the PA-1 audit ran entirely on the workstation — so nothing of mine can be running.
+Re-check with `squeue -u $USER` before believing any of this.
 
 ## THE COMPLETED TWO-BASELINE COMPARISON IS PRESERVED AND SEALED
 `docs/research/OFFICEQA_BASELINE_LAUNCH.md` is its complete report. Endpoints `9d377d1c2906` (S0),
