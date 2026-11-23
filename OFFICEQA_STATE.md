@@ -7,6 +7,25 @@ parity audit before it, D-2..D-5 before that.** Branch `officeqa-contracts`, wor
 
 ## THE USER IS ABOUT TO SPECIFY A FULL-SCALE EXPERIMENT. What is ready, and what it needs
 
+**READ THIS FIRST: the prepared arm's target has NO evidence in a campaign epoch's rollout.**
+Measured 2026-11-23 over the four recorded epochs of the completed Original SkillOpt arm (4,097
+columns, 48 attempts - the exact condition a campaign would be in): **0 tables with a flat/split pair,
+so 0 columns the rule can judge, in every one of the four epochs.** Relaxing the pairing guard to the
+one-shared-row criterion `oqa_lc_cells` uses yields 15/0/30/30 judgeable columns of which **0 of 75
+agree** - the signature of the defect the guard removes, which would make the learner report the rule
+FALSE rather than unevidenced. So an empty-bank campaign of this arm would carry an **empty model
+through all four epochs and deliver a universally inert report**, which the instruction says is not a
+completed integration. `docs/research/OFFICEQA_FRAMEWORK_PORT.md` **section 11b** has the tables.
+
+**What this does and does not mean.** The machinery is fine: `oqa_fw_arm.py` runs the per-epoch seed
+and evolve, the gate runs, the ablation on the frozen corpus is real and the learned rule is
+load-bearing there. What fails is the **target's evidence density in the campaign setting** - a
+property of the question the rule asks, not of the port. **The fix is one line of the design:** pick a
+target whose evidence occurs in every rollout. D-2 packet §14b is the obvious one (*will this tool
+call return a citable cell?* - 536 recorded calls, 261 greps, 99 returning a citable cell and 99
+returning nothing, so both classes appear in every epoch by construction). It is a `concludes` rule
+over tool calls instead of columns; nothing in `fw_*` changes.
+
 **Ready now, no implementation work outstanding:**
 * the ported framework and its OfficeQA adapter (`research/officeqa/framework/`, `oqa_fw_*.py`),
   reaching the optimizer through the integration that already existed (one additive branch in
@@ -15,6 +34,9 @@ parity audit before it, D-2..D-5 before that.** Branch `officeqa-contracts`, wor
   arm, with **all seven protocol items verified against the executed baseline's own `config.json`**:
   4 epochs, 6 slow-update samples, slow update on, gate on, edit budget 4, fixed learning-rate
   control, split dir with seed 42;
+* `research/officeqa/oqa_fw_arm.py` — the per-epoch campaign driver (`seed` / `evolve`), with the
+  EXPLICIT recheck that `oqa_lc_arm` learned the hard way: without it, a contract the new epoch's
+  traces contradict stays active because nothing called `apply_proposal`;
 * `research/cluster/oqa_fw_lean.sbatch`, registered in `research/submit.sh`;
 * 22 new tests passing locally; the Lean file generated and digested.
 
@@ -22,13 +44,15 @@ parity audit before it, D-2..D-5 before that.** Branch `officeqa-contracts`, wor
 1. **A PUSH.** `research/deploy.sh` refuses a commit that is not on `origin`, so *nothing* reaches the
    cluster until `officeqa-contracts` is pushed. This blocks the Lean compile, the full test suite and
    every campaign arm alike. It is the single gate.
-2. **A RESOURCE DECISION.** Remaining verified OfficeQA follow-up allowance: **3.08 requested CPU
+2. **A TARGET DECISION — see the box above.** Launching the prepared arm on its current target would
+   spend the allowance on an inert report.
+3. **A RESOURCE DECISION.** Remaining verified OfficeQA follow-up allowance: **3.08 requested CPU
    job-hours and 18 teacher attempts**, both untouched by FW-1. The prepared single contract arm is
    estimated at ~1.5 CPU job-hours, 16 optimizer calls, ~873k optimizer prompt tokens, 673 actor
    calls and 60 final-evaluation attempts, no GPU. **A full-scale design with more arms or more
    questions will exceed 3.08 CPU job-hours**, so it needs one consolidated budget request before
    submission rather than after.
-3. **SHARED CLUSTER AWARENESS.** The ALFWorld session is running its AC-2 campaign right now
+4. **SHARED CLUSTER AWARENESS.** The ALFWorld session is running its AC-2 campaign right now
    (verified 02:40 EST: `ac2-con` RUNNING 3:36:40, `ac2-ev` RUNNING 1:54:27, five more PENDING on
    dependencies). Standing authorization since 2026-11-15 replaces per-job acknowledgement, but the
    GPU cap and the shared log still apply, and those jobs are **not mine to touch**.

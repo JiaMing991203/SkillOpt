@@ -593,10 +593,60 @@ and about 873,000 optimizer prompt tokens (the measured +7.4% report overhead in
 itself costs no model call), 673 actor calls, 60 final-evaluation attempts, no GPU, and about 1.5 CPU
 job-hours for the controller. The Lean job is 1 CPU, 4 GB, 20 minutes, about 0.34 CPU job-hours.
 
-**What blocks submission is one authorization, not any remaining implementation work.**
-`research/deploy.sh` refuses a commit that is not on `origin`, and pushing is recorded as withheld. So
-the Lean compile and the campaign both wait on the same decision.
+**Two things block submission.** `research/deploy.sh` refuses a commit that is not on `origin`, and
+pushing is recorded as withheld - that gates the Lean compile and every campaign arm alike. And
+**section 11b, measured after this spec was written, says the arm's target has no evidence in a
+campaign epoch's rollout**, so the spec as it stands would run an empty model for four epochs. Read
+11b before submitting anything from here.
 
+---
+
+## 11b. A finding that lands AFTER the campaign was prepared, and it changes the design
+
+**The first slice's target cannot be learned from a campaign epoch's own rollout.** The rule needs one
+coincidence: the same table retrieved twice in one attempt, once with a split header and once
+flattened, sharing at least two data rows. Measured over the **four recorded epochs of the completed
+Original SkillOpt arm** - 4,097 columns in 48 attempts, the exact condition a campaign would be in:
+
+| epoch | columns | tables with a flat/split pair | columns the rule can judge |
+|---|---|---|---|
+| step_0001 | 1,066 | 0 | **0** |
+| step_0002 | 786 | 0 | **0** |
+| step_0003 | 1,170 | 0 | **0** |
+| step_0004 | 1,075 | 0 | **0** |
+
+This is not my extractor failing to see them: those epochs contain 30, 24, 26 and 30 flat-header
+tables and 17, 13, 29 and 7 split-header ones. The *pairing* never happens. In the frozen S0 corpus it
+happened in exactly one question of twelve (`UID0028`), and that was a trajectory accident - that
+actor retrieved one table twice in two renderings.
+
+**And relaxing the pairing guard makes it worse, not better.** At the one-shared-row criterion
+`oqa_lc_cells.pair_tables` uses, the four epochs do yield 15, 0, 30 and 30 judgeable columns - and
+**0 of those 75 agree**. Every one is a disagreement, which is the signature of the defect the guard
+exists to remove: a single shared row pairs *different* tables, so everything looks refuted. With the
+loose criterion the campaign learner would see 75 counterexamples and 0 supporting cases in every
+epoch, and would report the rule **false** rather than unevidenced. Both criteria agree on the
+conclusion and only one of them is honest about why.
+
+**So an empty-bank campaign of this arm would carry an empty model through all four epochs and deliver
+a universally inert report** - which is exactly what the instruction says does not count as a
+completed integration. The port is not what fails here; `oqa_fw_arm.py` runs, the gate runs, the
+ablation on the frozen corpus is real. What fails is the **target's evidence density in the campaign
+setting**, and that is a property of the question the rule asks, not of the machinery.
+
+**What I would change, and it is one line of the design rather than any code.** Pick a target whose
+evidence occurs in every rollout. The D-2 packet's own §14b candidate is the obvious one: *will this
+tool call return a citable cell?* - 536 recorded tool calls across the corpus, 261 of them greps, 99
+returning a citable cell and 99 returning nothing, so both classes appear in every epoch by
+construction. It is a `concludes` rule over tool calls instead of over columns, which this framework
+already expresses; nothing in `fw_*` changes. The column rule stays in the model as what it is: a
+narrow, clean, prospectively confirmed relationship about document structure, learned from the one
+question that happened to provide the evidence.
+
+**The honest summary of the port's status.** The machinery is ported, integrated and tested, and its
+learned component is load-bearing on the corpus where its evidence exists (section 5). It is **not**
+ready to carry a four-epoch campaign on this target, and I would not launch one on it. That is a
+smaller claim than section 11's prepared spec implies, and section 11 should be read through it.
 ---
 
 ## 12. Limitations, stated plainly

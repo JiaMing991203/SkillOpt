@@ -2190,3 +2190,48 @@ is the same habit that produced three withdrawn timestamps in this project.
 `research/deploy.sh` refuses a commit that is not on `origin`, and pushing is withheld. So compiling
 the Lean file and submitting the contract campaign both wait on the same decision. The campaign is
 prepared and all seven protocol items were verified against the executed baseline's own `config.json`.
+
+## 2026-11-23 (02:40-03:00 EST) — the port is sound; its first target cannot carry a campaign
+
+**What happened.** Preparing for a compaction, I wrote in the state note that the campaign was "ready
+now, no implementation work outstanding". That was wrong twice over, and finding out why is the only
+substantive work of this entry.
+
+**First error: the campaign had no learner in its epoch loop.** `oqa_fw_run.py` learns once over a
+frozen set; a campaign starts with an empty bank and must evolve the model from each epoch's own
+traces, with every report resting on a model frozen before the traces it describes. `oqa_lc_arm.py`
+does that for the LC generation and I had no equivalent. Written as `oqa_fw_arm.py` (`seed` /
+`evolve`), including the lesson `oqa_lc_arm`'s docstring records: the recheck must be EXPLICIT, because
+`fw_learn._finish` is what refutes a contract the new evidence contradicts and it only runs when
+`apply_proposal` is called. In the bounded test the proposer offered something every round, so the
+refutation happened as a side effect; across epochs it would not have.
+
+**Second error, and the one that matters: the target has no evidence in a campaign epoch.** The rule
+needs the same table retrieved twice in one attempt, once split and once flattened, sharing two data
+rows. Over the four recorded epochs of the completed Original SkillOpt arm — 4,097 columns, 48
+attempts, the exact condition a campaign would be in — there are **0 such pairs and therefore 0
+judgeable columns, in every epoch**. Not an extraction failure: those epochs hold 30/24/26/30 flat and
+17/13/29/7 split tables; the pairing simply never happens. In the frozen S0 corpus it happens in one
+question of twelve, as a trajectory accident.
+
+**And the loose criterion is worse, which is a useful confirmation.** At `oqa_lc_cells.pair_tables`'s
+one-shared-row rule the epochs yield 15/0/30/30 judgeable columns and **0 of 75 agree** — every one a
+disagreement, the signature of pairing different tables of equal width. A campaign learner on that
+criterion would report the rule FALSE rather than unevidenced. Both criteria reach the same verdict
+and only the strict one is honest about why.
+
+**So I withdraw the readiness claim I made 20 minutes earlier.** An empty-bank campaign of this arm
+would carry an empty model through four epochs and deliver a universally inert report, which the
+instruction explicitly rules out as a completed integration. Report section **11b**; the state note now
+leads with it.
+
+**The interpretation worth keeping, because it is the mirror image of PA-1's.** PA-1 found a target
+chosen for being *guaranteed evaluable* and therefore redundant. This is the opposite failure: a
+target chosen for being *informative and refutable* that turns out to be rarely evaluable. Both come
+from choosing a target without first measuring how often its evidence appears **in the records the
+experiment will actually produce** — not in the corpus that happened to be at hand. Evidence density
+in the deployment setting is a property to measure before committing, not after.
+
+**What I did not do.** I did not quietly switch the target, re-aim the campaign or re-run anything to
+make the number look better. The column rule stays in the model as what it is: narrow, clean,
+prospectively confirmed on the one question that provided the evidence.

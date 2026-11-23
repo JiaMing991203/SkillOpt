@@ -2362,3 +2362,42 @@ support; 44 of them were ambiguous anyway and 6 were unique. The correction ther
 ambiguity rather than finding new bindings - the right direction for a provenance checker, and a
 smaller gain than "a tolerance bug is fixed" suggests. Recorded because the FW-1 report said the
 difference was measurable, and a claim of measurability should be settled by a measurement.
+
+### FW-1 addendum 2 (2026-11-23, 03:00 EST) — the target has no evidence in a campaign epoch
+
+**Purpose.** Before preparing a campaign submission, check whether the learned rule's evidence occurs
+in the kind of records a campaign actually produces. It does not, and that is the finding.
+
+**Verified**, over the four recorded epochs of the completed Original SkillOpt arm (the exact
+condition an empty-bank campaign would be in), using `oqa_fw_arm.load_attempts` on each step's own
+rollout:
+
+| epoch | attempts | columns | tables with a flat/split pair | columns the rule can judge |
+|---|---|---|---|---|
+| step_0001 | 12 | 1,066 | 0 | **0** |
+| step_0002 | 12 | 786 | 0 | **0** |
+| step_0003 | 12 | 1,170 | 0 | **0** |
+| step_0004 | 12 | 1,075 | 0 | **0** |
+
+**Not an extraction failure.** Those epochs contain 30 / 24 / 26 / 30 flat-header tables and
+17 / 13 / 29 / 7 split-header ones; the *pairing* of the same table in two renderings never occurs. In
+the frozen S0 corpus it occurs in one question of twelve (`UID0028`), as a trajectory accident.
+
+**Relaxing the guard makes it worse.** At the one-shared-row criterion `oqa_lc_cells.pair_tables`
+uses, the four epochs yield 15 / 0 / 30 / 30 judgeable columns and **0 of those 75 agree** — every one
+a disagreement, which is the signature of pairing different tables of equal width. With that criterion
+a campaign learner would see 75 counterexamples and 0 supporting cases per epoch and report the rule
+**false** rather than unevidenced.
+
+**Verified — the epoch driver itself works.** `oqa_fw_arm.py seed` over step_0001's rollout: the two
+assumptions are adopted, the search scores 378 candidates, **0 acceptable**, and the model freezes at
+v1 with no active contract. That is the correct behaviour on evidence-free records, and it is also the
+demonstration that the arm would be inert.
+
+**Interpretation.** The port is sound and its learned component is load-bearing where its evidence
+exists. The first slice's TARGET is the problem in the campaign setting, exactly as PA-1 warned about
+a target chosen for being evaluable rather than for being useful — here the failure is the mirror
+image: a target chosen for being *informative* that turns out to be rarely evaluable. A campaign needs
+a target whose evidence appears in every rollout; D-2 §14b qualifies by construction.
+
+**Resources.** 0 cluster jobs, 0 provider calls, local only.
