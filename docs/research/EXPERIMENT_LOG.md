@@ -2586,3 +2586,51 @@ twelve**, and the recorded draw-to-draw standard deviation on this benchmark is 
 per 24, so a one-question difference is inside noise. It also cannot be credited to a diagnosis: the
 reports contain none. Whatever moved the analyst was the presence of the report, not its findings —
 the information-access confound, and the ablation is what has to separate them.
+
+### THE ABLATION, on the campaign's own traces — and it is a clean negative
+
+The four-cell discipline FW-1 established, because an assumption and a rule must be separated or the
+ablation proves nothing. Cell A adopts nothing; cell B adopts the seed assumptions and NO contract;
+cell C is what the campaign actually ran. Each cell rebuilds every report for that epoch's rollout
+from the same records through the same code, with only the model argument changed.
+
+| epoch | operands | cell | report chars | column_identified | unit_resolved | conversion_accounted |
+|---|---|---|---|---|---|---|
+| 1 | 526 | A no assumption, no rule | 32,891 | UNKNOWN 526 | NOT_REQUIRED 8, UNKNOWN 518 | NOT_REQUIRED 79, UNKNOWN 447 |
+| 1 | 526 | B assumptions only | 33,347 | UNKNOWN 526 | NOT_REQUIRED 8, UNKNOWN 518 | NOT_REQUIRED 79, UNKNOWN 447 |
+| 1 | 526 | **C as run** | 38,411 | UNKNOWN 526 | NOT_REQUIRED 8, UNKNOWN 518 | NOT_REQUIRED 79, UNKNOWN 447 |
+| 3 | 385 | A | 32,900 | UNKNOWN 385 | NOT_REQUIRED 18, UNKNOWN 367 | NOT_REQUIRED 46, UNKNOWN 339 |
+| 3 | 385 | B | 33,356 | UNKNOWN 385 | NOT_REQUIRED 18, UNKNOWN 367 | NOT_REQUIRED 46, UNKNOWN 339 |
+| 3 | 385 | **C as run** | 41,792 | UNKNOWN 385 | NOT_REQUIRED 18, UNKNOWN 367 | NOT_REQUIRED 46, UNKNOWN 339 |
+
+**Every obligation state is identical in all three cells, in every epoch.** A = B = C. 911 operands
+across the two complete epochs and not one conclusion differs. The learned model's entire footprint is
+the report text that NAMES it: +5,520 characters in epoch 1 and +8,892 in epoch 3, of which about 456
+is the adopted-assumptions line and the rest the block listing the rules and their evidence.
+
+So for this slice, in the setting the campaign actually ran in, **the learned contract layer added no
+conclusion at all.** Not a weak effect — a zero. And cell B equalling cell A says the adopted
+assumptions added nothing either, which is what stops the result being blamed on a researcher-supplied
+setting rather than on the learner.
+
+Artifact: `runs/20261123-officeqa-fw-campaign/FW_CAMPAIGN_ABLATION.json`. The epoch-4 row is omitted
+here because its rollout was still in progress when this was computed; it will be recomputed when
+`arm.e4` finishes.
+
+**Why it is zero, traced through the licence chain.** `column_identified` is DISCHARGED only when
+`col_bound` is TRUE; `col_bound` is TRUE only under `index_alignment` AND an active learned rule whose
+consequence is a label-determining atom with value `true`. The learner accepted three rules in four
+epochs and none of them has such a consequence: two conclude `col_label_present` and `child_aligned`,
+which license nothing, and the third concludes `col_child_label_present` **false**. With
+`column_identified` UNKNOWN for every operand, `unit_resolved` cannot resolve a nearer scope and
+`conversion_accounted` cannot reach a required factor, so the two downstream obligations are UNKNOWN
+wherever they are not NOT_REQUIRED. The chain is sound — it abstains rather than accusing — and it
+never fires.
+
+**What did NOT fire, recorded rather than fabricated.** Across four learner passes: 0 contracts
+refuted, 0 retired, 2 proposals rejected by the gate, and therefore **the repair machinery never ran
+once** — `fw_repair.attempt` is only reached for a refuted contract and no evidence ever contradicted
+an accepted rule. The epoch-4 learner abstained outright, proposing `keep` on all three rules with the
+note *"No new contract is supportable without risk of a vacuous or redundant rule, so model
+unchanged."* Deletion repair, regression checking against earlier evidence, and contract retirement
+are all implemented and tested, and none of them was exercised by this campaign's evidence.
