@@ -5,27 +5,51 @@
 
 ## THE LIVE CAMPAIGN — job ids first
 
-Bundle `oqa_fw_20261123b` (commit `4b69200adcc55c2cf9fa9acdfd0c22ce84b2172e`), run root
+Bundle `oqa_fw_20261123d` (commit `371bbe3e02f431023d88bbde0159d3fc25195be3`), run root
 `runs/20261123-officeqa-fw-campaign/`. Two gate jobs, then one strict `afterok` chain; a failed link
 stops everything downstream before a cent is spent.
 
 | job | stage | what it is |
 |---|---|---|
-| 66666908 | `run_tests` | the whole `tests/` tree — GATE |
-| 66666909 | `oqa_fw_lean` | compile `OqaFramework.lean` — GATE (**COMPLETED rc 0**) |
-| 66666915 | preflight | reuse provenance, effective actor settings, live ledger, FW tests, FW condition |
-| 66666916 | learn e1 | the DeepSeek learner seeds M0 from the reused epoch-1 rollout |
-| 66666917 | arm e1 | SkillOpt epoch 1 under M0 (reports IN-SAMPLE, declared) |
-| 66666918 | arm e2 | epoch 2 under M0 (out-of-sample) |
-| 66666919 | learn e3 | evolve from the arm's own epoch-2 traces |
-| 66666920 | arm e3 | epoch 3 under M_e2 |
-| 66666921 | learn e4 | evolve from the arm's own epoch-3 traces |
-| 66666922 | arm e4 | epoch 4 under M_e3 |
-| 66666923 | heldout | the one new endpoint, 2 passes of 30; skips itself if the digest is already evaluated |
+| 66667001 | `run_tests` | the whole `tests/` tree — GATE |
+| 66667002 | `oqa_fw_lean` | compile `OqaFramework.lean` — GATE |
+| 66667003 | preflight | reuse provenance, effective actor settings, live ledger, FW tests, FW condition |
+| 66667004 | learn e1 | the DeepSeek learner seeds M0 from the reused epoch-1 rollout |
+| 66667005 | arm e1 | SkillOpt epoch 1 under M0 (reports IN-SAMPLE, declared) |
+| 66667006 | arm e2 | epoch 2 under M0 (out-of-sample) |
+| 66667007 | learn e3 | evolve from the arm's own epoch-2 traces |
+| 66667008 | arm e3 | epoch 3 under M_e2 |
+| 66667009 | learn e4 | evolve from the arm's own epoch-3 traces |
+| 66667010 | arm e4 | epoch 4 under M_e3 |
+| 66667011 | heldout | the one new endpoint, 2 passes of 30; skips itself if the digest is already evaluated |
 
-Superseded, all at zero or trivial cost: 66666536 (tests, 2,646 passed, on the earlier commit),
-66666537 and 66666627 (Lean, see below), 66666891 (the first green compile), 66666642-66666650 (the
-first chain, killed by its own failed Lean dependency before any stage started).
+**THE FIRST CHAIN (66666915-66666923) DIED AT ITS FIRST PAID STAGE AND IS WORTH READING.** The
+preflight passed on every check. Then job 66666916 called the learner, the route guard passed
+(`optimizer: openai_compatible -> https://api.deepseek.com (deepseek-flash)`), the request went out
+(41,526 prompt tokens, 46.7 s) — and the reply came back `finish_reason: "length"`, `content: ""`,
+`reasoning_content: 31,393 characters`. The model spent its entire 8,000-token completion budget
+reasoning about the atom census and never wrote the JSON block. The `afterok` chain then cancelled
+every downstream stage, so **no actor call was made and the only cost was one optimizer attempt
+(~$0.02) and the stages' walltime.** Fixed three ways, none of which touches the evidence: the cap is
+16,000 (just under the 16,384 the config allows, and the backend clamps silently above that), the
+prompt's output section now opens with "BEGIN YOUR REPLY WITH THE ```json BLOCK" and explains that the
+budget covers reasoning too, and an unparseable reply is now RETRIED inside the round budget with a
+short corrective message instead of ending the pass. The learn stage also sets
+`CONTENT_FALLBACK=reasoning_text` so a JSON block landing in the reasoning field is still read — and
+that setting is scoped to the learn stage, because in the arm stage the same variable governs the
+ACTOR and promoting reasoning into an answer would stop the arm being the baselines' actor.
+
+**And a silent hazard the failure exposed.** `fw_ir.freeze` refuses to overwrite a frozen file whose
+content differs; `freeze_to` catches the refusal and reports the NEW digest while the OLD file stays
+on disk. Job 66666916 failed *after* freezing an empty v1, so a second attempt at epoch 1 would have
+left the arm loading that empty model with no error. The learn stage now archives a previous attempt's
+artifacts into `models/superseded/<utc>_job<id>/` before learning, then asserts both that the freeze
+reported no problem and that the digest of the file ON DISK is the one the pass recorded.
+
+Superseded, all at zero or trivial cost: 66666536/66666908/66666982 (tests, green each time),
+66666537 and 66666627 (Lean, see below), 66666891/66666909/66666983 (green compiles),
+66666642-66666650 (first chain, killed by its own failed Lean dependency before any stage started),
+66666915-66666923 (second chain, the empty completion above).
 
 **Requested walltime for the chain: 8.00 job-hours** (20 + 3x20 + 40 + 3x90 + 90 min), from the
 baselines' MEASURED elapsed times (epoch 1 took 3 min, epochs 2-4 took 19/19/18, each held-out

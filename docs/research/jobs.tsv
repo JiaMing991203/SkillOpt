@@ -180,3 +180,12 @@ submitted_at	job_id	job	stage	commit	extra_sbatch
 2026-11-23T08:41:21Z	66666983	oqa_fw_lean	-	2346dacff126996992144a5b63e7fc998632e993	--time=00:20:00
 2026-11-23T08:42:49Z	66667001	run_tests	-	371bbe3e02f431023d88bbde0159d3fc25195be3	--time=00:40:00
 2026-11-23T08:42:49Z	66667002	oqa_fw_lean	-	371bbe3e02f431023d88bbde0159d3fc25195be3	--time=00:20:00
+2026-11-23T08:43:42Z	66667003	oqa-fw-pre	preflight	d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	bundle oqa_fw_20261123d, dep afterok:66667001:66667002
+2026-11-23T08:43:42Z	66667004 oqa-fw-learn-e1 learn-e1-seed			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
+2026-11-23T08:43:42Z	66667005 oqa-fw-A-e1 arm-e1-M0			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
+2026-11-23T08:43:42Z	66667006 oqa-fw-A-e2 arm-e2-M0			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
+2026-11-23T08:43:42Z	66667007 oqa-fw-learn-e3 learn-e3-from-e2			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
+2026-11-23T08:43:42Z	66667008 oqa-fw-A-e3 arm-e3			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
+2026-11-23T08:43:42Z	66667009 oqa-fw-learn-e4 learn-e4-from-e3			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
+2026-11-23T08:43:42Z	66667010 oqa-fw-A-e4 arm-e4			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
+2026-11-23T08:43:42Z	66667011 oqa-fw-ho heldout			d2608d7fe9ae0bdfe0eae1137306bea3a8ab49a1	2nd submission; 1st chain killed by learn.e1 empty completion
