@@ -2344,3 +2344,21 @@ pre-existing absence of the `openai` package on this workstation.
 `682bf27f6d611c82`, `FW_ABLATE` `39cbb119bc5d904d`, `FW_GRID` `ecccb0de68c9bf69`, `FW_REPAIR`
 `9f6d003464be6e07`, `FW_LEAN` `3d8817553c6f3ff8`, `FW_EDIT` `48e485dc368a8f55`, `FW_CAMPAIGN_SPEC`
 `a15a5248c1ba5ab0`, `FW_MODEL` `8fffff15bf961bcf`.
+
+### FW-1 addendum (2026-11-23, 02:45 EST) — what the precision correction changes
+
+**Verified**, over all 2,751 written operands of the 48 frozen attempts, by running the same code path
+twice (`oqa_fw_run.py --legacy-tolerance` against the default), so the two sides cannot drift:
+
+| | legacy `max(0.5, |x|·1e-6)` | corrected, at the written precision | change |
+|---|---|---|---|
+| operands | 2,751 | 2,751 | - |
+| unique cell match | 398 | 392 | **-6** |
+| several candidate cells | 266 | 222 | **-44** |
+| no cell match | 2,087 | 2,137 | **+50** |
+
+**Interpretation.** The loose comparison manufactures 50 matches the written precision does not
+support; 44 of them were ambiguous anyway and 6 were unique. The correction therefore withdraws
+ambiguity rather than finding new bindings - the right direction for a provenance checker, and a
+smaller gain than "a tolerance bug is fixed" suggests. Recorded because the FW-1 report said the
+difference was measurable, and a claim of measurability should be settled by a measurement.

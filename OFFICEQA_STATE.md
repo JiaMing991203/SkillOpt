@@ -1,27 +1,46 @@
 # OfficeQA: state note (resume from here)
 
-**Last update: 2026-11-22 20:40 EST. FW-1 — the ALFWorld learned-contract framework is PORTED,
-integrated and end-to-end tested on saved records (19:50-20:38 EST). PA-1 parity audit before it,
-D-2..D-5 before that.** Branch `officeqa-contracts`, worktree `SkillOpt-officeqa`. The tree is clean,
-so HEAD is exactly what this note describes — a note that records its own commit always lags by one,
-so read the commit with `git log --oneline -1` and the count with
-`git log --oneline origin/officeqa-contracts..HEAD | wc -l` (200+). **NOT pushed.**
+**Last update: 2026-11-23 02:45 EST (compaction prep). FW-1 — the ALFWorld learned-contract framework
+is PORTED, integrated and end-to-end tested on saved records (2026-11-22, 19:50-20:38 EST). PA-1
+parity audit before it, D-2..D-5 before that.** Branch `officeqa-contracts`, worktree
+`SkillOpt-officeqa`, HEAD `4d5a5fe`, **tree clean**, 212 commits ahead of `origin`, **NOT pushed**.
 
-**ONE DECISION BLOCKS EVERYTHING THAT REMAINS, AND IT IS A PUSH.** `research/deploy.sh` refuses a
-commit that is not on `origin`, so compiling the Lean file and submitting the contract campaign both
-wait on authorization to push. No implementation work remains for either. See
-`docs/research/OFFICEQA_FRAMEWORK_PORT.md` sections 7 and 11, and `FW_CAMPAIGN_SPEC.json`.
+## THE USER IS ABOUT TO SPECIFY A FULL-SCALE EXPERIMENT. What is ready, and what it needs
 
-**NO OfficeQA JOB RUNNING OR QUEUED** (verified 2026-11-22 20:36 EST, SSH master restored by the user
-at ~20:30). Today's only OfficeQA jobs are the three D-2 submissions that predate this work: 66598457
-and 66599047 cancelled while PENDING at zero cost, 66599377 COMPLETED 00:04:03 on one core (**Lean
-4.20.0 rc 0, 0 errors, 272 examples, suite 2,615 passed / 0 failed**). Today's `ac2-*` and `lc-rank`
-jobs are the ALFWorld session's AC-2 campaign on the shared cluster and are **not mine to touch**;
-the six held `e3m-*` jobs are Experiment 3 GPU jobs on a third track.
+**Ready now, no implementation work outstanding:**
+* the ported framework and its OfficeQA adapter (`research/officeqa/framework/`, `oqa_fw_*.py`),
+  reaching the optimizer through the integration that already existed (one additive branch in
+  `oqa_reports.build_one_lc`, condition `FW`, selected by `OFFICEQA_STAGE_REPORT_CONDITION`);
+* `runs/20261122-officeqa-framework/FW_CAMPAIGN_SPEC.json` (digest `a15a5248c1ba5ab0`) — the contract
+  arm, with **all seven protocol items verified against the executed baseline's own `config.json`**:
+  4 epochs, 6 slow-update samples, slow update on, gate on, edit budget 4, fixed learning-rate
+  control, split dir with seed 42;
+* `research/cluster/oqa_fw_lean.sbatch`, registered in `research/submit.sh`;
+* 22 new tests passing locally; the Lean file generated and digested.
+
+**Three things any full-scale run needs, in this order:**
+1. **A PUSH.** `research/deploy.sh` refuses a commit that is not on `origin`, so *nothing* reaches the
+   cluster until `officeqa-contracts` is pushed. This blocks the Lean compile, the full test suite and
+   every campaign arm alike. It is the single gate.
+2. **A RESOURCE DECISION.** Remaining verified OfficeQA follow-up allowance: **3.08 requested CPU
+   job-hours and 18 teacher attempts**, both untouched by FW-1. The prepared single contract arm is
+   estimated at ~1.5 CPU job-hours, 16 optimizer calls, ~873k optimizer prompt tokens, 673 actor
+   calls and 60 final-evaluation attempts, no GPU. **A full-scale design with more arms or more
+   questions will exceed 3.08 CPU job-hours**, so it needs one consolidated budget request before
+   submission rather than after.
+3. **SHARED CLUSTER AWARENESS.** The ALFWorld session is running its AC-2 campaign right now
+   (verified 02:40 EST: `ac2-con` RUNNING 3:36:40, `ac2-ev` RUNNING 1:54:27, five more PENDING on
+   dependencies). Standing authorization since 2026-11-15 replaces per-job acknowledgement, but the
+   GPU cap and the shared log still apply, and those jobs are **not mine to touch**.
+
+**NO OfficeQA JOB RUNNING OR QUEUED** (verified 2026-11-23 02:40 EST). The only OfficeQA jobs since
+2026-11-22 are the three D-2 submissions: 66598457 and 66599047 CANCELLED while PENDING at zero cost,
+66599377 COMPLETED 00:04:03 on one core (**Lean 4.20.0 rc 0, 0 errors, 272 examples, suite 2,615
+passed / 0 failed**). The six held `e3m-*` jobs are Experiment 3 GPU work on a third track.
 
 **RESOURCES: 0.00 of the 3.08 remaining OfficeQA CPU job-hours and 0 of 18 teacher attempts are
-spent.** FW-1 submitted nothing, called no provider and used no GPU; all of it ran on the workstation
-in about 3 minutes of CPU. The budget ledger reads `verdict: PASS`.
+spent.** FW-1 submitted nothing, called no provider and used no GPU; it ran on the workstation in
+about 3 minutes of CPU. The budget ledger reads `verdict: PASS`.
 
 ## START HERE -> `docs/research/OFFICEQA_FRAMEWORK_PORT.md` (newest), mirrored at `HANDOFF_LATEST.md`
 
@@ -101,11 +120,11 @@ Then `docs/research/OFFICEQA_LEARNED_CONTRACT_MILESTONE.md` for the phase it aud
   the checking side); §14a records why, so it is not proposed again.
 
 ## CLUSTER ACCESS
-**The SSH master is UP.** The user restored it at about 20:30 EST on 2026-11-22 after it had dropped
-(Great Lakes needs Duo 2FA, so a session cannot restore it itself: the command is
-`ssh -M -S ~/.ssh/cm_gl -fN gl`). Verified at 20:36 EST with `ssh -O check gl` (Master running),
-`squeue -u $USER` and `sacct -S 2026-11-22`. **Re-check before believing any of this** — the socket
-has dropped once already today.
+**The SSH master is UP** — `ssh -O check gl` reports `Master running (pid=87131)`, verified
+2026-11-23 02:40 EST. The user restored it at about 20:30 EST on 2026-11-22 after it had dropped.
+Great Lakes needs Duo 2FA, so a session cannot restore it itself: the command is
+`ssh -M -S ~/.ssh/cm_gl -fN gl`. **Re-check before believing any cluster statement** — the socket has
+dropped once already.
 
 ## THE COMPLETED TWO-BASELINE COMPARISON IS PRESERVED AND SEALED
 `docs/research/OFFICEQA_BASELINE_LAUNCH.md` is its complete report. Endpoints `9d377d1c2906` (S0),

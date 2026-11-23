@@ -135,6 +135,14 @@ makes `x * 0.6 = x` an "identity". `oqa_fw_extract.near` compares at half a unit
 place. `oqa_ln_evidence` is **not modified** - the frozen D-2..D-5 outputs stay reproducible - and
 `near_legacy` is kept beside the correction so the difference can be measured rather than asserted.
 
+**What correction 2 actually changes, measured over all 2,751 written operands of the 48 attempts**
+(`--legacy-tolerance` runs the same code path with the old comparison, so the two sides cannot drift):
+the loose comparison manufactures **50 matches the written precision does not support** - operands
+with no cell match rise from 2,087 to 2,137. 44 of those 50 were ambiguous multi-cell matches anyway
+(266 -> 222), and 6 were unique (398 -> 392). So the correction's main effect is to withdraw
+ambiguity rather than to find new bindings, which is the right direction for a provenance checker but
+is a smaller gain than "a tolerance bug is fixed" would suggest.
+
 Both corrections are under a new version (`oqa.fw.extract.v1`), as instructed.
 
 ### Three defects of my own, each found by checking rather than assuming
