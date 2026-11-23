@@ -125,8 +125,8 @@ assumption "an occurrence exists only where an observation line carries a line n
 pipe-delimited fields; a read without line numbers yields no position". Measured over the 48 frozen
 attempts: **every `read` observation is unnumbered, and reads carry 571 of the 757 observed tables
 (75.4%)**; the other 186 come from grep, which numbers its lines. Three quarters of the document
-content could not be cited, and a cell that cannot be cited
-cannot witness anything. A reference here needs no line number, and a citation reads
+content could not be cited, and a cell that cannot be cited cannot witness anything. A reference here
+needs no line number, and a citation reads
 `step 6, table 1, row '1941', column 'Individual' [thousands]`.
 
 **Correction 2: numbers are compared at the precision they were written to.** `oqa_ln_evidence._near`
