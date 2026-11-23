@@ -362,3 +362,29 @@ def test_adding_the_FW_condition_left_the_three_LC_conditions_alone():
     i = src.index("if condition == FW_CONDITION:")
     j = src.index("if condition not in LC_CONDITIONS:")
     assert i < j, "the FW branch must return before the LC path, leaving it untouched"
+
+
+# ── 9. the per-epoch campaign driver ─────────────────────────────────────────
+def test_the_arm_driver_applies_an_empty_proposal_when_a_contract_is_contradicted():
+    """`oqa_lc_arm` records this the hard way: `fw_learn._finish` is what refutes a contract the new
+    evidence contradicts, and it runs only when `apply_proposal` is called. Across epochs the proposer
+    will not always propose, so the recheck must be explicit or a refuted contract stays active."""
+    src = open(os.path.join(RESEARCH, "oqa_fw_arm.py"), encoding="utf-8").read()
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "learn_over")
+    body = ast.dump(ast.Module(body=fn.body, type_ignores=[]))
+    # an EMPTY proposal, applied explicitly, with "recheck" as its source
+    assert "'recheck'" in body or '"recheck"' in body
+    assert "assumption_ops" in body and "contract_ops" in body
+    assert body.count("apply_proposal") >= 3, "seed, induce and recheck must each be able to apply"
+    assert "attempt" in body, "a refuted contract must be offered to the repair machinery"
+
+
+def test_the_arm_driver_freezes_one_model_per_epoch_with_its_parent():
+    import oqa_fw_arm as ARM
+    src = open(os.path.join(RESEARCH, "oqa_fw_arm.py"), encoding="utf-8").read()
+    assert "FW_MODEL_e{a.epoch}.json" in src or 'f"FW_MODEL_e{a.epoch}.json"' in src
+    assert callable(ARM.freeze_to) and callable(ARM.learn_over)
+    assert ARM.SEED_ASSUMPTIONS == ("index_alignment", "table_scale_applies_to_rows")
+    # a seed run must declare that epoch 1's reports are in-sample
+    assert "in_sample_warning" in src and "IN-SAMPLE" in src
